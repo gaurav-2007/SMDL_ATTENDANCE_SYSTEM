@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+*/node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+build/
+dist/
+client/build/
+client/dist/
+server/dist/
+server/build/
+
+# IDE & Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Database
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Supabase
+.supabase/
+
+# Uploads & Storage
+uploads/
+storage/
+temp/
+tmp/
+
+# Cache
+.cache/
+.eslintcache
+.parcel-cache/
+
+# Testing
+coverage/
+*.lcov
+
+# OS files
+desktop.ini
+ehthumbs.db

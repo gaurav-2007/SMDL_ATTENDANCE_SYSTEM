@@ -1,0 +1,62 @@
+# =============================================
+# CLIENT - Frontend Placeholder Files
+# =============================================
+#
+# client/
+# ├── package.json                    ✅ Created
+# ├── tailwind.config.js              ← Created in Phase 7
+# ├── postcss.config.js               ← Created in Phase 7
+# ├── public/
+# │   └── index.html
+# └── src/
+#     ├── index.js
+#     ├── App.js                      ← Main Router
+#     ├── styles/
+#     │   └── index.css               ← Tailwind directives
+#     ├── context/
+#     │   ├── AuthContext.js          ← Auth state, login/logout
+#     │   └── NotificationContext.js
+#     ├── services/
+#     │   ├── api.client.js           ← Axios instance (JWT interceptor)
+#     │   ├── auth.service.js
+#     │   ├── admin.service.js
+#     │   ├── student.service.js
+#     │   ├── teacher.service.js
+#     │   └── supabase.client.js      ← Supabase for storage (selfies/PDFs
+#     ├── hooks/
+#     │   ├── useAuth.js
+#     │   ├── useGeolocation.js       ← For attendance location check
+#     │   └── useCamera.js            ← For selfie capture
+#     ├── pages/
+#     │   ├── LoginPage.js
+#     │   ├── RegisterStudentPage.js
+#     │   ├── RegisterTeacherPage.js
+#     │   ├── PendingApprovalPage.js
+#     │   ├── student/
+#     │   │   ├── StudentDashboard.js
+#     │   │   ├── MarkAttendancePage.js
+#     │   │   ├── AttendanceHistoryPage.js
+#     │   │   └── AnnouncementsPage.js
+#     │   ├── teacher/
+#     │   │   ├── TeacherDashboard.js
+#     │   │   ├── AttendanceReviewPage.js
+#     │   │   ├── MarkManualAttendance.js
+#     │   │   ├── CreateAnnouncement.js
+#     │   │   └── ClassManagementPage.js
+#     │   └── admin/
+#     │       ├── AdminDashboard.js
+#     │       ├── TeacherApprovalsPage.js
+#     │       ├── ManageTeachersPage.js
+#     │       ├── ManageStudentsPage.js
+#     │       ├── AcademicStructurePage.js
+#     │       └── SystemConfigPage.js
+#     └── components/
+#         ├── Navbar.js
+#         ├── ProtectedRoute.js       ← Auth + role guard wrapper
+#         ├── Sidebar.js
+#         ├── LoadingSpinner.js
+#         ├── ErrorMessage.js
+#         ├── SuccessMessage.js
+#         ├── DataTable.js
+#         └── Modal.js
+#

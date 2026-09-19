@@ -1,0 +1,15 @@
+{
+  "name": "smdl-attendance-server",
+  "version": "1.0.0",
+  "description": "SMDL College Attendance System Backend",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "keywords": ["smdl", "attendance", "college"],
+  "author": "SMDL College",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}

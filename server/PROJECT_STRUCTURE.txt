@@ -1,0 +1,40 @@
+# =============================================
+# SERVER - Backend Placeholder Files
+# =============================================
+#
+# server/
+# ├── package.json                    ✅ Created
+# ├── .env.example                    ← Will create in Phase 3
+# └── src/
+#     ├── index.js                    ← Express server (main entry)
+#     ├── config/
+#     │   ├── db.js                   ← Supabase client
+#     │   └── env.js                  ← Load env vars
+#     ├── middleware/
+#     │   ├── auth.js                 ← JWT verification
+#     │   └── roles.js                ← Role check (student/teacher/admin)
+#     ├── routes/
+#     │   ├── auth.routes.js          ← /api/auth/*
+#     │   ├── admin.routes.js         ← /api/admin/*
+#     │   ├── student.routes.js       ← /api/student/*
+#     │   ├── teacher.routes.js       ← /api/teacher/*
+#     │   └── index.js                ← Combine all routes
+#     ├── controllers/
+#     │   ├── auth.controller.js
+#     │   ├── admin.controller.js
+#     │   ├── student.controller.js
+#     │   ├── teacher.controller.js
+#     │   ├── attendance.controller.js
+#     │   └── announcements.controller.js
+#     ├── models/
+#     │   ├── user.model.js
+#     │   ├── teacher.model.js
+#     │   ├── student.model.js
+#     │   ├── attendance.model.js
+#     │   └── announcements.model.js
+#     └── utils/
+#         ├── validators.js           ← Zod schemas
+#         ├── geolocation.js          ← Haversine formula for geofence
+#         ├── jwt.js                  ← Token helpers
+#         └── notifications.js
+#
