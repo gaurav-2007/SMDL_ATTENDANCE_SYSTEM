@@ -247,6 +247,8 @@ const overrideAttendance = asyncHandler(async (req, res) => {
   let attendanceRecord = null;
   const previousStatus = existing ? existing.status : 'ABSENT';
 
+  const finalReason = (reason && reason.trim()) ? reason.trim() : 'Student present in classroom (No smartphone)';
+
   if (existing) {
     // Update existing record
     const { data: updated, error } = await supabaseAdmin
@@ -255,7 +257,7 @@ const overrideAttendance = asyncHandler(async (req, res) => {
         status,
         marked_by: req.user.id,
         source: 'TEACHER_OVERRIDE',
-        notes: reason || 'Teacher manual update',
+        notes: finalReason,
       })
       .eq('id', existing.id)
       .select()
@@ -275,7 +277,7 @@ const overrideAttendance = asyncHandler(async (req, res) => {
         marked_at: new Date().toISOString(),
         marked_by: req.user.id,
         source: 'TEACHER_OVERRIDE',
-        notes: reason || 'Teacher manual override (student has no phone)',
+        notes: finalReason,
       })
       .select()
       .single();
@@ -290,7 +292,7 @@ const overrideAttendance = asyncHandler(async (req, res) => {
     old_status: previousStatus,
     new_status: status,
     changed_by: req.user.id,
-    reason: reason || 'Manual attendance override by teacher',
+    reason: finalReason,
     changed_at: new Date().toISOString(),
   });
 

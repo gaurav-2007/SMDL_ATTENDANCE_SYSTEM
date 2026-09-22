@@ -48,13 +48,59 @@ const getAnnouncements = asyncHandler(async (req, res) => {
     filtered = filtered.filter((a) => a.target_type !== 'STUDENT');
   }
 
-  const mapped = filtered.map((a) => ({
-    ...a,
-    sent_by_user: {
-      name: userMap[a.sent_by]?.full_name || 'Administration',
-      role: userMap[a.sent_by]?.role || 'admin',
-    },
-  }));
+  // Load attachments if announcement_attachments exists
+  const announcementIds = (filtered || []).map((a) => a.id);
+  const attachmentMap = {};
+  if (announcementIds.length > 0) {
+    try {
+      const { data: attList } = await supabaseAdmin
+        .from('announcement_attachments')
+        .select('*')
+        .in('announcement_id', announcementIds);
+      (attList || []).forEach((att) => {
+        if (!attachmentMap[att.announcement_id]) attachmentMap[att.announcement_id] = [];
+        attachmentMap[att.announcement_id].push(att);
+      });
+    } catch {
+      // announcement_attachments table might not be present, fallback gracefully
+    }
+  }
+
+  const mapped = filtered.map((a) => {
+    // Parse any inline encoded attachment if present
+    let cleanContent = a.content || '';
+    let parsedAttachment = null;
+    const match = cleanContent.match(/\[ATTACHMENT:(\{.*?\})\]/s);
+    if (match) {
+      try {
+        parsedAttachment = JSON.parse(match[1]);
+        cleanContent = cleanContent.replace(/\[ATTACHMENT:(\{.*?\})\]/s, '').trim();
+      } catch {
+        /* ignore parsing error */
+      }
+    }
+
+    const dbAttachments = attachmentMap[a.id] || [];
+    const attachments = [...dbAttachments];
+    if (parsedAttachment) {
+      attachments.push({
+        file_name: parsedAttachment.name || 'document',
+        file_url: parsedAttachment.url || parsedAttachment.data,
+        file_type: parsedAttachment.type || 'DOCUMENT',
+        file_size: parsedAttachment.size || null,
+      });
+    }
+
+    return {
+      ...a,
+      content: cleanContent,
+      attachments,
+      sent_by_user: {
+        name: userMap[a.sent_by]?.full_name || 'Administration',
+        role: userMap[a.sent_by]?.role || 'admin',
+      },
+    };
+  });
 
   res.json({
     success: true,
@@ -63,10 +109,10 @@ const getAnnouncements = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc   Create a new announcement
+// @desc   Create a new announcement with optional attachment
 // @route  POST /api/announcements
 const createAnnouncement = asyncHandler(async (req, res) => {
-  const { title, content, target_type, target_id } = req.body;
+  const { title, content, target_type, target_id, attachment } = req.body;
 
   if (!title?.trim() || !content?.trim()) {
     res.status(400);
@@ -81,11 +127,23 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     throw new Error(`Invalid target type. Must be one of: ${validTargetTypes.join(', ')}`);
   }
 
+  // Format content with inline attachment metadata for 100% resilient storage
+  let finalContent = content.trim();
+  if (attachment && (attachment.data || attachment.url)) {
+    const inlineMeta = {
+      name: attachment.name || 'file',
+      type: attachment.type || 'DOCUMENT',
+      size: attachment.size || 0,
+      url: attachment.data || attachment.url,
+    };
+    finalContent += `\n\n[ATTACHMENT:${JSON.stringify(inlineMeta)}]`;
+  }
+
   const { data: announcement, error } = await supabaseAdmin
     .from('announcements')
     .insert({
       title: title.trim(),
-      content: content.trim(),
+      content: finalContent,
       target_type: target,
       target_id: target_id || null,
       sent_by: req.user.id,
@@ -98,12 +156,38 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
+  // Also try saving to announcement_attachments table if it exists
+  if (attachment && (attachment.data || attachment.url)) {
+    try {
+      await supabaseAdmin.from('announcement_attachments').insert({
+        announcement_id: announcement.id,
+        file_name: attachment.name || 'document',
+        file_url: attachment.data || attachment.url,
+        file_type: attachment.type || 'DOCUMENT',
+        file_size: attachment.size || null,
+      });
+    } catch {
+      /* Silently continue; inline fallback is already saved */
+    }
+  }
+
   res.status(201).json({
     success: true,
     message: 'Announcement published successfully',
     data: {
       announcement: {
         ...announcement,
+        content: content.trim(),
+        attachments: attachment
+          ? [
+              {
+                file_name: attachment.name || 'document',
+                file_url: attachment.data || attachment.url,
+                file_type: attachment.type || 'DOCUMENT',
+                file_size: attachment.size || null,
+              },
+            ]
+          : [],
         sent_by_user: {
           name: req.user.full_name,
           role: req.user.role,

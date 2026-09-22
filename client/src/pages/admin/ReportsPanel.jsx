@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   BarChart2, Download, Filter, Calendar, Users,
   BookOpen, TrendingUp, TrendingDown, AlertTriangle,
-  CheckCircle, Clock, RefreshCw
+  CheckCircle, Clock, RefreshCw, Printer, FileSpreadsheet
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
@@ -50,14 +50,146 @@ export default function ReportsPanel() {
 
   useEffect(() => { fetchStats() }, [fetchStats])
 
+  function exportToCSV() {
+    if (!stats) return toast.error('No report data available to export')
+
+    const headers = ['Sr No', 'Student Name', 'Course', 'Division', 'Lectures Attended', 'Total Lectures', 'Attendance %', 'Status']
+    const rows = (lowAtt || []).map((s, idx) => [
+      idx + 1,
+      `"${(s.name || 'Student').replace(/"/g, '""')}"`,
+      `"${(s.course || 'General').replace(/"/g, '""')}"`,
+      `"${(s.division || 'A').replace(/"/g, '""')}"`,
+      s.attended ?? 0,
+      s.total ?? 0,
+      `${(s.percentage || 0).toFixed(1)}%`,
+      s.percentage < 75 ? 'DEFAULTER (<75%)' : 'SAFE'
+    ])
+
+    const summaryRows = [
+      ['SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE, KALAMBOLI'],
+      ['ATTENDANCE REPORT & DEFAULTER REGISTER'],
+      [`Generated On: ${new Date().toLocaleString('en-IN')}`],
+      [`Filter Range: Last ${period} Days`],
+      [`Total Students: ${stats.total_students || 0}`, `Average Attendance: ${stats.avg_attendance ? stats.avg_attendance.toFixed(1) + '%' : 'N/A'}`],
+      [`Defaulters Identified: ${lowAtt.length}`],
+      [],
+      headers
+    ]
+
+    const csvContent = '\uFEFF' + [...summaryRows.map(r => r.join(',')), ...rows.map(r => r.join(','))].join('\r\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `SMDL_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success('📊 Excel / CSV Report downloaded!')
+  }
+
+  function printOfficialPDF() {
+    if (!stats) return toast.error('No report data available')
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return toast.error('Popup blocked. Allow popups to print report.')
+
+    const defaulterRows = (lowAtt || []).map((s, idx) => `
+      <tr>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${idx + 1}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;font-weight:600;">${s.name}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;">${s.course}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;">${s.division}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${s.attended}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${s.total}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;color:#dc2626;font-weight:bold;">${(s.percentage || 0).toFixed(1)}%</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;color:#dc2626;font-weight:600;">Defaulter</td>
+      </tr>
+    `).join('')
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>SMDL Attendance Register - Official Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 30px; font-size: 13px; }
+          .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
+          .title { font-size: 18px; font-weight: bold; text-transform: uppercase; color: #0f172a; }
+          .subtitle { font-size: 13px; color: #475569; margin-top: 4px; }
+          .meta-grid { display: flex; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; margin-bottom: 20px; border-radius: 6px; }
+          .meta-item { font-size: 12px; }
+          .meta-item strong { color: #0f172a; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th { background: #0f172a; color: white; border: 1px solid #0f172a; padding: 8px; text-align: left; font-size: 12px; }
+          .footer { margin-top: 60px; display: flex; justify-content: space-between; text-align: center; }
+          .sig-line { width: 180px; border-top: 1px solid #333; padding-top: 6px; font-weight: bold; font-size: 11px; }
+          @media print {
+            body { margin: 15mm; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="title">SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE</div>
+          <div class="subtitle">Kalamboli, Navi Mumbai, Maharashtra · Smart Attendance & Academic System</div>
+          <div style="font-size:14px;font-weight:bold;margin-top:8px;color:#2563eb;">OFFICIAL ATTENDANCE DEFAULTER REGISTER (< 75%)</div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-item"><strong>Report Period:</strong> Last ${period} Days</div>
+          <div class="meta-item"><strong>Generated On:</strong> ${new Date().toLocaleString('en-IN')}</div>
+          <div class="meta-item"><strong>Total Students:</strong> ${stats.total_students || 0}</div>
+          <div class="meta-item"><strong>Avg Attendance:</strong> ${stats.avg_attendance ? stats.avg_attendance.toFixed(1) + '%' : 'N/A'}</div>
+          <div class="meta-item"><strong style="color:#dc2626;">Defaulters:</strong> ${lowAtt.length}</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Student Name</th>
+              <th>Course</th>
+              <th>Division</th>
+              <th>Attended</th>
+              <th>Total</th>
+              <th>Attendance %</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${defaulterRows || '<tr><td colspan="8" style="text-align:center;padding:20px;border:1px solid #cbd5e1;">No defaulters found in this period.</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <div class="sig-line">Class In-Charge</div>
+          <div class="sig-line">HOD / Academic Dean</div>
+          <div class="sig-line">Principal</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() { window.print(); }, 400);
+          }
+        </script>
+      </body>
+      </html>
+    `
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
+  }
+
   return (
     <div className="animate-fade-in">
-      <div className="page-header">
+      <div className="page-header flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="page-title">Reports & Analytics</h2>
-          <p className="page-subtitle">College-wide attendance overview</p>
+          <p className="page-subtitle">College-wide attendance overview and official defaulter registers</p>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           <select
             id="period-filter"
             value={period}
@@ -68,8 +200,24 @@ export default function ReportsPanel() {
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
           </select>
-          <button onClick={fetchStats} className="btn btn-ghost btn-sm">
+          <button onClick={fetchStats} className="btn btn-ghost btn-sm" title="Refresh metrics">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={exportToCSV}
+            className="btn btn-secondary flex items-center gap-1.5 text-xs !py-2"
+            title="Download formatted CSV spreadsheet for Microsoft Excel"
+          >
+            <FileSpreadsheet size={15} className="text-emerald-400" />
+            <span>Export CSV</span>
+          </button>
+          <button
+            onClick={printOfficialPDF}
+            className="btn btn-primary flex items-center gap-1.5 text-xs !py-2"
+            title="Generate and print official college attendance register sheet"
+          >
+            <Printer size={15} />
+            <span>Print Register</span>
           </button>
         </div>
       </div>
