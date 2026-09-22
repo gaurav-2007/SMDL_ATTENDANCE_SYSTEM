@@ -118,6 +118,14 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new Error(attErr.message || 'Failed to record attendance');
   }
 
+  // If student does not have division_id assigned yet, link them to this lecture's division
+  if (!student.division_id && lecture.division_id) {
+    await supabaseAdmin
+      .from('students')
+      .update({ division_id: lecture.division_id })
+      .eq('id', student.id);
+  }
+
   res.status(201).json({
     success: true,
     message: 'Attendance successfully marked! Physical presence verified.',
@@ -161,10 +169,27 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
     .select('*')
     .eq('lecture_id', lectureId);
 
+  // 4. Also fetch any students who marked attendance but aren't enrolled in this division
+  const divisionStudentIds = new Set((divisionStudents || []).map((s) => s.id));
+  const missingAttendeeIds = (attendanceRecords || [])
+    .map((a) => a.student_id)
+    .filter((id) => id && !divisionStudentIds.has(id));
+
+  let extraStudents = [];
+  if (missingAttendeeIds.length > 0) {
+    const { data: extras } = await supabaseAdmin
+      .from('students')
+      .select('id, student_id, users(full_name, email, phone)')
+      .in('id', missingAttendeeIds);
+    extraStudents = extras || [];
+  }
+
+  // Combine enrolled students + all students who marked attendance
+  const allRosterStudents = [...(divisionStudents || []), ...extraStudents];
   const attMap = new Map((attendanceRecords || []).map((a) => [a.student_id, a]));
 
   // Combine to create complete class roster
-  const roster = (divisionStudents || []).map((s) => {
+  const roster = allRosterStudents.map((s) => {
     const att = attMap.get(s.id);
     const isTeacherOverride = att?.source === 'TEACHER_OVERRIDE';
     return {

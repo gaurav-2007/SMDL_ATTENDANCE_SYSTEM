@@ -77,11 +77,37 @@ const registerStudent = asyncHandler(async (req, res) => {
     throw new Error(userErr?.message || 'Failed to create user');
   }
 
+  let assignedCourseId = parsed.course_id || null;
+  let assignedDivisionId = parsed.division_id || null;
+
+  if (!assignedDivisionId) {
+    const className = (parsed.class || req.body.class || '').trim().toLowerCase();
+    const roll = (parsed.roll_number || '').trim().toLowerCase();
+
+    const { data: divs } = await supabaseAdmin
+      .from('divisions')
+      .select('id, course_id, name, division_name');
+
+    if (divs && divs.length > 0) {
+      const matched = divs.find(d => {
+        const dName = d.name.toLowerCase();
+        return (className && dName.includes(className)) ||
+          (roll.startsWith('cs') && dName.includes('cs')) ||
+          (roll.startsWith('it') && dName.includes('it'));
+      }) || divs[0];
+
+      if (matched) {
+        assignedDivisionId = matched.id;
+        assignedCourseId = assignedCourseId || matched.course_id;
+      }
+    }
+  }
+
   const { error: studErr } = await supabaseAdmin.from('students').insert({
     user_id: user.id,
     student_id: parsed.roll_number,
-    course_id: parsed.course_id || null,
-    division_id: parsed.division_id || null,
+    course_id: assignedCourseId,
+    division_id: assignedDivisionId,
   });
 
   if (studErr) {
