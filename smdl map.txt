@@ -1,0 +1,913 @@
+SMDL College Smart Attendance & Communication System
+1. Project Overview
+
+I want to develop a professional attendance and communication system for SMDL College, Kalamboli, Maharashtra.
+
+The system should be designed as a real-world college application, not just a demo project.
+
+The main objective is to
+
+Make attendance easier to record.
+Reduce fakeproxy attendance.
+Verify that a student is physically present at the college.
+Allow teachers to review and correct attendance.
+Handle students who do not have a personal smartphone.
+Provide a direct communication channel between teachers and students.
+Allow teachers to send announcements, PDFs, images and other important information.
+Make the system scalable and secure enough for actual college deployment.
+Ensure that only college-approved teachers can access teacher functionality.
+
+The final goal is to present the system to the college and, if approved, deploy it for real use.
+
+2. User Roles
+
+The system will initially have three main roles
+
+A. Student
+
+Each student will have an individual account.
+
+Students should be able to
+
+Login using their college credentials.
+Mark attendance.
+Complete attendance verification.
+View their attendance percentage.
+View subject-wise attendance.
+View attendance history.
+Receive teacher announcements.
+Viewdownload shared PDFs and images.
+Receive important class information.
+B. Teacher
+
+Teachers will have a separate account.
+
+However, a teacher account must NOT become active immediately after registration.
+
+A teacher who wants to use the system must first submit a registrationapplication.
+
+The account will remain in a
+
+PENDING APPROVAL
+
+state until an authorized administrator approves it.
+
+Only after admin approval should the teacher receive access to the teacher dashboard and teacher functionality.
+
+C. Admin
+
+The administrator will be responsible for approving and managing teacher accounts.
+
+Admin should be able to
+
+View pending teacher registrations.
+Review teacher information.
+Approve teacher accounts.
+Reject teacher accounts.
+Disable an already-approved teacher account if required.
+Manage teacher permissions.
+Assign teachers to subjectsclasses.
+Manage students and academic structure.
+3. Teacher Registration & Approval Workflow
+
+The teacher registration process should work like this
+
+Teacher opens registration
+        ↓
+Enters required information
+        ↓
+Submits registration
+        ↓
+Account Status = PENDING
+        ↓
+Admin reviews application
+        ↓
+        
+   APPROVE  REJECT
+      ↓       ↓
+ ACTIVE     REJECTED
+      ↓
+Teacher can login
+Important
+
+Registration does not mean authorization.
+
+A teacher should NOT get access to the teacher dashboard merely because they created an account.
+
+The account must first be approved by an authorized admin.
+
+4. Teacher Registration Information
+
+The exact fields should be finalized during system design, but may include
+
+Full name
+Email
+Phone number
+EmployeeTeacher ID
+Department
+Designation
+Password
+Other college-required information
+
+If the college already has official teacher IDs or another identification system, the system should be designed to use that information for verification.
+
+5. Teacher Account States
+
+Teacher accounts should have clear states such as
+
+PENDING
+ACTIVE
+REJECTED
+SUSPENDED
+DISABLED
+
+Example
+
+Pending
+
+Teacher has registered but admin has not approved the account.
+
+Active
+
+Admin has approved the teacher and the teacher can use the teacher dashboard.
+
+Rejected
+
+Admin has rejected the registration.
+
+SuspendedDisabled
+
+An administrator has temporarily or permanently disabled an existing account.
+
+6. Admin Approval Dashboard
+
+The admin should have a section such as
+
+Teacher Approvals
+
+Example
+
+Pending Teacher Registrations
+
+------------------------------------------------
+Name        Department     Teacher ID    Status
+------------------------------------------------
+Rahul XYZ   Computer Sci.  T1024         PENDING
+Amit XYZ    Mathematics    T1042         PENDING
+------------------------------------------------
+
+[ VIEW ] [ APPROVE ] [ REJECT ]
+
+When admin selects VIEW, they should be able to see the submitted teacher information before making a decision.
+
+7. Approval Security
+
+Teacher approval must happen on the serverbackend side.
+
+The frontend should NOT simply decide
+
+approved = true
+
+The backend must verify whether the logged-in user is actually an authorized admin before allowing teacher approval.
+
+Only authorized administrators should be able to
+
+Approve teachers
+Reject teachers
+Suspend teachers
+Change teacher permissions
+8. Teacher Login Before Approval
+
+If a pending teacher attempts to login before approval, the system should not give access to the teacher dashboard.
+
+Instead, show something similar to
+
+Your account is awaiting administrator approval.
+
+Account Status
+PENDING
+
+Please contact the college administrator if you
+believe this is taking longer than expected.
+
+If rejected
+
+Your teacher registration has been rejected.
+
+Please contact the college administration.
+
+If approved
+
+Your account has been approved.
+
+Welcome to SMDL College Attendance System.
+9. Teacher Application  Interface
+
+Once the teacher account is approved, the teacher can
+
+Login.
+View their assigned subjectsclasses.
+View attendance for their lectures.
+See students who have marked attendance.
+Review attendance verification information.
+Identify suspicious attendance.
+Removecorrect attendance.
+Manually add attendance.
+Send announcements.
+Send PDFs.
+Send images.
+Send other important information.
+10. Student Attendance Process
+
+Attendance should use multiple verification conditions.
+
+Step 1 — Student Login
+
+The student logs into the application using their registered account.
+
+Step 2 — Location Verification
+
+The system checks whether the student is physically inside the allowed college locationgeofence.
+
+Student attempts attendance
+        ↓
+Check current location
+        ↓
+Inside allowed college area
+        
+     YES  NO
+      ↓    ↓
+ Next     Attendance rejected
+
+The exact geofence radius should be configurable by the administrator.
+
+Step 3 — Selfie Verification
+
+After successful location verification, the student must capture a selfie showing that they are physically present.
+
+Preferably, the student should capture the selfie directly through the application rather than simply selecting an old image from the gallery.
+
+The attendance attempt should store appropriate verification information such as
+
+Student ID
+Lecturesubject
+Date
+Time
+Location verification result
+Selfie submission status
+Attendance status
+Step 4 — Attendance Confirmation
+
+Attendance should be marked only when the required conditions are successfully satisfied.
+
+Student authenticated
+        +
+Location verified
+        +
+Attendance selfie captured
+        ↓
+Attendance recorded
+
+If a required condition fails, attendance should not automatically be marked.
+
+11. Important Anti-Cheating Requirement
+
+The system is intended to reduce proxyfake attendance.
+
+However, the system should NOT assume that location + selfie makes cheating impossible.
+
+The architecture should therefore allow future improvements such as
+
+Liveness verification
+Face matching
+Duplicateselfie analysis
+Devicesession verification
+Time restrictions
+Suspicious attendance flagging
+Teacher review
+
+These advanced features should be evaluated separately before implementation because they involve privacy, consent, accuracy and technical considerations.
+
+12. Teacher Attendance Review
+
+Teacher should have control over the final attendance record.
+
+Example
+
+Subject Digital System & Architecture
+
+Student       Status       Verification
+
+Rahul         PRESENT      Location ✓ Selfie ✓
+Amit          PRESENT      Location ✓ Selfie ✓
+Rohit         PRESENT      Review Required
+Sahil         ABSENT       —
+
+If the teacher believes that an attendance record is invalid
+
+PRESENT → ABSENT
+
+If a genuine student was present but could not complete the automated process
+
+ABSENT → PRESENT
+
+Teacher should be able to manually add attendance.
+
+13. Students Without a Smartphone
+
+The system must support students who do not have a personal smartphone.
+
+For such cases, teachers should have a
+
+Manual Attendance  Teacher Override
+
+option.
+
+Example
+
+Teacher
+   ↓
+Select Class
+   ↓
+Select Student
+   ↓
+Mark Present
+   ↓
+Attendance saved as
+Teacher Override
+
+The system should clearly distinguish between
+
+Automatically verified attendance
+Teacher manually added attendance
+Teacher modified attendance
+14. Attendance Audit Log
+
+Whenever a teacher modifies attendance, the system should maintain an audit record.
+
+Example
+
+Student Rahul
+Old Status PRESENT
+New Status ABSENT
+
+Changed By Teacher XYZ
+Reason Invalid attendance verification
+Date 13 September 2026
+Time 1047 AM
+
+This is important for transparency and future disputes.
+
+The system should not silently overwrite important attendance changes.
+
+15. Teacher → Student Communication System
+
+The application should also work as a class communication platform.
+
+Teachers should be able to send announcements directly to students.
+
+Examples
+
+Lecture cancellation
+
+Today's lecture has been cancelled.
+
+Classroom change
+
+Today's lecture will be conducted in Lab 3.
+
+Assignment
+
+Submit the assignment before Monday.
+
+Important information
+
+Internal examination timetable has been uploaded.
+
+Students should receive these announcements inside their application and, where appropriate, through push notifications.
+
+16. Attachments
+
+Teachers should be able to attach filesinformation to announcements.
+
+Supported content should include
+
+PDF
+Images
+Documents
+Other permitted files
+17. Targeted Announcements
+
+Teachers should be able to target announcements to appropriate groups, subject to administrator-defined permissions.
+
+Possible audiences
+
+Entire College
+Course
+Class
+Division
+Subject
+Selected Students
+
+Only the intended students should receive the announcement.
+
+18. Student Dashboard
+
+The student dashboard should provide
+
+Overall attendance
+Subject-wise attendance
+Attendance history
+Recent announcements
+Notifications
+Shared documentsinformation
+19. Teacher Dashboard
+
+Approved teachers should have access to
+
+Today's classes
+Assigned subjects
+Attendance management
+Attendance reports
+Student verification information
+Announcements
+Shared files
+Relevant notifications
+
+Unapproved teachers must NOT have access to this dashboard.
+
+20. Admin System
+
+A separate administrator interface is an essential part of the final system.
+
+The admin should eventually be able to manage
+
+Students
+Teachers
+Teacher approvals
+Courses
+Classes
+Divisions
+Subjects
+Teacher-subject assignments
+Teacher-class assignments
+Attendance settings
+College locationgeofence
+Academic sessions
+Announcements
+User accounts
+Reports
+Attendance corrections
+System configuration
+Teacher permissions
+21. Role-Based Access Control
+
+The system must use role-based permissions.
+
+Student
+
+Can
+
+View own attendance.
+Submit own attendance.
+View permitted announcements.
+
+Cannot
+
+Modify attendance.
+View other students' private attendance.
+Access teacheradmin functions.
+Pending Teacher
+
+Can
+
+Logincheck account status if supported.
+
+Cannot
+
+Access teacher dashboard.
+Mark attendance.
+Modify attendance.
+Send announcements.
+Access student data.
+Approved Teacher
+
+Can
+
+View assigned classes.
+View assigned attendance.
+Addcorrect attendance according to permissions.
+Send announcements to permitted students.
+
+Cannot
+
+Modify unrelated classes or subjects unless authorized.
+Admin
+
+Can
+
+Manage the overall system.
+Approvereject teachers.
+Manage users and academic structure.
+Configure attendance.
+Access required reports.
+Manage permissions.
+22. Attendance Data Model — Concept
+
+The system should conceptually maintain relationships such as
+
+Student
+   ↓
+Course
+   ↓
+Class  Division
+   ↓
+Subject
+   ↓
+Teacher
+   ↓
+Lecture
+   ↓
+Attendance
+
+An attendance record should be associated with the correct
+
+Student
+Lecture
+Subject
+Teacher
+Classdivision
+Datetime
+23. Attendance Status
+
+The system should support clear attendance states.
+
+Possible examples
+
+PRESENT
+ABSENT
+PENDING REVIEW
+TEACHER ADDED
+TEACHER MODIFIED
+REJECTED
+
+The final statuses should be finalized during system design.
+
+24. Notifications
+
+The system should provide notifications for important events.
+
+Student
+Attendance successfully recorded.
+Attendance verification failed.
+New announcement.
+New PDF uploaded.
+Important class information.
+Low attendance warning.
+Teacher
+Account approvedrejected.
+Attendance-related notifications.
+Important system notifications.
+Admin
+New teacher registration awaiting approval.
+Important system notifications.
+25. Reports
+
+The final system should be capable of generating
+
+Student attendance report
+Subject-wise attendance
+Class-wise attendance
+Division-wise attendance
+Teacher-wise attendance
+Date-wise attendance
+Low-attendanceshortage list
+Monthly attendance report
+Teacher approvalaccount reports
+
+Export options such as PDFExcel can be considered for adminteacher use.
+
+26. Security Requirements
+
+Because this is intended for a real college environment, security should be considered from the beginning.
+
+The system should include
+
+Secure authentication
+Password protection
+Role-based access
+Server-side authorization
+Input validation
+Secure file upload
+Protection against unauthorized attendance modification
+Audit logs
+Session management
+Secure database access
+Appropriate handling of student photoslocation information
+Secure teacher approval workflow
+
+Teacher approval must always be enforced by the backend, not only by the application UI.
+
+27. Privacy Requirements
+
+The system will potentially process
+
+Student identity information
+Selfiesphotos
+Location information
+Attendance records
+Teacher information
+
+Therefore privacy must be considered before real deployment.
+
+The final implementation should define
+
+What information is collected.
+Why it is collected.
+How long it is stored.
+Who can access it.
+How photos are protected.
+How location information is handled.
+Appropriate studentteachercollege consent and policy.
+28. Technology Selection
+
+The technology stack should NOT be selected blindly.
+
+Before development, the AIdeveloper should compare appropriate options based on
+
+Beginner friendliness
+Development speed
+Mobile support
+Backend requirements
+Database
+Authentication
+File storage
+Notifications
+Scalability
+Security
+Hosting cost
+Long-term maintenance
+
+Possible architecture
+
+Student Mobile App
+        │
+Teacher MobileWeb App
+        │
+Admin Web Panel
+        │
+        ↓
+     BackendAPI
+        │
+ ┌──────┼─────────┐
+ ↓      ↓         ↓
+Database File Storage Notifications
+
+The final technology stack should be chosen after evaluating the project requirements.
+
+29. Development Approach
+
+I am currently a beginner in software development and want to use AIVibe Coding to build this project.
+
+Therefore, I do NOT want the AI to generate the entire project blindly in one step.
+
+The development process should be
+
+Requirements
+     ↓
+System Architecture
+     ↓
+Database Design
+     ↓
+UIUX Design
+     ↓
+Authentication
+     ↓
+Teacher Registration
+     ↓
+Admin Teacher Approval
+     ↓
+Student Module
+     ↓
+Teacher Module
+     ↓
+Attendance System
+     ↓
+Location Verification
+     ↓
+Selfie System
+     ↓
+Teacher Override
+     ↓
+Communication System
+     ↓
+Notifications
+     ↓
+Admin Panel
+     ↓
+Reports
+     ↓
+Security
+     ↓
+Testing
+     ↓
+Deployment
+
+Each module should be developed, tested and verified before moving to the next major module.
+
+30. AIVibe Coding Rules
+
+When helping me develop this project, AI should follow these rules
+
+Rule 1
+
+Do not immediately generate thousands of lines of code.
+
+First explain the architecture and development plan.
+
+Rule 2
+
+Before implementing a feature, explain
+
+What it does.
+Why it is required.
+Which filesmodules are involved.
+How it communicates with the backend.
+What could go wrong.
+Rule 3
+
+Generate code in small, manageable stages.
+
+Rule 4
+
+After each major feature, provide testing instructions.
+
+Rule 5
+
+Do not assume that generated code is automatically correct.
+
+Help me verify the implementation.
+
+Rule 6
+
+Do not remove existing working functionality while adding a new feature unless explicitly required.
+
+Rule 7
+
+Keep development documentation updated.
+
+Rule 8
+
+Use proper naming and project structure suitable for a real organization.
+
+Rule 9
+
+Never bypass the teacher approval system during development.
+
+Test accounts may be used, but production teacher accounts must require admin approval.
+
+31. Testing Requirements
+
+Before presenting the system to the college, test real-world scenarios.
+
+Teacher Registration
+Teacher registers → account becomes PENDING.
+Pending teacher cannot access teacher dashboard.
+Admin sees pending registration.
+Admin approves → account becomes ACTIVE.
+Approved teacher can access teacher dashboard.
+Admin rejects → teacher cannot access teacher functionality.
+Admin disables teacher → teacher loses access.
+Unauthorized user cannot approve teacher accounts.
+Attendance
+Student inside college → attendance allowed.
+Student outside college → attendance rejected.
+Selfie missing → attendance rejected.
+Invalid session → attendance rejected.
+Already marked attendance → duplicate attendance prevented.
+Teacher manually marks student → recorded as teacher override.
+Teacher removes attendance → audit log created.
+Communication
+Teacher sends announcement → correct students receive it.
+Teacher attaches PDF → students can access it.
+Teacher sends image → students can view it.
+Teacher sends cancellation notice → students receive notification.
+Security
+Student cannot access another student's attendance.
+Student cannot access teacher functions.
+Pending teacher cannot access teacher functions.
+Teacher cannot modify unauthorized classes.
+Unauthorized users cannot approve teacher accounts.
+Unauthorized API requests are rejected.
+32. Production Readiness
+
+The final project should not be considered complete just because the app works on a developer's computer.
+
+Before deployment, evaluate
+
+Production database
+Backend hosting
+File storage
+Authentication
+HTTPS
+App builds
+Error handling
+Logging
+Backup strategy
+Database backuprecovery
+Privacy policy
+College approval
+User onboarding
+Teacheradmin training
+Monitoring
+Maintenance process
+33. College Presentation Goal
+
+The final presentation should demonstrate a complete real-world workflow.
+
+Recommended demo
+
+1. Teacher registers
+        ↓
+2. Account becomes PENDING
+        ↓
+3. Admin reviews teacher
+        ↓
+4. Admin approves teacher
+        ↓
+5. Teacher logs in
+        ↓
+6. Student logs in
+        ↓
+7. Student starts attendance
+        ↓
+8. Location verification
+        ↓
+9. Selfie capture
+        ↓
+10. Attendance recorded
+        ↓
+11. Teacher opens attendance
+        ↓
+12. Teacher reviews student
+        ↓
+13. Teacher corrects suspicious attendance
+        ↓
+14. Audit log records change
+        ↓
+15. Teacher sends announcement
+        ↓
+16. Teacher attaches PDFimage
+        ↓
+17. Student receives notification
+        ↓
+18. Student checks attendance
+
+The presentation should focus on the real problem being solved rather than only showing attractive UI.
+
+34. Final Product Vision
+
+The final product should feel like a genuine college management application.
+
+It should be
+
+Simple for students
+Convenient for teachers
+Controlled by administrators
+Difficult to misuse
+Transparent
+Secure
+Maintainable
+Scalable
+Suitable for future expansion
+
+The initial focus is
+
+Attendance + Location Verification + Selfie Verification + Teacher Approval + Teacher Control + Communication
+
+Future features can be added only after the core system is stable.
+
+35. Important Instruction to the AI Developer
+
+When I give you this document, do NOT immediately start coding.
+
+First
+
+Understand the complete requirements.
+Identify missing requirements.
+Identify technical risks.
+Identify securityprivacy risks.
+Suggest improvements only where necessary.
+Create the complete system architecture.
+Divide the project into development phases.
+Recommend the technology stack with reasons.
+Create the database design.
+Create the screenpage structure.
+Create the APIbackend structure.
+Define the authentication and authorization workflow.
+Define the teacher approval workflow.
+Define the attendance verification workflow.
+Define the testing strategy.
+Then start development one module at a time.
+
+The goal is to build a real, deployable SMDL College attendance and communication system, not merely a prototype.

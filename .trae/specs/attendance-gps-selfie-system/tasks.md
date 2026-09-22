@@ -1,0 +1,179 @@
+# SMDL College Attendance (GPS + Selfie) System - Implementation Plan
+
+## Task 1: Fix Backend Column Name Mismatches (marked_by, audit_log old_status, source/notes alignment)
+- **Status**: `pending`
+- **Priority**: high
+- **Depends On**: None
+- **Description**:
+  - Fix attendanceController.js `markAttendance()`: change `marked_by: 'student'` to `marked_by: req.user.id` (must be UUID per schema FK to users.id). Remove non-existent columns `teacher_override`/`override_reason` from INSERT; instead use `source: 'AUTO_VERIFIED'` and `notes: 'Student self-verified attendance'`.
+  - Fix attendanceController.js `getLectureAttendance()` roster map: replace teacher_override/override_reason references with `source` and `notes` from actual schema.
+  - Fix attendanceController.js `overrideAttendance()`: remove `teacher_override`/`override_reason` from update/insert; use `source: 'TEACHER_OVERRIDE'` and `notes: reason || 'Teacher manual override'`.
+  - Fix attendanceController.js `overrideAttendance()` audit INSERT: use column name `old_status` (per schema) instead of `previous_status` to avoid Postgres column-not-found error.
+  - Fix `marked_by` in override: set to req.user.id (teacher UUID) not string 'teacher'.
+  - Verify attendance_audit_logs table columns match schema (changed_by FK, old_status, new_status, reason, changed_at).
+- **Acceptance Criteria Addressed**: AC-12, AC-3 (backend insert correctness)
+- **Test Requirements**:
+  - `rule` TR-1.1: POST /api/attendance/mark returns 201 without Postgres "column does not exist" errors; attendance row marked_by is a valid UUID (matches req.user.id), source = 'AUTO_VERIFIED'. Evidence: API 201 response + DB row SELECT showing marked_by UUID and source.
+  - `rule` TR-1.2: POST /api/attendance/override creates attendance_audit_logs row with old_status and new_status correctly. Evidence: SELECT * FROM attendance_audit_logs WHERE attendance_id = X shows old_status populated.
+  - `rule` TR-1.3: Override attendance row has source='TEACHER_OVERRIDE' and notes containing reason text. Evidence: DB row SELECT.
+- **Notes**: Edit file `server/src/controllers/attendanceController.js` only.
+
+## Task 2: Enhance & Verify Academic Seeding (Complete SMDL Defaults)
+- **Status**: `pending`
+- **Priority**: high
+- **Depends On**: Task 1
+- **Description**:
+  - Enhance `seed_academic.js` to create divisions for ALL 3 courses (BSC-IT, BSC-CS, BCOM), each with FY-A, SY-A, TY-A (total 9 divisions minimum). Currently only BSC-IT has divisions.
+  - Add subjects for SYBSc IT and TYBSc IT divisions also (not just FY).
+  - Ensure today's lecture is created even if no teacher exists yet (skip gracefully if teacher table empty).
+  - Add console.log output per step with success/error counts.
+- **Acceptance Criteria Addressed**: AC-1
+- **Test Requirements**:
+  - `rule` TR-2.1: After running `node src/scripts/seed_academic.js`, courses table has 3 rows. Evidence: SELECT COUNT(*) FROM courses = 3 in Supabase SQL editor or via script output.
+  - `rule` TR-2.2: Divisions table has >= 9 rows (3 courses × 3 year-divisions each × A). Evidence: SELECT course_id, COUNT(*) FROM divisions GROUP BY course_id — each course has >= 3.
+  - `rule` TR-2.3: At least one lecture exists with lecture_date = today. Evidence: SELECT id, lecture_date FROM lectures WHERE lecture_date = CURRENT_DATE returns >= 1 row.
+- **Notes**: Edit file `server/src/scripts/seed_academic.js`.
+
+## Task 3: Create StudentMarkAttendance.jsx Page Component (GPS + Selfie Capture UI)
+- **Status**: `pending`
+- **Priority**: high
+- **Depends On**: Task 1 (backend works correctly)
+- **Description**:
+  - Create new file `client/src/pages/student/StudentMarkAttendance.jsx`.
+  - Component structure:
+    - Active Lecture Dropdown: calls GET /api/lectures/active on mount, populates dropdown with today's lectures for student division.
+    - GPS Location Widget:
+      - "Get Location" button → navigator.geolocation.getCurrentPosition.
+      - Display badge: "📍 X meters from SMDL College" — green if <= 300m, red if > 300m.
+      - Calculate client-side distance with same Haversine formula (copy from backend for UI immediate feedback).
+      - "Testing Mode: Bypass Geofence" toggle checkbox — visible if import.meta.env.DEV is true (Vite dev mode). Sets isDemoBypass state.
+      - Handle permission denied: show alert/toast "Please enable location permissions".
+    - Live Camera Selfie Capture:
+      - `<video ref={videoRef} autoPlay playsInline muted>` + hidden `<canvas ref={canvasRef}>`.
+      - "Start Camera" button → navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }) → set video srcObject.
+      - "Capture Selfie" button → drawImage video to canvas → canvas.toDataURL('image/jpeg', 0.7) for compressed JPEG.
+      - Preview thumbnail `<img src={selfiePreview}>` with "Retake" button (resets selfiePreview to null, re-starts stream).
+      - Handle permission denied: show toast with instructions.
+    - Submit Button: disabled until lecture selected AND (location verified OR demo bypass) AND selfie captured. Shows spinner during submission.
+    - On submit: POST /api/attendance/mark with { lecture_id, latitude, longitude, selfie: selfiePreview, is_demo_bypass: isDemoBypass }.
+    - Success: toast.success("Attendance marked successfully! 🎉") + show summary card (lecture name, distance, time).
+    - Error: toast.error(error message from response).
+  - Mobile responsive: vertical layout on small screens (<768px), two-column grid on md+.
+- **Acceptance Criteria Addressed**: AC-5, AC-2 (client-side distance display), AC-3 (bypass toggle)
+- **Test Requirements**:
+  - `rule` TR-3.1: Page renders at /student/mark route with nav link active. Evidence: Browser route visit, DOM has video element (id=`selfie-video`), a dropdown for lecture (id=`lecture-select`), a button id=`capture-btn`, a button id=`submit-attendance-btn`.
+  - `rule` TR-3.2: Testing Mode toggle visible only in dev (Vite import.meta.env.DEV). Evidence: DOM inspection in dev mode shows checkbox id=`demo-bypass-toggle`.
+  - `rubric` TR-3.3: UX quality — page must have clear section headers, loading/error states, responsive layout. Dimension: Mark Attendance page UX polish. Scale 1-5. Anchors: 1 = broken/unstyled, 3 = works but ugly, 5 = clean, all states handled, mobile-friendly. Threshold >= 4. Evidence: Screenshot at 375px iPhone viewport width.
+- **Notes**: New file. Uses existing api.js axios instance, existing useAuth, react-hot-toast, lucide-react icons (MapPin, Camera, UserCheck, etc.).
+
+## Task 4: Overhaul StudentDashboard.jsx with Tabbed Routes (Overview, Mark Present, History, Reports, Announcements Placeholder)
+- **Status**: `pending`
+- **Priority**: high
+- **Depends On**: Task 3
+- **Description**:
+  - Rewrite `client/src/pages/student/StudentDashboard.jsx`.
+  - Import StudentMarkAttendance component from Task 3.
+  - DashboardLayout wraps `<Routes>` with nested routes for:
+    - index → StudentOverview (new inline component): Welcome header, stat cards (fetch /api/attendance/my-stats):
+      - Card 1: "Attendance %" → percentage, color green if >=75 else red, with is_safe badge.
+      - Card 2: "Lectures Attended" → attended / total_lectures.
+      - Card 3: "Subjects" → count from academic/subjects endpoint.
+      - Card 4: "Announcements" → count placeholder.
+    - mark → <StudentMarkAttendance /> (imported from Task 3).
+    - attendance → MyAttendanceHistory (new inline component): Calls /api/attendance/my-stats, renders history table (Date, Subject, Topic, Status badge [PRESENT=green, ABSENT=red], Time). Empty state: "No lectures held yet for your division."
+    - reports → ReportsPlaceholder card: "📊 Detailed reports coming soon."
+    - announce → AnnouncementsPlaceholder card: "📢 Announcements feature coming soon."
+    - * → index redirect.
+  - StudentHome from old file is removed/replaced with StudentOverview that loads real data via api client.
+  - Use useEffect + api.get() to fetch data; show skeleton/spinner loading state.
+- **Acceptance Criteria Addressed**: AC-6 (stats display), AC-7 (all nav links render)
+- **Test Requirements**:
+  - `rule` TR-4.1: Navigating to /student shows overview with stat cards populated from my-stats API. Evidence: DOM contains 4 cards with percentages/counts.
+  - `rule` TR-4.2: Clicking "My Attendance" (/student/attendance) renders history table with >= 0 rows and correct status badges colored. Evidence: Screenshot of table with PRESENT badge green and ABSENT badge red (using .badge-active / .badge-rejected styles).
+  - `rule` TR-4.3: All 5 nav links (Dashboard, My Attendance, Mark Present, Reports, Announcements) navigate without 404, each renders its sub-component. Evidence: Navigating each link via NavLink click, URL updates correctly, no "coming in Step 10" placeholder left.
+  - `rubric` TR-4.4: Student dashboard layout cohesiveness. Dimension: Layout & visual consistency. Scale 1-5. Anchors: 1 = broken grid, 3 = works but misaligned, 5 = stat cards evenly sized, table styling matches index.css .table classes, colors consistent. Threshold >= 4. Evidence: Full-page screenshot at 1440px.
+- **Notes**: Rewrites existing StudentDashboard.jsx.
+
+## Task 5: Create TeacherLectureReview.jsx Page (Lecture Start + Roster + Override)
+- **Status**: `pending`
+- **Priority**: high
+- **Depends On**: Task 1, Task 2
+- **Description**:
+  - Create new file `client/src/pages/teacher/TeacherLectureReview.jsx`.
+  - Top Section: Lecture Context Bar:
+    - Dropdown: "Select Active Lecture" → on mount fetches GET /api/lectures/active (teacher sees today's own lectures).
+    - "➕ Start New Lecture" button → opens modal (form):
+      - Subject select (fetches /api/academic/subjects teacher's assigned).
+      - Division select (fetches /api/academic/divisions).
+      - Topic text input.
+      - Submit → POST /api/lectures → toast success → refreshes lecture list and selects new lecture automatically.
+  - Summary Cards Row: total students, present count, absent count, attendance % (present/total × 100, 1 decimal).
+  - Live Roster Table (uses .table / .table-wrapper styles):
+    - Columns: #, Student Name, Roll No, Status badge, Marked At, 📍 GPS Distance, Selfie, Actions.
+    - Selfie column: small 40×40 rounded thumb `<img src={row.selfie_url}>` → onClick opens image modal (large preview with student name header, close button). If selfie_url null → show "-".
+    - Distance column: show `${row.distance_meters}m` green if <= 300m else yellow/orange; null → "-".
+    - Actions column: "Override" button → opens Override Dialog.
+  - Override Dialog (Modal):
+    - Header: "Override Attendance - {studentName}".
+    - Current status display (read-only).
+    - Radio group: Mark as ⦿ PRESENT (green) / ⦿ ABSENT (red).
+    - Textarea: "Reason / Notes (required)".
+    - Submit disabled if reason < 5 chars.
+    - Submit → POST /api/attendance/override body { lecture_id, student_pk: row.student_pk, status: selected, reason: textareaValue }.
+    - Success → toast, refresh roster.
+    - Cancel → close dialog no-op.
+  - Empty states: No lecture selected → "Please select a lecture above or start a new one." No students → "No students in this division yet."
+  - Loading state: spinner while fetching roster.
+- **Acceptance Criteria Addressed**: AC-8 (data population), AC-9 (override create), AC-10 (override update), AC-11 (UX quality)
+- **Test Requirements**:
+  - `rule` TR-5.1: Teacher route /teacher/attendance renders page with lecture selector and "Start New Lecture" button. Evidence: DOM contains id=`lecture-select-teacher`, id=`start-lecture-btn`.
+  - `rule` TR-5.2: Roster table renders >= 1 row when lecture selected (same division from seed data). Selfie thumb present if selfie_url populated, click opens modal. Evidence: DOM inspection of table rows + modal opened with src selfie_url.
+  - `rule` TR-5.3: Override dialog submit with status=PRESENT and reason valid creates attendance row (previously absent/no row) AND refreshes roster. Evidence: After submit, student status badge changes to green PRESENT and POST /api/attendance/override returns 200.
+  - `rule` TR-5.4: "Start New Lecture" modal creates a lecture via POST /api/lectures with 201 response, adds it to selector, auto-selects new lecture. Evidence: API 201 + new lecture appears in dropdown options.
+  - `rubric` TR-5.5: Teacher dashboard review page UX. Dimension: Completeness and UX polish. Scale 1-5. Anchors: 1 = broken "🚧 coming" placeholder remains, 3 = functional but missing summary cards or override reason dialog, 5 = full page with summary, roster with thumb+modal, override with validation. Threshold >= 4. Evidence: Full-page screenshot with modal opened showing override dialog reason field.
+- **Notes**: New file. Uses lucide-react icons (UserCheck, XCircle, Camera, MapPin, Plus, RefreshCw, Edit3). Modal styling: glass + z-50 backdrop.
+
+## Task 6: Update TeacherDashboard.jsx with Proper Nested Routes for All Sections
+- **Status**: `pending`
+- **Priority**: medium
+- **Depends On**: Task 5
+- **Description**:
+  - Rewrite `client/src/pages/teacher/TeacherDashboard.jsx`.
+  - Import TeacherLectureReview from Task 5.
+  - Wrap children in `<DashboardLayout>` with `<Routes>`:
+    - index → TeacherOverview (new inline component): Welcome + 3 stat cards (linking to sections):
+      - My Classes → BookOpen icon + subline "Manage assigned subjects"
+      - Attendance → ClipboardList + "Review & override student attendance"
+      - Reports → BarChart2 + "View class analytics"
+      - Each card is clickable using useNavigate to its route.
+    - classes → MyClassesPlaceholder card "📚 Class management details coming soon."
+    - attendance → <TeacherLectureReview /> (imported).
+    - reports → ReportsPlaceholder card "📊 Reports module coming soon."
+    - announce → AnnouncementsPlaceholder "📢 Announcement creation coming soon."
+    - * → redirect to index.
+  - Remove old "🚧 coming in Step 11" placeholder entirely.
+- **Acceptance Criteria Addressed**: AC-7 (teacher nav links all render)
+- **Test Requirements**:
+  - `rule` TR-6.1: All 5 teacher nav links (Dashboard, My Classes, Attendance, Reports, Announcements) navigate successfully; no 404s; no "coming in Step 11" text left. Evidence: Click each, verify route URL updates and renders component content.
+  - `rubric` TR-6.2: Layout consistency with student dashboard. Dimension: Visual consistency across student/teacher dashboards. Scale 1-5. Anchors: 1 = totally different styles, 3 = similar but differences, 5 = same stat card styling, same page header pattern. Threshold >= 4. Evidence: Side-by-side screenshot of student and teacher overview pages.
+- **Notes**: Rewrites existing TeacherDashboard.jsx.
+
+## Task 7: Manual End-to-End Verification (All Milestones Together)
+- **Status**: `pending`
+- **Priority**: high
+- **Depends On**: Task 2, Task 4, Task 6
+- **Description**:
+  - Run backend: `cd server && node src/scripts/seed_academic.js` then `npm run dev`.
+  - Run frontend: `cd client && npm run dev`.
+  - Verify login flows (student + teacher credentials from register/seed data).
+  - Teacher flow: Log in → go to Attendance → Start New Lecture (select FYBSc IT Division, Python subject, topic "Demo") → verify lecture created.
+  - Student flow (in another browser/incognito): Log in → go to Mark Present → enable Testing Mode (dev) → Grant Location & Camera → capture selfie → submit → verify success toast + check History (Attendance page) shows PRESENT status with percentage updated.
+  - Back to Teacher Attendance page: Refresh roster → see student PRESENT row, GPS distance badge, selfie thumb. Click selfie to open modal. Click Override on another student (who didn't mark) → select PRESENT + reason "Present, no phone" → submit → verify roster updates to PRESENT.
+  - Check Audit Log table in Supabase to verify override row created with old/new statuses and reason.
+- **Acceptance Criteria Addressed**: All ACs end-to-end validation
+- **Test Requirements**:
+  - `rule` TR-7.1: Full student mark-attendance flow ends with PRESENT status in both DB and student History view. Evidence: Screenshot of student History row + DB row SELECT.
+  - `rule` TR-7.2: Teacher override creates audit log in attendance_audit_logs. Evidence: SELECT * FROM attendance_audit_logs returns >= 1 row with reason text from manual test.
+  - `rule` TR-7.3: Student my-stats percentage matches manual count (attended/total*100). Evidence: Student dashboard percentage matches manual division of API stats fields.
+  - `rubric` TR-7.4: Overall system robustness. Dimension: Full E2E flow smoothness and lack of errors. Scale 1-5. Anchors: 1 = crashes/fatal errors, 3 = works but small glitches, 5 = flawless flow, all toasts informative, no 500 errors in console/server. Threshold >= 4. Evidence: Console log (no red errors) + 2 screenshots: student success screen + teacher roster screen with override applied.
+- **Notes**: Run locally, capture evidence screenshots/log outputs.
