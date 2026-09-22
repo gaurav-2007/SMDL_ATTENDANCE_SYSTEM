@@ -23,10 +23,22 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password })
-    const userData = data?.data?.user || data?.data
-    const token = data?.data?.token || userData?.token
+    // Backend returns: { success, data: { id, name, role, token, ...user fields, user: {...} } }
+    // Extract token from the top-level data object
+    const token = data?.data?.token
+    // Build userData from flat fields (exclude nested 'user' key and token)
+    const raw = data?.data || {}
+    const userData = {
+      id:             raw.id,
+      name:           raw.name,
+      email:          raw.email,
+      role:           raw.role,
+      account_status: raw.account_status,
+      phone:          raw.phone,
+      created_at:     raw.created_at,
+    }
     if (token) localStorage.setItem('smdl_token', token)
-    if (userData) localStorage.setItem('smdl_user', JSON.stringify(userData))
+    if (userData?.id) localStorage.setItem('smdl_user', JSON.stringify(userData))
     setUser(userData)
     return userData
   }, [])

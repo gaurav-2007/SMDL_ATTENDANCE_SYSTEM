@@ -3,9 +3,9 @@ import { MapPin, Camera, RefreshCw, UserCheck, AlertTriangle, CheckCircle2, X, L
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
 
-const COLLEGE_LAT = 19.0287
-const COLLEGE_LON = 73.1044
-const GEOFENCE_RADIUS = 300
+const COLLEGE_LAT = 19.024790336362205
+const COLLEGE_LON = 73.10159687914933
+const GEOFENCE_RADIUS = 500
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null
@@ -92,21 +92,25 @@ export default function StudentMarkAttendance() {
     }
   }
 
+  // Assign stream to video element after React renders it
+  useEffect(() => {
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current
+      videoRef.current.play().catch(() => {})
+    }
+  }, [cameraOn])
+
   async function startCamera() {
     setCameraError('')
+    setSelfiePreview('')
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera not supported in this browser')
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 720 } },
+        video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 480 } },
         audio: false,
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play().catch(() => {})
-      }
-      setCameraOn(true)
-      setSelfiePreview('')
+      setCameraOn(true) // video element is always in DOM, useEffect will assign srcObject
     } catch (err) {
       const msg = err?.message || 'Camera permission denied'
       setCameraError(msg)
@@ -119,27 +123,54 @@ export default function StudentMarkAttendance() {
       streamRef.current.getTracks().forEach(t => t.stop())
       streamRef.current = null
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
     setCameraOn(false)
   }
 
-  function captureSelfie() {
+  async function captureSelfie() {
     if (!videoRef.current || !canvasRef.current) return
     setCapturing(true)
     try {
       const video = videoRef.current
+
+      // Poll via requestAnimationFrame until video has valid pixel dimensions
+      // This is more reliable than loadeddata which may have already fired
+      await new Promise((resolve, reject) => {
+        const deadline = Date.now() + 6000
+        function tick() {
+          if (video.videoWidth > 0 && video.readyState >= 2) {
+            resolve()
+          } else if (Date.now() > deadline) {
+            reject(new Error('Camera not ready — please wait a moment and try again'))
+          } else {
+            requestAnimationFrame(tick)
+          }
+        }
+        requestAnimationFrame(tick)
+      })
+
       const canvas = canvasRef.current
-      const w = video.videoWidth || 640
-      const h = video.videoHeight || 480
+      const w = video.videoWidth
+      const h = video.videoHeight
       canvas.width = w
       canvas.height = h
       const ctx = canvas.getContext('2d')
+      // Mirror flip to match the preview (selfie-mode camera)
+      ctx.save()
+      ctx.translate(w, 0)
+      ctx.scale(-1, 1)
       ctx.drawImage(video, 0, 0, w, h)
-      const jpeg = canvas.toDataURL('image/jpeg', 0.7)
+      ctx.restore()
+
+      const jpeg = canvas.toDataURL('image/jpeg', 0.85)
+      if (!jpeg || jpeg.length < 1000) throw new Error('Captured image is empty — try again')
       setSelfiePreview(jpeg)
       stopCamera()
-      toast.success('📸 Selfie captured! Review below.')
+      toast.success('📸 Selfie captured!')
     } catch (err) {
-      toast.error('Failed to capture selfie: ' + (err?.message || ''))
+      toast.error('📸 ' + (err?.message || 'Failed to capture — try again'))
     } finally {
       setCapturing(false)
     }
@@ -227,7 +258,7 @@ export default function StudentMarkAttendance() {
     <div className="animate-fade-in">
       <div className="page-header">
         <h2 className="page-title">Mark Present <span className="text-brand-muted text-base font-normal ml-2">GPS + Selfie Verification</span></h2>
-        <p className="page-subtitle">You must be within 300m of SMDL College (Kalamboli) with a live selfie capture.</p>
+        <p className="page-subtitle">You must be within 500m of SMDL College campus with a live selfie capture.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -301,7 +332,7 @@ export default function StudentMarkAttendance() {
 
           <div className="card-sm !p-4 bg-brand-dark/60 space-y-1 text-xs">
             <div className="text-brand-muted mb-2 font-semibold text-sm">SMDL College Geofence</div>
-            <div className="flex justify-between"><span>Campus Coordinates</span><span className="text-white">19.0287° N, 73.1044° E</span></div>
+            <div className="flex justify-between"><span>Campus Coordinates</span><span className="text-white">19.0248° N, 73.1016° E</span></div>
             <div className="flex justify-between"><span>Allowed Radius</span><span className="text-white">{GEOFENCE_RADIUS} meters</span></div>
             <div className="flex justify-between"><span>Your Location</span><span className="text-white">{latitude && longitude ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` : '—'}</span></div>
           </div>
@@ -315,23 +346,26 @@ export default function StudentMarkAttendance() {
           </div>
 
           <div className="relative aspect-video rounded-xl overflow-hidden bg-black/60 border border-brand-border flex items-center justify-center">
+            {/* Placeholder shown when camera is off and no selfie */}
             {!cameraOn && !selfiePreview && (
-              <div className="text-center px-6">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10">
                 <Camera size={44} className="mx-auto text-brand-muted mb-3" />
                 <p className="text-brand-muted text-sm">Click "Start Camera" to begin live selfie capture.</p>
               </div>
             )}
-            {cameraOn && (
-              <video
-                id="selfie-video"
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-                style={{ transform: 'scaleX(-1)' }}
-              />
-            )}
+            {/* Video is ALWAYS in DOM so videoRef.current is never null — just hidden via CSS */}
+            <video
+              id="selfie-video"
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+              style={{
+                transform: 'scaleX(-1)',
+                display: cameraOn && !selfiePreview ? 'block' : 'none',
+              }}
+            />
             {selfiePreview && (
               <img src={selfiePreview} alt="Selfie Preview" className="w-full h-full object-cover" />
             )}

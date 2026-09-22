@@ -1,10 +1,10 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 
-// SMDL College Kalamboli coordinates
-const COLLEGE_LAT = 19.0287;
-const COLLEGE_LON = 73.1044;
-const DEFAULT_GEOFENCE_RADIUS = 300; // 300 meters
+// SMDL College coordinates
+const COLLEGE_LAT = 19.024790336362205;
+const COLLEGE_LON = 73.10159687914933;
+const DEFAULT_GEOFENCE_RADIUS = 500; // 500 meters
 
 // Haversine Formula for distance calculation in meters
 function calculateDistanceInMeters(lat1, lon1, lat2, lon2) {
@@ -14,9 +14,9 @@ function calculateDistanceInMeters(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return Math.round(R * c);
 }
@@ -434,8 +434,8 @@ const getReportsOverview = asyncHandler(async (req, res) => {
     attendanceRecords.length > 0
       ? Math.round((totalPresents / attendanceRecords.length) * 100)
       : totalLectures > 0
-      ? 82
-      : null;
+        ? 82
+        : null;
 
   res.json({
     success: true,

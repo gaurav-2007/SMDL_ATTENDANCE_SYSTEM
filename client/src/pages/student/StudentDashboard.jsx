@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, memo, lazy, Suspense, useRef } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import DashboardLayout from '../../components/layout/DashboardLayout'
 import { useAuth } from '../../context/AuthContext'
-import StudentMarkAttendance from './StudentMarkAttendance'
 import api from '../../lib/api'
 import {
   ClipboardList, UserCheck, FileText, MessageSquare,
@@ -11,30 +10,53 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+// Lazy-load heavy components to reduce initial bundle size
+const StudentMarkAttendance = lazy(() => import('./StudentMarkAttendance'))
+
+// Module-level cache — avoids duplicate API calls across sub-components
+let statsCache = { data: null, promise: null }
+
 function useMyStats() {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [subjectCount, setSubjectCount] = useState(0)
+  const [data, setData] = useState(statsCache.data?.stats ?? null)
+  const [loading, setLoading] = useState(!statsCache.data)
+  const [subjectCount, setSubjectCount] = useState(statsCache.data?.subjectCount ?? 0)
+  const mounted = useRef(true)
+
   useEffect(() => {
-    (async () => {
-      try {
-        const [statsRes, subjRes] = await Promise.allSettled([
-          api.get('/attendance/my-stats'),
-          api.get('/academic/subjects'),
-        ])
-        if (statsRes.status === 'fulfilled') setData(statsRes.value?.data?.data)
-        if (subjRes.status === 'fulfilled') setSubjectCount(subjRes.value?.data?.data?.subjects?.length || 0)
-      } catch (e) {
-        toast.error(e?.response?.data?.message || 'Failed to load stats')
-      } finally {
-        setLoading(false)
-      }
-    })()
+    mounted.current = true
+    if (statsCache.data) return // cache hit — skip fetch
+
+    if (!statsCache.promise) {
+      statsCache.promise = Promise.allSettled([
+        api.get('/attendance/my-stats'),
+        api.get('/academic/subjects'),
+      ])
+    }
+
+    statsCache.promise.then(([statsRes, subjRes]) => {
+      if (!mounted.current) return
+      const statsData = statsRes.status === 'fulfilled' ? statsRes.value?.data?.data : null
+      const count = subjRes.status === 'fulfilled'
+        ? (subjRes.value?.data?.data?.subjects?.length || 0)
+        : 0
+      statsCache.data = { stats: statsData, subjectCount: count }
+      setData(statsData)
+      setSubjectCount(count)
+      setLoading(false)
+    }).catch(e => {
+      if (!mounted.current) return
+      toast.error(e?.response?.data?.message || 'Failed to load stats')
+      setLoading(false)
+    })
+
+    return () => { mounted.current = false }
   }, [])
+
   return { data, loading, subjectCount }
 }
 
-function StatCard({ label, value, subline, Icon, color, safeFlag, navigateTo, onClick }) {
+// memo prevents re-renders when parent state changes unrelated to this card
+const StatCard = memo(function StatCard({ label, value, subline, Icon, color, safeFlag, navigateTo, onClick }) {
   const navigate = useNavigate()
   const handleClick = onClick || (navigateTo ? () => navigate(navigateTo) : undefined)
   const cursorClass = handleClick ? 'cursor-pointer hover:border-brand-accent group' : ''
@@ -44,7 +66,7 @@ function StatCard({ label, value, subline, Icon, color, safeFlag, navigateTo, on
       <div className="flex-1 min-w-0">
         <p className="text-brand-muted text-xs">{label}</p>
         <div className="flex items-baseline gap-2">
-          <p className="text-white text-2xl font-bold">{loading ? <Loader2 className="animate-spin w-5 h-5 inline text-brand-muted" /> : value}</p>
+          <p className="text-white text-2xl font-bold">{value}</p>
           {safeFlag != null && (
             <span className={`badge text-[10px] ${safeFlag ? 'badge-active' : 'badge-rejected'}`}>
               {safeFlag ? '✓ Safe' : '⚠️ Below 75%'}
@@ -56,7 +78,7 @@ function StatCard({ label, value, subline, Icon, color, safeFlag, navigateTo, on
       {navigateTo && <ChevronRight size={18} className="text-brand-muted group-hover:text-brand-accent transition-colors" />}
     </div>
   )
-}
+})
 
 function StudentOverview() {
   const { user } = useAuth()
@@ -349,17 +371,25 @@ function StudentAnnouncements() {
   )
 }
 
+const SubPageLoader = () => (
+  <div className="flex justify-center items-center py-24">
+    <Loader2 className="animate-spin w-8 h-8 text-brand-accent" />
+  </div>
+)
+
 export default function StudentDashboard() {
   return (
     <DashboardLayout>
-      <Routes>
-        <Route index element={<StudentOverview />} />
-        <Route path="mark" element={<StudentMarkAttendance />} />
-        <Route path="attendance" element={<MyAttendanceHistory />} />
-        <Route path="reports" element={<ReportsPlaceholder />} />
-        <Route path="announce" element={<StudentAnnouncements />} />
-        <Route path="*" element={<Navigate to="/student" replace />} />
-      </Routes>
+      <Suspense fallback={<SubPageLoader />}>
+        <Routes>
+          <Route index element={<StudentOverview />} />
+          <Route path="mark" element={<StudentMarkAttendance />} />
+          <Route path="attendance" element={<MyAttendanceHistory />} />
+          <Route path="reports" element={<ReportsPlaceholder />} />
+          <Route path="announce" element={<StudentAnnouncements />} />
+          <Route path="*" element={<Navigate to="/student" replace />} />
+        </Routes>
+      </Suspense>
     </DashboardLayout>
   )
 }
