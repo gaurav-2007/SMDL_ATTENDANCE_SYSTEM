@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Plus, RefreshCw, UserCheck, XCircle, Camera, MapPin,
   Edit3, X, CheckCircle2, AlertTriangle, Loader2, Users,
-  ClipboardList, BookOpen, ChevronDown
+  ClipboardList, BookOpen, ChevronDown, Search, Smartphone, Zap
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
@@ -44,6 +44,10 @@ export default function TeacherLectureReview() {
   const [summary, setSummary] = useState({ total: 0, present: 0, absent: 0 })
   const [lectureMeta, setLectureMeta] = useState(null)
   const [loadingRoster, setLoadingRoster] = useState(false)
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterTab, setFilterTab] = useState('ALL')
+  const [directMarkingId, setDirectMarkingId] = useState(null)
 
   const [selfieModal, setSelfieModal] = useState({ open: false, url: '', name: '' })
   const [overrideModal, setOverrideModal] = useState({ open: false, student: null })
@@ -123,6 +127,26 @@ export default function TeacherLectureReview() {
     setOverrideReason(student?.override_notes || '')
   }
 
+  // Direct 1-click check-in for students without a smartphone present in classroom
+  async function directMarkPresent(student) {
+    if (!student || !selectedLecture) return
+    try {
+      setDirectMarkingId(student.student_pk)
+      await api.post('/attendance/override', {
+        lecture_id: selectedLecture,
+        student_pk: student.student_pk,
+        status: 'PRESENT',
+        reason: 'Student present in classroom (No smartphone)',
+      })
+      toast.success(`✅ ${student.full_name} (${student.roll_number}) marked PRESENT without phone verification!`)
+      await loadRoster(selectedLecture)
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Direct mark failed')
+    } finally {
+      setDirectMarkingId(null)
+    }
+  }
+
   async function submitOverride() {
     const { student } = overrideModal
     if (!student || !selectedLecture) return
@@ -142,6 +166,19 @@ export default function TeacherLectureReview() {
       toast.error(e?.response?.data?.message || 'Override failed')
     } finally { setSubmittingOverride(false) }
   }
+
+  const filteredRoster = roster.filter((r) => {
+    const q = searchQuery.toLowerCase().trim()
+    const matchesSearch =
+      !q ||
+      r.full_name?.toLowerCase().includes(q) ||
+      r.roll_number?.toString().toLowerCase().includes(q)
+    const matchesTab =
+      filterTab === 'ALL' ||
+      (filterTab === 'PRESENT' && r.status === 'PRESENT') ||
+      (filterTab === 'ABSENT' && r.status === 'ABSENT')
+    return matchesSearch && matchesTab
+  })
 
   const pct = summary.total > 0 ? ((summary.present / summary.total) * 100).toFixed(1) : 0
   const pctSafe = Number(pct) >= 75
@@ -242,25 +279,117 @@ export default function TeacherLectureReview() {
       )}
 
       <div className="card !p-0 overflow-hidden">
-        <div className="p-6 pb-4 flex items-center justify-between">
-          <h3 className="text-white font-semibold">Live Roster{selectedLecture ? '' : ' (Select a lecture above)'}</h3>
+        <div className="p-6 pb-4 border-b border-brand-border/40">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div>
+              <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+                <Users size={20} className="text-brand-accent" />
+                Live Class Roster {selectedLecture ? '' : '(Select a lecture above)'}
+              </h3>
+              <p className="text-brand-muted text-xs mt-0.5">
+                Students can verify attendance via phone, or teachers can directly mark phone-less students present.
+              </p>
+            </div>
+            {selectedLecture && (
+              <span className="text-brand-muted text-xs font-mono">
+                Updated {loadingRoster ? '…' : new Date().toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+
           {selectedLecture && (
-            <span className="text-brand-muted text-xs">Updated {loadingRoster ? '…' : new Date().toLocaleTimeString()}</span>
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between pt-1">
+              {/* Direct Search Bar */}
+              <div className="relative w-full sm:w-80">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-brand-muted" />
+                <input
+                  type="text"
+                  className="form-input !pl-10 !py-2 text-sm w-full"
+                  placeholder="Search Name or Roll No..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white text-xs"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-white/5 rounded-xl border border-white/5 w-full sm:w-auto justify-center sm:justify-start">
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    filterTab === 'ALL'
+                      ? 'bg-brand-accent text-white shadow-sm'
+                      : 'text-brand-muted hover:text-white'
+                  }`}
+                >
+                  All ({roster.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('PRESENT')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    filterTab === 'PRESENT'
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'text-brand-muted hover:text-green-400'
+                  }`}
+                >
+                  Present ({summary.present})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('ABSENT')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    filterTab === 'ABSENT'
+                      ? 'bg-red-600 text-white shadow-sm'
+                      : 'text-brand-muted hover:text-red-400'
+                  }`}
+                >
+                  Absent ({summary.absent})
+                </button>
+              </div>
+            </div>
           )}
         </div>
+
         {!selectedLecture ? (
           <div className="text-center py-20 px-6">
             <BookOpen size={44} className="mx-auto text-brand-muted mb-4" />
             <p className="text-white font-semibold text-lg">No lecture selected</p>
-            <p className="text-brand-muted text-sm mt-1">Pick a lecture from the dropdown or start a new one to view the class roster.</p>
+            <p className="text-brand-muted text-sm mt-1">
+              Pick a lecture from the dropdown or start a new one to view the class roster.
+            </p>
           </div>
         ) : loadingRoster ? (
-          <div className="text-center py-20 text-brand-muted"><Loader2 className="animate-spin w-8 h-8 mx-auto mb-2" /> Loading roster…</div>
-        ) : roster.length === 0 ? (
-          <div className="text-center py-20 px-6">
-            <Users size={40} className="mx-auto text-brand-muted mb-3" />
-            <p className="text-white font-semibold">No students in this division</p>
-            <p className="text-brand-muted text-sm mt-1">Students need to be linked to this division first.</p>
+          <div className="text-center py-20 text-brand-muted">
+            <Loader2 className="animate-spin w-8 h-8 mx-auto mb-2 text-brand-accent" /> Loading roster…
+          </div>
+        ) : filteredRoster.length === 0 ? (
+          <div className="text-center py-16 px-6">
+            <Users size={36} className="mx-auto text-brand-muted mb-3" />
+            <p className="text-white font-semibold">
+              {searchQuery ? `No students found matching "${searchQuery}"` : 'No students found'}
+            </p>
+            <p className="text-brand-muted text-xs mt-1">
+              {searchQuery
+                ? 'Check spelling or clear the search filter.'
+                : 'Students must be enrolled in this division to appear here.'}
+            </p>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="btn-secondary btn-sm mt-3"
+              >
+                Clear Search
+              </button>
+            )}
           </div>
         ) : (
           <div className="table-wrapper">
@@ -279,10 +408,15 @@ export default function TeacherLectureReview() {
                 </tr>
               </thead>
               <tbody>
-                {roster.map((r, idx) => {
-                  const distanceColor = r.distance_meters == null ? '' : r.distance_meters <= 300 ? 'text-green-400' : 'text-yellow-400'
+                {filteredRoster.map((r, idx) => {
+                  const distanceColor =
+                    r.distance_meters == null
+                      ? ''
+                      : r.distance_meters <= 500
+                      ? 'text-green-400'
+                      : 'text-yellow-400'
                   return (
-                    <tr key={r.student_pk}>
+                    <tr key={r.student_pk} className="hover:bg-white/[0.02]">
                       <td className="text-brand-muted">{idx + 1}</td>
                       <td>
                         <div className="flex items-center gap-3">
@@ -295,35 +429,59 @@ export default function TeacherLectureReview() {
                           </div>
                         </div>
                       </td>
-                      <td className="font-mono text-brand-muted">{r.roll_number}</td>
+                      <td className="font-mono text-brand-muted font-medium">{r.roll_number}</td>
                       <td>
-                        <span className={`badge ${r.status === 'PRESENT' ? 'badge-active' : 'badge-rejected'}`}>
+                        <span
+                          className={`badge ${
+                            r.status === 'PRESENT' ? 'badge-active' : 'badge-rejected'
+                          }`}
+                        >
                           {r.status === 'PRESENT' ? <UserCheck size={12} /> : <XCircle size={12} />}
                           <span className="ml-1">{r.status}</span>
                         </span>
                       </td>
-                      <td className="text-xs text-brand-muted">{r.marked_at ? new Date(r.marked_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+                      <td className="text-xs text-brand-muted">
+                        {r.marked_at
+                          ? new Date(r.marked_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—'}
+                      </td>
                       <td className={`text-xs ${distanceColor}`}>
                         {r.distance_meters != null ? `${r.distance_meters}m` : '—'}
                       </td>
                       <td>
                         {r.selfie_url ? (
                           <button
-                            onClick={() => setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name })}
+                            onClick={() =>
+                              setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name })
+                            }
                             className="w-10 h-10 rounded-lg overflow-hidden border border-brand-border hover:border-brand-accent transition-colors block"
                             title="Click to view full selfie"
                           >
-                            <img src={r.selfie_url} alt={`${r.full_name} selfie`} className="w-full h-full object-cover" />
+                            <img
+                              src={r.selfie_url}
+                              alt={`${r.full_name} selfie`}
+                              className="w-full h-full object-cover"
+                            />
                           </button>
                         ) : (
-                          <Camera size={18} className="text-brand-muted/50" />
+                          <Camera size={18} className="text-brand-muted/40" />
                         )}
                       </td>
                       <td>
                         {r.is_teacher_override ? (
-                          <span className="badge badge-info" title={r.override_notes || ''}>Teacher</span>
+                          <span
+                            className="badge badge-info flex items-center gap-1 text-[11px]"
+                            title={r.override_notes || 'Marked by teacher directly in classroom'}
+                          >
+                            <Smartphone size={11} /> No Phone (Teacher)
+                          </span>
                         ) : r.source === 'AUTO_VERIFIED' ? (
-                          <span className="badge badge-active">Student</span>
+                          <span className="badge badge-active flex items-center gap-1 text-[11px]">
+                            <Camera size={11} /> Selfie + GPS
+                          </span>
                         ) : r.status === 'ABSENT' ? (
                           <span className="text-brand-muted text-xs">—</span>
                         ) : (
@@ -331,14 +489,36 @@ export default function TeacherLectureReview() {
                         )}
                       </td>
                       <td className="text-right">
-                        <button
-                          onClick={() => openOverride(r)}
-                          className="btn-secondary btn-sm"
-                          title="Teacher manual override / correction"
-                        >
-                          <Edit3 size={14} />
-                          {r.status === 'ABSENT' ? 'Mark Present' : 'Override'}
-                        </button>
+                        {r.status === 'ABSENT' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            {/* Direct phone-less mark present button */}
+                            <button
+                              onClick={() => directMarkPresent(r)}
+                              disabled={directMarkingId === r.student_pk}
+                              className="btn-primary !bg-emerald-600 hover:!bg-emerald-500 !text-white !py-1.5 !px-3 text-xs flex items-center gap-1.5 shadow-sm"
+                              title="Student has no phone: Direct mark PRESENT in classroom without selfie/GPS"
+                            >
+                              <Zap size={13} className={directMarkingId === r.student_pk ? 'animate-spin' : ''} />
+                              <span>{directMarkingId === r.student_pk ? 'Marking…' : 'Mark (No Phone)'}</span>
+                            </button>
+                            <button
+                              onClick={() => openOverride(r)}
+                              className="btn-secondary btn-sm !p-1.5"
+                              title="Custom status override"
+                            >
+                              <Edit3 size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => openOverride(r)}
+                            className="btn-secondary btn-sm"
+                            title="Teacher override or correction"
+                          >
+                            <Edit3 size={13} />
+                            <span>Override</span>
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )

@@ -62,8 +62,86 @@ const getSubjects = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Admin creates new Course
+// @route  POST /api/academic/courses
+const createCourse = asyncHandler(async (req, res) => {
+  const { name, code, duration_years } = req.body;
+  if (!name || !code) {
+    res.status(400);
+    throw new Error('Course name and code are required');
+  }
+  const { data, error } = await supabaseAdmin
+    .from('courses')
+    .insert({
+      name: name.trim(),
+      code: code.trim().toUpperCase(),
+      duration_years: duration_years ? Number(duration_years) : 3,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+  res.status(201).json({ success: true, message: 'Course created successfully', data: { course: data } });
+});
+
+// @desc   Admin creates new Division
+// @route  POST /api/academic/divisions
+const createDivision = asyncHandler(async (req, res) => {
+  const { course_id, name, division_name } = req.body;
+  if (!course_id || !name || !division_name) {
+    res.status(400);
+    throw new Error('Course, Year/Name (e.g. FY), and Division Name (e.g. A) are required');
+  }
+  const { data, error } = await supabaseAdmin
+    .from('divisions')
+    .insert({
+      course_id,
+      name: name.trim(),
+      division_name: division_name.trim().toUpperCase(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+  res.status(201).json({ success: true, message: 'Division created successfully', data: { division: data } });
+});
+
+// @desc   Admin creates new Subject
+// @route  POST /api/academic/subjects
+const createSubject = asyncHandler(async (req, res) => {
+  const { name, code, division_id } = req.body;
+  if (!name || !code || !division_id) {
+    res.status(400);
+    throw new Error('Subject name, code, and division are required');
+  }
+  const { data, error } = await supabaseAdmin
+    .from('subjects')
+    .insert({
+      name: name.trim(),
+      code: code.trim().toUpperCase(),
+      division_id,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+  res.status(201).json({ success: true, message: 'Subject created successfully', data: { subject: data } });
+});
+
 module.exports = {
   getCourses,
   getDivisions,
   getSubjects,
+  createCourse,
+  createDivision,
+  createSubject,
 };

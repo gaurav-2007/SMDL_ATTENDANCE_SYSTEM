@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import DashboardLayout from '../../components/layout/DashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import TeacherLectureReview from './TeacherLectureReview'
+import MyClasses from './MyClasses'
 import ReportsPanel from '../admin/ReportsPanel'
 import AnnouncementsPanel from '../admin/AnnouncementsPanel'
 import {
@@ -59,58 +60,9 @@ function TeacherOverview() {
           </li>
           <li className="flex items-start gap-3">
             <span className="w-6 h-6 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
-            <p className="text-brand-muted"><span className="text-white font-medium">Manual override for phone-less students:</span> Click <strong>"Mark Present"</strong> on any absent student, enter a reason, and your change will be recorded with an audit log timestamp.</p>
+            <p className="text-brand-muted"><span className="text-white font-medium">Direct check-in for phone-less students:</span> Click <strong>"Mark (No Phone)"</strong> on any student without a phone to verify them directly in class without requiring camera/GPS.</p>
           </li>
         </ul>
-      </div>
-    </div>
-  )
-}
-
-function MyClassesPlaceholder() {
-  return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <h2 className="page-title">My Classes</h2>
-        <p className="page-subtitle">Your assigned subjects and divisions</p>
-      </div>
-      <div className="card text-center py-20">
-        <BookOpen size={44} className="mx-auto text-brand-muted mb-4" />
-        <p className="text-white font-semibold text-lg">📚 Classes Module</p>
-        <p className="text-brand-muted text-sm mt-1">Detailed class/subject management coming soon.</p>
-        <p className="text-brand-muted text-xs mt-2">In the meantime, use the Attendance Review page to start lectures and view rosters.</p>
-      </div>
-    </div>
-  )
-}
-
-function ReportsPlaceholder() {
-  return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <h2 className="page-title">Reports</h2>
-        <p className="page-subtitle">Class attendance analytics</p>
-      </div>
-      <div className="card text-center py-20">
-        <BarChart2 size={44} className="mx-auto text-brand-muted mb-4" />
-        <p className="text-white font-semibold text-lg">📊 Reports & Analytics</p>
-        <p className="text-brand-muted text-sm mt-1">Daily, weekly and monthly class reports coming soon.</p>
-      </div>
-    </div>
-  )
-}
-
-function AnnouncementsPlaceholder() {
-  return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <h2 className="page-title">Announcements</h2>
-        <p className="page-subtitle">Send notices to classes & divisions</p>
-      </div>
-      <div className="card text-center py-20">
-        <MessageSquare size={44} className="mx-auto text-brand-muted mb-4" />
-        <p className="text-white font-semibold text-lg">📢 Announcement Creator</p>
-        <p className="text-brand-muted text-sm mt-1">Post class-wide notices, assignment due dates and reminders soon.</p>
       </div>
     </div>
   )
@@ -121,7 +73,7 @@ export default function TeacherDashboard() {
     <DashboardLayout>
       <Routes>
         <Route index element={<TeacherOverview />} />
-        <Route path="classes" element={<MyClassesPlaceholder />} />
+        <Route path="classes" element={<MyClasses />} />
         <Route path="attendance" element={<TeacherLectureReview />} />
         <Route path="reports" element={<ReportsPanel />} />
         <Route path="announce" element={<AnnouncementsPanel />} />

@@ -6,7 +6,8 @@ import api from '../../lib/api'
 import {
   ClipboardList, UserCheck, FileText, MessageSquare,
   ClipboardCheck, BookOpen, AlertTriangle, TrendingUp,
-  CalendarDays, ChevronRight, Loader2, Bell, Megaphone, Clock, RefreshCw
+  CalendarDays, ChevronRight, Loader2, Bell, Megaphone, Clock, RefreshCw,
+  Download, Image as ImageIcon, CheckCircle, XCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -279,18 +280,120 @@ function MyAttendanceHistory() {
   )
 }
 
-function ReportsPlaceholder() {
+function StudentSubjectReports() {
+  const [statsData, setStatsData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const { data } = await api.get('/attendance/my-stats')
+      setStatsData(data?.data || null)
+    } catch {
+      toast.error('Failed to load attendance metrics')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  // Group lectures by subject
+  const subjectMap = {}
+  if (statsData?.history) {
+    statsData.history.forEach((l) => {
+      const key = l.subject || 'General'
+      if (!subjectMap[key]) {
+        subjectMap[key] = {
+          subject: key,
+          code: l.subject_code || '',
+          total: 0,
+          attended: 0,
+        }
+      }
+      subjectMap[key].total++
+      if (l.status === 'PRESENT') subjectMap[key].attended++
+    })
+  }
+
+  const subjects = Object.values(subjectMap).map((s) => {
+    const pct = s.total > 0 ? Math.round((s.attended / s.total) * 100) : 100
+    const needed = pct < 75 ? Math.ceil((0.75 * s.total - s.attended) / 0.25) : 0
+    return { ...s, pct, needed }
+  })
+
   return (
     <div className="animate-fade-in">
-      <div className="page-header">
-        <h2 className="page-title">Reports</h2>
-        <p className="page-subtitle">Detailed subject-wise attendance analytics</p>
+      <div className="page-header flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="page-title">Subject-Wise Attendance Reports</h2>
+          <p className="page-subtitle">Track your attendance threshold (Minimum 75% required by college)</p>
+        </div>
+        <button onClick={loadData} className="btn btn-ghost btn-sm flex items-center gap-2">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
       </div>
-      <div className="card text-center py-20">
-        <FileText size={44} className="mx-auto text-brand-muted mb-4" />
-        <p className="text-white font-semibold text-lg">📊 Reports Module</p>
-        <p className="text-brand-muted text-sm mt-1">Detailed subject-wise reports and monthly analytics coming soon.</p>
-      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <Loader2 className="animate-spin w-8 h-8 text-brand-accent" />
+        </div>
+      ) : subjects.length === 0 ? (
+        <div className="card text-center py-16">
+          <BookOpen size={40} className="mx-auto text-brand-muted mb-3" />
+          <p className="text-white font-semibold">No subject lectures recorded yet</p>
+          <p className="text-brand-muted text-sm mt-1">
+            Once lectures are conducted and attendance is marked, subject analytics will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {subjects.map((sub) => {
+              const isSafe = sub.pct >= 75
+              return (
+                <div
+                  key={sub.subject}
+                  className="card flex flex-col justify-between hover:border-brand-accent/40 transition-colors"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h4 className="text-white font-semibold text-base leading-tight">{sub.subject}</h4>
+                      {sub.code && <span className="badge badge-info text-[10px] font-mono">{sub.code}</span>}
+                    </div>
+                    <div className="flex items-baseline gap-2 mb-3">
+                      <span className="text-2xl font-bold text-white">{sub.pct}%</span>
+                      <span className={`badge text-[10px] ${isSafe ? 'badge-active' : 'badge-rejected'}`}>
+                        {isSafe ? '✓ Safe' : '⚠️ Defaulter (<75%)'}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-3">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isSafe ? 'bg-emerald-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(100, sub.pct)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-brand-muted">
+                      <span>Attended: <strong className="text-white">{sub.attended}</strong></span>
+                      <span>Total Lectures: <strong className="text-white">{sub.total}</strong></span>
+                    </div>
+                  </div>
+                  {!isSafe && sub.needed > 0 && (
+                    <div className="mt-4 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-300 flex items-start gap-1.5">
+                      <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                      <span>
+                        Attend next <strong>{sub.needed}</strong> consecutive lectures to reach 75% safe attendance.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -352,6 +455,39 @@ function StudentAnnouncements() {
                     <span className="badge badge-info text-xs">{a.target_type}</span>
                   </div>
                   <p className="text-brand-muted text-sm whitespace-pre-line leading-relaxed">{a.content}</p>
+
+                  {/* Document & Image Attachments */}
+                  {a.attachments && a.attachments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {a.attachments.map((att, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl max-w-sm hover:border-brand-accent/40 transition-colors"
+                        >
+                          {att.file_type === 'IMAGE' ? (
+                            <ImageIcon size={16} className="text-emerald-400 flex-shrink-0" />
+                          ) : (
+                            <FileText size={16} className="text-blue-400 flex-shrink-0" />
+                          )}
+                          <span className="text-xs text-white font-medium truncate flex-1" title={att.file_name}>
+                            {att.file_name}
+                          </span>
+                          <a
+                            href={att.file_url}
+                            download={att.file_name}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-secondary !py-1 !px-2.5 text-[11px] flex items-center gap-1 text-brand-accent hover:text-white"
+                            title="Download document / image"
+                          >
+                            <Download size={12} />
+                            <span>Download</span>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-3 mt-3 text-xs text-brand-muted">
                     <span className="flex items-center gap-1">
                       <Clock size={12} />
@@ -385,7 +521,7 @@ export default function StudentDashboard() {
           <Route index element={<StudentOverview />} />
           <Route path="mark" element={<StudentMarkAttendance />} />
           <Route path="attendance" element={<MyAttendanceHistory />} />
-          <Route path="reports" element={<ReportsPlaceholder />} />
+          <Route path="reports" element={<StudentSubjectReports />} />
           <Route path="announce" element={<StudentAnnouncements />} />
           <Route path="*" element={<Navigate to="/student" replace />} />
         </Routes>

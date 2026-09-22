@@ -11,11 +11,12 @@ import toast from 'react-hot-toast'
 // Nav items per role
 const NAV_CONFIG = {
   admin: [
-    { to: '/admin',          label: 'Dashboard',  Icon: LayoutDashboard },
-    { to: '/admin/teachers', label: 'Teachers',   Icon: UserCheck },
-    { to: '/admin/students', label: 'Students',   Icon: Users },
-    { to: '/admin/lectures', label: 'Lectures',   Icon: BookOpen },
-    { to: '/admin/reports',  label: 'Reports',    Icon: BarChart2 },
+    { to: '/admin',          label: 'Dashboard',   Icon: LayoutDashboard },
+    { to: '/admin/teachers', label: 'Teachers',    Icon: UserCheck },
+    { to: '/admin/students', label: 'Students',    Icon: Users },
+    { to: '/admin/academic', label: 'Academics',   Icon: GraduationCap },
+    { to: '/admin/lectures', label: 'Lectures',    Icon: BookOpen },
+    { to: '/admin/reports',  label: 'Reports',     Icon: BarChart2 },
     { to: '/admin/announce', label: 'Announcements', Icon: Bell },
   ],
   teacher: [
