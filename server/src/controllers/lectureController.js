@@ -1,8 +1,14 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const {
+  SMDL_TIMETABLE_MATRIX,
+  DAY_NAMES,
+  getSlotStatus,
+  syncTodayLectures,
+} = require('../services/timetableService');
 
 function calculateDynamicStatus(l) {
-  if (l.status) return l.status;
+  if (l.status && ['CANCELLED', 'RESCHEDULED'].includes(l.status)) return l.status;
   const today = new Date().toISOString().slice(0, 10);
   if (l.lecture_date < today) return 'COMPLETED';
   if (l.lecture_date > today) return 'SCHEDULED';
@@ -12,7 +18,7 @@ function calculateDynamicStatus(l) {
   const [eh, em] = (l.end_time || '23:59').split(':').map(Number);
   const startMin = (sh || 0) * 60 + (sm || 0);
   const endMin = (eh || 23) * 60 + (em || 59);
-  if (currentMinutes < startMin) return 'SCHEDULED';
+  if (currentMinutes < startMin) return 'UPCOMING';
   if (currentMinutes > endMin) return 'COMPLETED';
   return 'ONGOING';
 }
@@ -55,6 +61,13 @@ async function attachTeacherNames(lectures) {
 const getActiveLectures = asyncHandler(async (req, res) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Auto-sync today's timetable slots so they exist in DB
+  try {
+    await syncTodayLectures(todayStr);
+  } catch (err) {
+    console.error('Timetable auto-sync notice:', err.message);
+  }
+
   let query = supabaseAdmin
     .from('lectures')
     .select(`
@@ -68,7 +81,8 @@ const getActiveLectures = asyncHandler(async (req, res) => {
       division:divisions(id, name, division_name),
       teacher:teachers(id, teacher_id, user_id)
     `)
-    .eq('lecture_date', todayStr);
+    .eq('lecture_date', todayStr)
+    .order('start_time', { ascending: true });
 
   if (req.user.role === 'student') {
     // Find student's division
@@ -81,7 +95,7 @@ const getActiveLectures = asyncHandler(async (req, res) => {
     if (student?.division_id) {
       query = query.eq('division_id', student.division_id);
     }
-  } else if (req.user.role === 'teacher') {
+  } else if (req.user.role === 'teacher' && req.query.all !== 'true') {
     const { data: teacher } = await supabaseAdmin
       .from('teachers')
       .select('id')
@@ -89,7 +103,16 @@ const getActiveLectures = asyncHandler(async (req, res) => {
       .maybeSingle();
 
     if (teacher?.id) {
-      query = query.eq('teacher_id', teacher.id);
+      // Check if teacher has direct lectures; if none, show all so teacher isn't blocked
+      const { data: countCheck } = await supabaseAdmin
+        .from('lectures')
+        .select('id', { count: 'exact', head: true })
+        .eq('lecture_date', todayStr)
+        .eq('teacher_id', teacher.id);
+
+      if (countCheck && countCheck.length > 0) {
+        query = query.eq('teacher_id', teacher.id);
+      }
     }
   }
 
@@ -104,6 +127,106 @@ const getActiveLectures = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     data: { lectures: mapped },
+  });
+});
+
+// @desc   Get comprehensive today schedule for Teacher / Admin
+// @route  GET /api/lectures/today
+const getTodaySchedule = asyncHandler(async (req, res) => {
+  const targetDateStr = req.query.date || new Date().toISOString().split('T')[0];
+  const targetDate = new Date(targetDateStr);
+  const dayName = DAY_NAMES[targetDate.getDay()];
+
+  // Sync timetable for requested date
+  try {
+    await syncTodayLectures(targetDateStr);
+  } catch (err) {
+    console.error('Timetable sync error:', err.message);
+  }
+
+  // Get current teacher record
+  let currentTeacher = null;
+  if (req.user.role === 'teacher') {
+    const { data: tRec } = await supabaseAdmin
+      .from('teachers')
+      .select('id, teacher_id, user_id, department, users(id, full_name, email)')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+    currentTeacher = tRec;
+  }
+
+  // Fetch all lectures for target date
+  const { data: lectures, error } = await supabaseAdmin
+    .from('lectures')
+    .select(`
+      id,
+      lecture_date,
+      start_time,
+      end_time,
+      topic,
+      created_at,
+      subject:subjects(id, name, code),
+      division:divisions(id, name, division_name),
+      teacher:teachers(id, teacher_id, user_id)
+    `)
+    .eq('lecture_date', targetDateStr)
+    .order('start_time', { ascending: true });
+
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+
+  const mapped = await attachTeacherNames(lectures || []);
+
+  // Filter for logged-in teacher
+  const myLectures = currentTeacher
+    ? mapped.filter((l) => (l.teacher?.id === currentTeacher.id || l.teachers?.id === currentTeacher.id || l.teacher?.user_id === currentTeacher.user_id))
+    : mapped;
+
+  // Find ongoing and next upcoming
+  const ongoing = mapped.find((l) => l.status === 'ONGOING') || null;
+  const nextUpcoming = mapped.find((l) => l.status === 'UPCOMING') || null;
+
+  res.json({
+    success: true,
+    data: {
+      date: targetDateStr,
+      day_name: dayName,
+      is_holiday: dayName === 'Sunday',
+      teacher: currentTeacher ? {
+        id: currentTeacher.id,
+        name: currentTeacher.users?.full_name,
+        teacher_id: currentTeacher.teacher_id,
+      } : null,
+      my_lectures: myLectures,
+      all_lectures: mapped,
+      current_lecture: ongoing,
+      next_lecture: nextUpcoming,
+      summary: {
+        total_today: mapped.length,
+        my_total_today: myLectures.length,
+        has_ongoing: !!ongoing,
+      },
+    },
+  });
+});
+
+// @desc   Get Full Weekly Timetable Matrix
+// @route  GET /api/lectures/timetable
+const getTimetableMatrix = asyncHandler(async (req, res) => {
+  const today = new Date();
+  const currentDay = DAY_NAMES[today.getDay()];
+  const currentDate = today.toISOString().split('T')[0];
+
+  res.json({
+    success: true,
+    data: {
+      matrix: SMDL_TIMETABLE_MATRIX,
+      current_day: currentDay,
+      current_date: currentDate,
+      current_time: `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`,
+    },
   });
 });
 
@@ -268,5 +391,7 @@ module.exports = {
   createLecture,
   updateLectureStatus,
   deleteLecture,
+  getTodaySchedule,
+  getTimetableMatrix,
 };
 

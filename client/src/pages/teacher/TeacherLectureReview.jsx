@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Plus, RefreshCw, UserCheck, XCircle, Camera, MapPin,
   Edit3, X, CheckCircle2, AlertTriangle, Loader2, Users,
@@ -29,8 +30,9 @@ function Modal({ open, onClose, title, children, wide }) {
 }
 
 export default function TeacherLectureReview() {
+  const location = useLocation()
   const [lectures, setLectures] = useState([])
-  const [selectedLecture, setSelectedLecture] = useState('')
+  const [selectedLecture, setSelectedLecture] = useState(location.state?.lectureId || '')
   const [loadingLectures, setLoadingLectures] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -66,10 +68,11 @@ export default function TeacherLectureReview() {
   async function loadLectures() {
     try {
       setLoadingLectures(true)
-      const { data } = await api.get('/lectures/active')
+      const { data } = await api.get('/lectures/active?all=true')
       const list = data?.data?.lectures || []
       setLectures(list)
-      if (list.length === 1 && !selectedLecture) setSelectedLecture(list[0].id)
+      const targetId = location.state?.lectureId || selectedLecture || (list.length >= 1 ? list[0].id : '')
+      if (targetId) setSelectedLecture(targetId)
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to load lectures')
     } finally { setLoadingLectures(false) }

@@ -14,17 +14,30 @@ const userSelect =
   'id, email, full_name, role, status, phone, created_at, updated_at';
 
 const mapRow = (user, profile) => ({
+  // User fields
   id: user.id,
+  user_id: user.id,
   name: user.full_name,
+  full_name: user.full_name,
   email: user.email,
   role: user.role,
+  status: user.status,
   account_status: user.status,
   phone: user.phone,
   created_at: user.created_at,
+  // Flattened profile fields (for convenient frontend access)
+  employee_id: profile?.teacher_id || null,
+  department: profile?.department || null,
+  designation: profile?.designation || null,
+  registered_at: profile?.registration_submitted_at || user.created_at,
+  approved_at: profile?.approved_at || null,
+  rejection_reason: profile?.rejection_reason || null,
+  // Nested profile (for backward compatibility)
   profile: profile
     ? {
         employee_id: profile.teacher_id,
         department: profile.department,
+        designation: profile.designation,
         registration_submitted_at: profile.registration_submitted_at,
         approved_at: profile.approved_at,
         approved_by: profile.approved_by,
@@ -50,7 +63,7 @@ const listPendingTeachers = asyncHandler(async (req, res) => {
   if (ids.length > 0) {
     const { data: tp, error: tpErr } = await supabaseAdmin
       .from('teachers')
-      .select('user_id, teacher_id, department, registration_submitted_at, approved_at, approved_by, rejection_reason')
+      .select('user_id, teacher_id, department, designation, registration_submitted_at, approved_at, approved_by, rejection_reason')
       .in('user_id', ids);
     if (tpErr) {
       res.status(500);
@@ -66,7 +79,8 @@ const listPendingTeachers = asyncHandler(async (req, res) => {
     success: true,
     count: teachers.length,
     pending_count: pending.length,
-    data: { pending, all: teachers },
+    // 'teachers' is an alias for 'all' so both AdminHome and TeachersPanel work seamlessly
+    data: { pending, all: teachers, teachers },
   });
 });
 
@@ -88,7 +102,8 @@ const approveTeacher = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error(`User is ${t.role}, not a teacher`);
   }
-  if (t.status !== 'PENDING') {
+  // Allow approving PENDING or REJECTED teachers (re-approval)
+  if (t.status !== 'PENDING' && t.status !== 'REJECTED') {
     res.status(400);
     throw new Error(`Cannot approve: account status is ${t.status}`);
   }

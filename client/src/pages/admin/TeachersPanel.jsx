@@ -14,7 +14,9 @@ export default function TeachersPanel() {
     setLoading(true)
     try {
       const { data } = await api.get('/admin/teachers')
-      setTeachers(data.data?.teachers || [])
+      // Backend returns data.data.teachers (alias for 'all') or data.data.all
+      const list = data.data?.teachers || data.data?.all || []
+      setTeachers(list)
     } catch {
       toast.error('Failed to load teachers')
     } finally {
@@ -30,7 +32,9 @@ export default function TeachersPanel() {
       await api.post(`/admin/teachers/${teacherId}/approve`)
       toast.success('Teacher approved! ✅')
       setTeachers(ts => ts.map(t =>
-        t.teacher_id === teacherId ? { ...t, status: 'ACTIVE' } : t
+        t.id === teacherId
+          ? { ...t, status: 'ACTIVE', account_status: 'ACTIVE' }
+          : t
       ))
     } catch (err) {
       toast.error(err.response?.data?.message || 'Approval failed')
@@ -40,13 +44,19 @@ export default function TeachersPanel() {
   }
 
   async function reject(teacherId) {
-    const reason = window.prompt('Rejection reason (optional):') ?? ''
+    const reason = window.prompt('Rejection reason (required):') ?? ''
+    if (!reason.trim()) {
+      toast.error('Rejection reason is required')
+      return
+    }
     setActingId(teacherId)
     try {
       await api.post(`/admin/teachers/${teacherId}/reject`, { reason })
       toast.success('Teacher rejected')
       setTeachers(ts => ts.map(t =>
-        t.teacher_id === teacherId ? { ...t, status: 'REJECTED' } : t
+        t.id === teacherId
+          ? { ...t, status: 'REJECTED', account_status: 'REJECTED' }
+          : t
       ))
     } catch (err) {
       toast.error(err.response?.data?.message || 'Rejection failed')
@@ -56,21 +66,24 @@ export default function TeachersPanel() {
   }
 
   const filtered = teachers.filter(t => {
-    const matchStatus = filter === 'ALL' || t.status === filter
+    const tStatus = t.status || t.account_status
+    const matchStatus = filter === 'ALL' || tStatus === filter
     const q = search.toLowerCase()
+    const empId = t.employee_id || t.profile?.employee_id || ''
+    const dept  = t.department  || t.profile?.department  || ''
     const matchSearch = !q ||
-      t.name?.toLowerCase().includes(q) ||
+      (t.name || t.full_name || '').toLowerCase().includes(q) ||
       t.email?.toLowerCase().includes(q) ||
-      t.employee_id?.toLowerCase().includes(q) ||
-      t.department?.toLowerCase().includes(q)
+      empId.toLowerCase().includes(q) ||
+      dept.toLowerCase().includes(q)
     return matchStatus && matchSearch
   })
 
   const counts = {
     ALL: teachers.length,
-    PENDING:  teachers.filter(t => t.status === 'PENDING').length,
-    ACTIVE:   teachers.filter(t => t.status === 'ACTIVE').length,
-    REJECTED: teachers.filter(t => t.status === 'REJECTED').length,
+    PENDING:  teachers.filter(t => (t.status || t.account_status) === 'PENDING').length,
+    ACTIVE:   teachers.filter(t => (t.status || t.account_status) === 'ACTIVE').length,
+    REJECTED: teachers.filter(t => (t.status || t.account_status) === 'REJECTED').length,
   }
 
   return (
@@ -139,61 +152,66 @@ export default function TeachersPanel() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((t, i) => (
-                  <tr key={t.teacher_id || t.email}>
+                {filtered.map((t, i) => {
+                    const tStatus  = t.status || t.account_status
+                    const empId    = t.employee_id || t.profile?.employee_id || '—'
+                    const dept     = t.department  || t.profile?.department  || '—'
+                    const regDate  = t.registered_at || t.profile?.registration_submitted_at
+                    return (
+                  <tr key={t.id || t.email}>
                     <td className="text-brand-muted">{i + 1}</td>
                     <td>
-                      <p className="text-white font-medium">{t.name}</p>
+                      <p className="text-white font-medium">{t.name || t.full_name}</p>
                       <p className="text-brand-muted text-xs">{t.email}</p>
                     </td>
-                    <td className="font-mono text-sm">{t.employee_id}</td>
-                    <td>{t.department}</td>
+                    <td className="font-mono text-sm">{empId}</td>
+                    <td>{dept}</td>
                     <td>
-                      {t.status === 'ACTIVE'   && <span className="badge-active">Active</span>}
-                      {t.status === 'PENDING'  && <span className="badge-pending">Pending</span>}
-                      {t.status === 'REJECTED' && <span className="badge-rejected">Rejected</span>}
+                      {tStatus === 'ACTIVE'   && <span className="badge-active">Active</span>}
+                      {tStatus === 'PENDING'  && <span className="badge-pending">Pending</span>}
+                      {tStatus === 'REJECTED' && <span className="badge-rejected">Rejected</span>}
                     </td>
                     <td className="text-brand-muted text-xs">
-                      {t.registered_at ? new Date(t.registered_at).toLocaleDateString('en-IN') : '—'}
+                      {regDate ? new Date(regDate).toLocaleDateString('en-IN') : '—'}
                     </td>
                     <td>
                       <div className="flex items-center gap-2">
-                        {t.status === 'PENDING' && (
+                        {tStatus === 'PENDING' && (
                           <>
                             <button
-                              id={`approve-${t.teacher_id}`}
-                              onClick={() => approve(t.teacher_id)}
-                              disabled={actingId === t.teacher_id}
+                              id={`approve-${t.id}`}
+                              onClick={() => approve(t.id)}
+                              disabled={actingId === t.id}
                               className="btn-success btn-sm"
                             >
-                              {actingId === t.teacher_id ? <div className="spinner w-3 h-3" /> : <UserCheck size={14} />}
+                              {actingId === t.id ? <div className="spinner w-3 h-3" /> : <UserCheck size={14} />}
                               Approve
                             </button>
                             <button
-                              id={`reject-${t.teacher_id}`}
-                              onClick={() => reject(t.teacher_id)}
-                              disabled={actingId === t.teacher_id}
+                              id={`reject-${t.id}`}
+                              onClick={() => reject(t.id)}
+                              disabled={actingId === t.id}
                               className="btn-danger btn-sm"
                             >
                               <UserX size={14} /> Reject
                             </button>
                           </>
                         )}
-                        {t.status === 'ACTIVE' && (
+                        {tStatus === 'ACTIVE' && (
                           <button
-                            id={`revoke-${t.teacher_id}`}
-                            onClick={() => reject(t.teacher_id)}
-                            disabled={actingId === t.teacher_id}
+                            id={`revoke-${t.id}`}
+                            onClick={() => reject(t.id)}
+                            disabled={actingId === t.id}
                             className="btn-danger btn-sm"
                           >
                             <UserX size={14} /> Revoke
                           </button>
                         )}
-                        {t.status === 'REJECTED' && (
+                        {tStatus === 'REJECTED' && (
                           <button
-                            id={`reapprove-${t.teacher_id}`}
-                            onClick={() => approve(t.teacher_id)}
-                            disabled={actingId === t.teacher_id}
+                            id={`reapprove-${t.id}`}
+                            onClick={() => approve(t.id)}
+                            disabled={actingId === t.id}
                             className="btn-success btn-sm"
                           >
                             <UserCheck size={14} /> Re-Approve
@@ -202,7 +220,8 @@ export default function TeachersPanel() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

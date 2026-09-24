@@ -25,9 +25,12 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Redirect to their role's home page
     const homeMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
     return <Navigate to={homeMap[user.role] || '/login'} replace />
+  }
+
+  if (user.role === 'teacher' && user.account_status === 'PENDING') {
+    return <Navigate to="/pending-approval" replace />
   }
 
   return children

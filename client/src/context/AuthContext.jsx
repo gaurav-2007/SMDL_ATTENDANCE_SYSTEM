@@ -50,6 +50,28 @@ export function AuthProvider({ children }) {
     setUser(null)
   }, [])
 
+  // Re-fetch current user from server (used by PendingApproval to check if teacher was approved)
+  const refreshUser = useCallback(async () => {
+    try {
+      const { data } = await api.get('/auth/me')
+      const raw = data?.data || {}
+      const userData = {
+        id:             raw.id,
+        name:           raw.name,
+        email:          raw.email,
+        role:           raw.role,
+        account_status: raw.account_status,
+        phone:          raw.phone,
+        created_at:     raw.created_at,
+      }
+      localStorage.setItem('smdl_user', JSON.stringify(userData))
+      setUser(userData)
+      return userData
+    } catch {
+      return null
+    }
+  }, [])
+
   const register = useCallback(async (role, payload) => {
     const endpoint = role === 'student'
       ? '/auth/register/student'
@@ -64,7 +86,7 @@ export function AuthProvider({ children }) {
   const isStudent = user?.role === 'student'
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, isAdmin, isTeacher, isStudent }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, register, refreshUser, isAdmin, isTeacher, isStudent }}>
       {children}
     </AuthContext.Provider>
   )

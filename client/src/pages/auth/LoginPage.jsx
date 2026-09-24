@@ -17,6 +17,9 @@ export default function LoginPage() {
 
   // If already logged in, redirect declaratively
   if (user) {
+    if (user.role === 'teacher' && user.account_status === 'PENDING') {
+      return <Navigate to="/pending-approval" replace />
+    }
     const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
     return <Navigate to={roleMap[user.role] || '/'} replace />
   }
@@ -48,7 +51,11 @@ export default function LoginPage() {
       const loggedUser = await login(email, password)
       toast.success(`Welcome back, ${loggedUser?.name || 'User'}!`)
       const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
-      navigate(from || roleMap[loggedUser?.role] || '/', { replace: true })
+      if (loggedUser?.role === 'teacher' && loggedUser?.account_status === 'PENDING') {
+        navigate('/pending-approval', { replace: true })
+      } else {
+        navigate(from || roleMap[loggedUser?.role] || '/', { replace: true })
+      }
     } catch (err) {
       console.error('Login error:', err)
       const msg = !err.response

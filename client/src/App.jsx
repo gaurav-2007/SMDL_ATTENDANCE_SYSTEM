@@ -8,12 +8,12 @@ import { lazy, Suspense } from 'react'
 
 const LoginPage         = lazy(() => import('./pages/auth/LoginPage'))
 const RegisterPage      = lazy(() => import('./pages/auth/RegisterPage'))
+const PendingApproval   = lazy(() => import('./pages/auth/PendingApproval'))
 const AdminDashboard    = lazy(() => import('./pages/admin/AdminDashboard'))
 const TeacherDashboard  = lazy(() => import('./pages/teacher/TeacherDashboard'))
 const StudentDashboard  = lazy(() => import('./pages/student/StudentDashboard'))
 const NotFound          = lazy(() => import('./pages/NotFound'))
 
-// Loading fallback
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-brand-dark">
     <div className="flex flex-col items-center gap-4">
@@ -23,11 +23,13 @@ const PageLoader = () => (
   </div>
 )
 
-// Root redirect based on role
 function RootRedirect() {
   const { user, loading } = useAuth()
   if (loading) return <PageLoader />
   if (!user)   return <Navigate to="/login" replace />
+  if (user.role === 'teacher' && user.account_status === 'PENDING') {
+    return <Navigate to="/pending-approval" replace />
+  }
   const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
   return <Navigate to={roleMap[user.role] || '/login'} replace />
 }
@@ -37,8 +39,9 @@ function AppRoutes() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public */}
-        <Route path="/login"    element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/login"         element={<LoginPage />} />
+        <Route path="/register"      element={<RegisterPage />} />
+        <Route path="/pending-approval" element={<PendingApproval />} />
 
         {/* Root → role-based redirect */}
         <Route path="/" element={<RootRedirect />} />
