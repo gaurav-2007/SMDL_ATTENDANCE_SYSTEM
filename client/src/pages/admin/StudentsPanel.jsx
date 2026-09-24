@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   Users, Search, UserCheck, UserX, Clock, Plus, X,
   ChevronDown, GraduationCap, Phone, BookOpen, Filter,
-  RefreshCw, Eye, CheckCircle, XCircle
+  RefreshCw, Eye, CheckCircle, XCircle, Upload, ArrowRightLeft,
+  FileSpreadsheet, Loader2, Download
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
@@ -21,8 +22,13 @@ export default function StudentsPanel() {
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [courseFilter, setCourseFilter] = useState('ALL')
   const [courses, setCourses]   = useState([])
+  const [divisions, setDivisions] = useState([])
   const [selected, setSelected] = useState(null)  // for detail modal
   const [actionLoading, setActionLoading] = useState(false)
+
+  // Bulk Import & Transfer Modals
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [transferTargetStudent, setTransferTargetStudent] = useState(null)
 
   const fetchStudents = useCallback(async () => {
     setLoading(true)
@@ -36,17 +42,22 @@ export default function StudentsPanel() {
     }
   }, [])
 
-  const fetchCourses = useCallback(async () => {
+  const fetchAcademicData = useCallback(async () => {
     try {
-      const { data } = await api.get('/academic/courses')
-      setCourses(data.data?.courses || [])
+      const [cRes, dRes] = await Promise.all([
+        api.get('/academic/courses'),
+        api.get('/academic/divisions'),
+      ])
+      setCourses(cRes.data.data?.courses || [])
+      setDivisions(dRes.data.data?.divisions || [])
     } catch { /* ignore */ }
   }, [])
 
   useEffect(() => {
     fetchStudents()
-    fetchCourses()
-  }, [fetchStudents, fetchCourses])
+    fetchAcademicData()
+  }, [fetchStudents, fetchAcademicData])
+
 
   async function updateStatus(studentId, status) {
     setActionLoading(true)
@@ -84,15 +95,23 @@ export default function StudentsPanel() {
       <div className="page-header">
         <div>
           <h2 className="page-title">Students Management</h2>
-          <p className="page-subtitle">Manage student accounts & approvals</p>
+          <p className="page-subtitle">Manage student accounts, bulk imports & division transfers</p>
         </div>
-        <button
-          onClick={fetchStudents}
-          className="btn btn-ghost btn-sm flex items-center gap-2"
-        >
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowBulkModal(true)}
+            className="btn btn-primary btn-sm flex items-center gap-1.5 shadow-md"
+          >
+            <Upload size={14} /> Bulk CSV Import
+          </button>
+          <button
+            onClick={fetchStudents}
+            className="btn btn-ghost btn-sm flex items-center gap-2"
+          >
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats row */}
@@ -221,13 +240,22 @@ export default function StudentsPanel() {
                       </span>
                     </td>
                     <td>
-                      <button
-                        onClick={() => setSelected(s)}
-                        className="btn btn-ghost btn-sm"
-                        id={`view-student-${s.id}`}
-                      >
-                        <Eye size={14} /> View
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelected(s)}
+                          className="btn btn-ghost btn-sm"
+                          id={`view-student-${s.id}`}
+                        >
+                          <Eye size={14} /> View
+                        </button>
+                        <button
+                          onClick={() => setTransferTargetStudent(s)}
+                          className="btn btn-ghost btn-sm text-xs !text-indigo-400 hover:!bg-indigo-500/10 flex items-center gap-1"
+                          title="Transfer Division"
+                        >
+                          <ArrowRightLeft size={13} /> Transfer
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -251,13 +279,35 @@ export default function StudentsPanel() {
           loading={actionLoading}
           onClose={() => setSelected(null)}
           onUpdateStatus={updateStatus}
+          onOpenTransfer={(s) => { setSelected(null); setTransferTargetStudent(s) }}
+        />
+      )}
+
+      {/* Bulk CSV Import Modal */}
+      {showBulkModal && (
+        <BulkImportModal
+          courses={courses}
+          divisions={divisions}
+          onClose={() => setShowBulkModal(false)}
+          onSuccess={fetchStudents}
+        />
+      )}
+
+      {/* Division Transfer Modal */}
+      {transferTargetStudent && (
+        <TransferDivisionModal
+          student={transferTargetStudent}
+          courses={courses}
+          divisions={divisions}
+          onClose={() => setTransferTargetStudent(null)}
+          onSuccess={fetchStudents}
         />
       )}
     </div>
   )
 }
 
-function StudentDetailModal({ student: s, loading, onClose, onUpdateStatus }) {
+function StudentDetailModal({ student: s, loading, onClose, onUpdateStatus, onOpenTransfer }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="card w-full max-w-md relative">
@@ -286,40 +336,328 @@ function StudentDetailModal({ student: s, loading, onClose, onUpdateStatus }) {
           <DetailRow label="Joined" value={s.users?.created_at ? new Date(s.users.created_at).toLocaleDateString('en-IN') : '—'} />
         </div>
 
-        <div className="flex gap-2">
-          {s.users?.status !== 'ACTIVE' && (
-            <button
-              id={`approve-student-${s.id}`}
-              onClick={() => onUpdateStatus(s.id, 'ACTIVE')}
-              disabled={loading}
-              className="btn btn-success flex-1 flex items-center justify-center gap-2"
-            >
-              <CheckCircle size={15} />
-              {loading ? 'Processing...' : 'Approve'}
-            </button>
-          )}
-          {s.users?.status !== 'REJECTED' && (
-            <button
-              id={`reject-student-${s.id}`}
-              onClick={() => onUpdateStatus(s.id, 'REJECTED')}
-              disabled={loading}
-              className="btn btn-danger flex-1 flex items-center justify-center gap-2"
-            >
-              <XCircle size={15} />
-              {loading ? 'Processing...' : 'Reject'}
-            </button>
-          )}
-          {s.users?.status !== 'INACTIVE' && (
-            <button
-              id={`deactivate-student-${s.id}`}
-              onClick={() => onUpdateStatus(s.id, 'INACTIVE')}
-              disabled={loading}
-              className="btn btn-ghost flex items-center gap-2"
-            >
-              Deactivate
-            </button>
-          )}
+        <div className="space-y-2">
+          <button
+            onClick={() => onOpenTransfer(s)}
+            className="btn btn-secondary w-full flex items-center justify-center gap-2 text-xs"
+          >
+            <ArrowRightLeft size={14} className="text-indigo-400" />
+            Transfer Division / Batch
+          </button>
+
+          <div className="flex gap-2">
+            {s.users?.status !== 'ACTIVE' && (
+              <button
+                id={`approve-student-${s.id}`}
+                onClick={() => onUpdateStatus(s.id, 'ACTIVE')}
+                disabled={loading}
+                className="btn btn-success flex-1 flex items-center justify-center gap-2"
+              >
+                <CheckCircle size={15} />
+                {loading ? 'Processing...' : 'Approve'}
+              </button>
+            )}
+            {s.users?.status !== 'REJECTED' && (
+              <button
+                id={`reject-student-${s.id}`}
+                onClick={() => onUpdateStatus(s.id, 'REJECTED')}
+                disabled={loading}
+                className="btn btn-danger flex-1 flex items-center justify-center gap-2"
+              >
+                <XCircle size={15} />
+                {loading ? 'Processing...' : 'Reject'}
+              </button>
+            )}
+            {s.users?.status !== 'INACTIVE' && (
+              <button
+                id={`deactivate-student-${s.id}`}
+                onClick={() => onUpdateStatus(s.id, 'INACTIVE')}
+                disabled={loading}
+                className="btn btn-ghost flex items-center gap-2"
+              >
+                Deactivate
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function BulkImportModal({ courses, divisions, onClose, onSuccess }) {
+  const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id || '')
+  const [selectedDivision, setSelectedDivision] = useState('')
+  const [csvText, setCsvText] = useState('')
+  const [importing, setImporting] = useState(false)
+
+  const courseDivisions = divisions.filter(d => !selectedCourse || d.course_id === selectedCourse)
+
+  useEffect(() => {
+    if (courseDivisions.length > 0 && !selectedDivision) {
+      setSelectedDivision(courseDivisions[0].id)
+    }
+  }, [courseDivisions, selectedDivision])
+
+  const parsedRows = useMemo(() => {
+    if (!csvText.trim()) return []
+    const lines = csvText.trim().split('\n').filter(Boolean)
+    const result = []
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      if (!line) continue
+      if (i === 0 && (line.toLowerCase().startsWith('roll') || line.toLowerCase().startsWith('sr'))) continue
+      const parts = line.split(',').map(p => p.trim().replace(/^["']|["']$/g, ''))
+      if (parts.length >= 2) {
+        result.push({
+          roll_number: parts[0],
+          full_name: parts[1],
+          email: parts[2] || `${parts[0].toLowerCase()}@student.smdl.ac.in`,
+          phone: parts[3] || '',
+        })
+      }
+    }
+    return result
+  }, [csvText])
+
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const text = await file.text()
+    setCsvText(text)
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (parsedRows.length === 0) {
+      toast.error('Please enter or upload valid student CSV data (Roll Number, Full Name)')
+      return
+    }
+    setImporting(true)
+    try {
+      const { data } = await api.post('/admin/students/bulk-import', {
+        students: parsedRows,
+        course_id: selectedCourse,
+        division_id: selectedDivision,
+      })
+      toast.success(data.message || `Imported ${parsedRows.length} students! ✅`)
+      onSuccess()
+      onClose()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Bulk import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function loadSampleCSV() {
+    setCsvText(`Roll Number, Full Name, Email, Phone
+CS-101, Aakash Sharma, aakash.sharma@student.smdl.ac.in, 9876543210
+CS-102, Sneha Patil, sneha.patil@student.smdl.ac.in, 9876543211
+CS-103, Rahul Gupta, rahul.gupta@student.smdl.ac.in, 9876543212
+CS-104, Pooja Nair, pooja.nair@student.smdl.ac.in, 9876543213
+CS-105, Vikram Nishad, vikram.nishad@student.smdl.ac.in, 9876543214`)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+      <div className="card w-full max-w-xl relative bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+          <X size={18} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2.5 rounded-xl bg-brand-accent/15 text-brand-accent">
+            <Upload size={22} />
+          </div>
+          <div>
+            <h3 className="text-white font-bold text-lg">Bulk Student Import (CSV)</h3>
+            <p className="text-brand-muted text-xs">Import entire division batches with roll numbers & accounts</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="form-group">
+              <label className="form-label">Target Course:</label>
+              <select
+                className="form-input text-xs"
+                value={selectedCourse}
+                onChange={e => setSelectedCourse(e.target.value)}
+              >
+                {courses.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Target Division:</label>
+              <select
+                className="form-input text-xs"
+                value={selectedDivision}
+                onChange={e => setSelectedDivision(e.target.value)}
+              >
+                {courseDivisions.map(d => (
+                  <option key={d.id} value={d.id}>{d.name} Div {d.division_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <label className="form-label mb-0">CSV Data (Roll, Name, Email, Phone):</label>
+            <div className="flex items-center gap-2">
+              <label className="text-brand-accent hover:underline cursor-pointer flex items-center gap-1">
+                <FileSpreadsheet size={13} /> Upload .CSV
+                <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
+              </label>
+              <span className="text-slate-600">|</span>
+              <button type="button" onClick={loadSampleCSV} className="text-slate-400 hover:text-white">
+                Load Sample
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            rows={5}
+            value={csvText}
+            onChange={e => setCsvText(e.target.value)}
+            className="form-input font-mono text-xs resize-none"
+            placeholder="Roll Number, Full Name, Email, Phone&#10;101, Aakash Sharma, aakash@student.smdl.ac.in, 9876543210&#10;102, Sneha Patil, sneha@student.smdl.ac.in, 9876543211"
+          />
+
+          {parsedRows.length > 0 && (
+            <div className="border border-slate-800 rounded-xl p-3 bg-slate-950/60">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-300">Parsed Preview ({parsedRows.length} students)</span>
+                <span className="badge badge-active text-[10px]">Valid Format</span>
+              </div>
+              <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-slate-800/40">
+                {parsedRows.slice(0, 5).map((r, i) => (
+                  <div key={i} className="flex items-center justify-between text-[11px] pt-1 text-slate-400">
+                    <span className="font-mono text-white font-medium">{r.roll_number} - {r.full_name}</span>
+                    <span className="truncate max-w-[150px]">{r.email}</span>
+                  </div>
+                ))}
+                {parsedRows.length > 5 && (
+                  <p className="text-[10px] text-slate-500 pt-1 text-center">... and {parsedRows.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={importing || parsedRows.length === 0}
+              className="btn btn-primary btn-sm flex items-center gap-1.5"
+            >
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              Import {parsedRows.length} Students
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function TransferDivisionModal({ student, courses, divisions, onClose, onSuccess }) {
+  const [targetDivision, setTargetDivision] = useState(divisions[0]?.id || '')
+  const [reason, setReason] = useState('')
+  const [transferring, setTransferring] = useState(false)
+
+  async function handleTransfer(e) {
+    e.preventDefault()
+    if (!targetDivision) return
+    setTransferring(true)
+    try {
+      const { data } = await api.post(`/admin/students/${student.id}/transfer`, {
+        new_division_id: targetDivision,
+        reason,
+      })
+      toast.success(data.message || 'Student transferred successfully! ✅')
+      onSuccess()
+      onClose()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Transfer failed')
+    } finally {
+      setTransferring(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+      <div className="card w-full max-w-md relative bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-6">
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+          <X size={18} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2.5 rounded-xl bg-indigo-500/15 text-indigo-400">
+            <ArrowRightLeft size={22} />
+          </div>
+          <div>
+            <h3 className="text-white font-bold text-lg">Transfer Student Division</h3>
+            <p className="text-brand-muted text-xs">{student.full_name} ({student.roll_number || 'No roll'})</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleTransfer} className="space-y-4">
+          <div className="form-group">
+            <label className="form-label">Current Division:</label>
+            <input
+              type="text"
+              readOnly
+              className="form-input text-xs bg-slate-950/60 text-slate-400 cursor-not-allowed"
+              value={student.divisions?.name || 'Not assigned'}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Select New Division / Batch:</label>
+            <select
+              required
+              className="form-input text-xs"
+              value={targetDivision}
+              onChange={e => setTargetDivision(e.target.value)}
+            >
+              {divisions.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} Div {d.division_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Transfer Reason (Audit Note):</label>
+            <input
+              type="text"
+              className="form-input text-xs"
+              placeholder="e.g. Batch change request, Year promotion, etc."
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={transferring}
+              className="btn bg-indigo-600 hover:bg-indigo-500 text-white btn-sm flex items-center gap-1.5"
+            >
+              {transferring ? <Loader2 size={14} className="animate-spin" /> : <ArrowRightLeft size={14} />}
+              Confirm Transfer
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )
@@ -333,3 +671,4 @@ function DetailRow({ label, value }) {
     </div>
   )
 }
+

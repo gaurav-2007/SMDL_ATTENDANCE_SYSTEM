@@ -43,23 +43,69 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new Error('Student profile not found');
   }
 
-  // 2. Validate lecture exists
-  const { data: lecture, error: lecErr } = await supabaseAdmin
+  // 2. Validate lecture exists (support direct lecture ID or division_timetables slot ID)
+  let resolvedLectureId = lecture_id;
+  let timetableId = req.body.timetable_id || null;
+
+  let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
     .select('id, lecture_date, division_id, topic, subject:subjects(name)')
-    .eq('id', lecture_id)
-    .single();
+    .eq('id', resolvedLectureId)
+    .maybeSingle();
 
-  if (lecErr || !lecture) {
+  if (!lecture) {
+    // Check if resolvedLectureId is a division_timetables slot ID
+    const { data: slot } = await supabaseAdmin
+      .from('division_timetables')
+      .select('id, division_id, subject_id, teacher_id, start_time, end_time, subject:subjects(name)')
+      .eq('id', resolvedLectureId)
+      .maybeSingle();
+
+    if (slot) {
+      timetableId = slot.id;
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: existingLec } = await supabaseAdmin
+        .from('lectures')
+        .select('id, lecture_date, division_id, topic, subject:subjects(name)')
+        .eq('division_id', slot.division_id)
+        .eq('lecture_date', todayStr)
+        .eq('start_time', slot.start_time)
+        .maybeSingle();
+
+      if (existingLec) {
+        lecture = existingLec;
+        resolvedLectureId = existingLec.id;
+      } else {
+        const { data: newLec } = await supabaseAdmin
+          .from('lectures')
+          .insert({
+            division_id: slot.division_id,
+            subject_id: slot.subject_id,
+            teacher_id: slot.teacher_id,
+            lecture_date: todayStr,
+            start_time: slot.start_time,
+            end_time: slot.end_time,
+            status: 'ACTIVE',
+            topic: slot.subject?.name || 'Class Lecture'
+          })
+          .select('id, lecture_date, division_id, topic, subject:subjects(name)')
+          .single();
+        lecture = newLec;
+        resolvedLectureId = newLec?.id;
+      }
+    }
+  }
+
+  if (!lecture) {
     res.status(404);
-    throw new Error('Lecture session not found');
+    throw new Error('Lecture session or scheduled class slot not found');
   }
 
   // 3. Prevent duplicate attendance
   const { data: existing } = await supabaseAdmin
     .from('attendance')
     .select('id, status, marked_at')
-    .eq('lecture_id', lecture_id)
+    .eq('lecture_id', resolvedLectureId)
     .eq('student_id', student.id)
     .maybeSingle();
 
@@ -97,7 +143,7 @@ const markAttendance = asyncHandler(async (req, res) => {
   const { data: attendance, error: attErr } = await supabaseAdmin
     .from('attendance')
     .insert({
-      lecture_id,
+      lecture_id: resolvedLectureId,
       student_id: student.id,
       status: 'PRESENT',
       location_verified: true,
@@ -116,6 +162,24 @@ const markAttendance = asyncHandler(async (req, res) => {
   if (attErr) {
     res.status(500);
     throw new Error(attErr.message || 'Failed to record attendance');
+  }
+
+  // Also record into attendance_records table if timetableId is known
+  if (timetableId) {
+    try {
+      await supabaseAdmin.from('attendance_records').insert({
+        student_id: student.id,
+        timetable_id: timetableId,
+        attendance_date: lecture?.lecture_date || new Date().toISOString().split('T')[0],
+        status: 'PRESENT',
+        marked_at: new Date().toISOString(),
+        marked_by: req.user.id,
+        location_verified: true,
+        selfie_url: selfie,
+      });
+    } catch (_e) {
+      // safe fallback if attendance_records table is not yet migrated
+    }
   }
 
   // If student does not have division_id assigned yet, link them to this lecture's division

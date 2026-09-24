@@ -37,6 +37,7 @@ Thumbs.db
 
 # Database
 *.sql
+!server/supabase/migrations/*.sql
 *.db
 *.sqlite
 *.sqlite3

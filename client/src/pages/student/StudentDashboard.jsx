@@ -88,6 +88,29 @@ function StudentOverview() {
   const stats = data?.stats || {}
   const info = data?.student_info || {}
 
+  const [todaySchedule, setTodaySchedule] = useState({ loading: true, classes: [], dayName: '', date: '', isHoliday: false })
+
+  const fetchTodaySchedule = async () => {
+    setTodaySchedule(prev => ({ ...prev, loading: true }))
+    try {
+      const res = await api.get('/student/today-classes')
+      const payload = res.data?.data || {}
+      setTodaySchedule({
+        loading: false,
+        classes: payload.classes || [],
+        dayName: payload.day_name || '',
+        date: payload.date || '',
+        isHoliday: !!payload.is_holiday,
+      })
+    } catch (_err) {
+      setTodaySchedule(prev => ({ ...prev, loading: false }))
+    }
+  }
+
+  useEffect(() => {
+    fetchTodaySchedule()
+  }, [])
+
   const quickActions = [
     { label: 'Mark Present Now',   Icon: UserCheck,     color: 'bg-green-500/20 text-green-400',   to: '/student/mark',       desc: 'GPS + Selfie check-in' },
     { label: 'My Attendance',      Icon: ClipboardList, color: 'bg-blue-500/20 text-blue-400',     to: '/student/attendance', desc: 'History & percentage' },
@@ -151,6 +174,110 @@ function StudentOverview() {
           </div>
         </div>
       )}
+
+      {/* Today's Live Schedule Card */}
+      <div className="card mb-6">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Clock size={18} className="text-brand-accent" />
+            <h3 className="text-white font-semibold">
+              Today's Class Schedule {todaySchedule.dayName ? `(${todaySchedule.dayName})` : ''}
+            </h3>
+            {todaySchedule.classes.length > 0 && (
+              <span className="badge badge-active text-xs">
+                {todaySchedule.classes.length} {todaySchedule.classes.length === 1 ? 'Lecture' : 'Lectures'}
+              </span>
+            )}
+            {todaySchedule.isHoliday && (
+              <span className="badge badge-pending text-xs">Weekly Off</span>
+            )}
+          </div>
+          <button
+            onClick={fetchTodaySchedule}
+            className="btn-ghost btn-sm text-xs flex items-center gap-1.5"
+            title="Refresh schedule"
+          >
+            <RefreshCw size={13} className={todaySchedule.loading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        {todaySchedule.loading ? (
+          <div className="text-center py-8 text-brand-muted">
+            <Loader2 className="animate-spin w-7 h-7 mx-auto mb-2 text-brand-accent" />
+            <p className="text-xs">Fetching today's live classes…</p>
+          </div>
+        ) : todaySchedule.classes.length === 0 ? (
+          <div className="text-center py-8 border border-dashed border-brand-border/60 rounded-xl bg-brand-dark/40">
+            <Clock size={32} className="mx-auto text-brand-muted mb-2 opacity-60" />
+            <p className="text-white text-sm font-medium">No Lectures Scheduled Today</p>
+            <p className="text-brand-muted text-xs mt-1">
+              {todaySchedule.isHoliday ? 'Sunday is a weekly off.' : 'Check back later or view your weekly timetable.'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {todaySchedule.classes.map((cls) => {
+              const isOngoing = cls.status === 'ONGOING'
+              const isAttended = cls.is_attended || cls.attendance_status === 'PRESENT'
+              return (
+                <div
+                  key={cls.id || cls.timetable_id}
+                  className={`p-4 rounded-xl border transition-all ${
+                    isOngoing
+                      ? 'border-green-500/60 bg-green-500/10 shadow-lg shadow-green-500/5 ring-1 ring-green-500/30'
+                      : 'border-brand-border/70 bg-brand-dark/50 hover:border-brand-accent/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className="text-xs font-mono font-bold text-brand-accent bg-brand-accent/15 px-2 py-0.5 rounded">
+                      {cls.start_time?.slice(0, 5)} - {cls.end_time?.slice(0, 5)}
+                    </span>
+                    {isAttended ? (
+                      <span className="badge badge-active text-[10px] flex items-center gap-1">
+                        <CheckCircle size={10} /> Present
+                      </span>
+                    ) : isOngoing ? (
+                      <span className="badge bg-green-500/20 text-green-400 border border-green-500/40 text-[10px] animate-pulse font-bold">
+                        ● LIVE NOW
+                      </span>
+                    ) : (
+                      <span className="badge badge-pending text-[10px]">
+                        {cls.status || 'Upcoming'}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-white font-semibold text-sm line-clamp-1">
+                    {cls.subject_name}
+                  </p>
+                  <p className="text-brand-muted text-xs mt-0.5">
+                    {cls.subject_code ? `${cls.subject_code} · ` : ''}{cls.teacher_name || 'Assigned Faculty'}
+                  </p>
+
+                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-border/40 text-xs">
+                    <span className="text-brand-muted flex items-center gap-1">
+                      📍 {cls.room_number || 'Room 101'} {cls.is_lab ? '(Lab)' : ''}
+                    </span>
+                    {isOngoing && !isAttended ? (
+                      <button
+                        onClick={() => navigate('/student/mark', { state: { lectureId: cls.id } })}
+                        className="btn-primary !py-1 !px-2.5 !text-xs !bg-green-600 hover:!bg-green-500"
+                      >
+                        Check-In →
+                      </button>
+                    ) : isAttended ? (
+                      <span className="text-green-400 text-xs font-medium">✓ Attended</span>
+                    ) : (
+                      <span className="text-brand-muted text-[11px]">Scheduled</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         {quickActions.map(({ label, Icon, color, to, desc }) => (

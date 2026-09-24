@@ -385,6 +385,168 @@ const deleteLecture = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Live query today's classes for student from division timetable (Fix #4: No cron, live query)
+// @route  GET /api/lectures/today-classes
+const getStudentTodayClasses = asyncHandler(async (req, res) => {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const dayName = DAY_NAMES[new Date().getDay()];
+
+  // 1. Find student's division
+  let divisionId = req.query.division_id;
+  let studentRecord = null;
+
+  if (req.user.role === 'student') {
+    const { data: stu } = await supabaseAdmin
+      .from('students')
+      .select('id, student_id, division_id, division:divisions(id, name, division_name)')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    studentRecord = stu;
+    divisionId = stu?.division_id || divisionId;
+  }
+
+  if (!divisionId) {
+    // If division not assigned yet, try to find default division
+    const { data: defaultDiv } = await supabaseAdmin
+      .from('divisions')
+      .select('id, name')
+      .limit(1)
+      .maybeSingle();
+    divisionId = defaultDiv?.id;
+  }
+
+  // 2. Query division_timetables live by day of week (Section 3)
+  let liveClasses = [];
+  let isFromTimetable = false;
+
+  if (divisionId) {
+    const { data: slots, error: slotErr } = await supabaseAdmin
+      .from('division_timetables')
+      .select(`
+        id,
+        division_id,
+        day_of_week,
+        start_time,
+        end_time,
+        room_number,
+        is_lab,
+        subject:subjects(id, name, code),
+        teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name, email))
+      `)
+      .eq('division_id', divisionId)
+      .eq('day_of_week', dayName)
+      .order('start_time', { ascending: true });
+
+    if (!slotErr && slots && slots.length > 0) {
+      isFromTimetable = true;
+
+      // Check attendance for student
+      let attendanceMap = {};
+      if (studentRecord?.id) {
+        const { data: attRecords } = await supabaseAdmin
+          .from('attendance_records')
+          .select('id, timetable_id, status, marked_at')
+          .eq('student_id', studentRecord.id)
+          .eq('attendance_date', todayStr);
+
+        (attRecords || []).forEach((r) => {
+          attendanceMap[r.timetable_id] = r;
+        });
+      }
+
+      liveClasses = slots.map((s) => {
+        const status = getSlotStatus(s.start_time, s.end_time, todayStr);
+        const att = attendanceMap[s.id];
+        return {
+          id: s.id,
+          timetable_id: s.id,
+          subject_name: s.subject?.name || 'Class',
+          subject_code: s.subject?.code || '',
+          teacher_name: s.teacher?.user?.full_name || 'Assigned Faculty',
+          room_number: s.room_number || 'Room 101',
+          is_lab: !!s.is_lab,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          status,
+          is_attended: att?.status === 'PRESENT',
+          attendance_status: att ? att.status : 'NOT_MARKED',
+          marked_at: att?.marked_at || null,
+        };
+      });
+    }
+  }
+
+  // 3. Graceful fallback if division_timetables table not yet migrated or empty for this division
+  if (!isFromTimetable && divisionId) {
+    try {
+      await syncTodayLectures(todayStr);
+    } catch (_e) {}
+
+    const { data: lectures } = await supabaseAdmin
+      .from('lectures')
+      .select(`
+        id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        subject:subjects(id, name, code),
+        teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
+      `)
+      .eq('lecture_date', todayStr)
+      .eq('division_id', divisionId)
+      .order('start_time', { ascending: true });
+
+    if (lectures && lectures.length > 0) {
+      let attMap = {};
+      if (studentRecord?.id) {
+        const { data: att } = await supabaseAdmin
+          .from('attendance')
+          .select('id, lecture_id, status, marked_at')
+          .eq('student_id', studentRecord.id)
+          .in('lecture_id', lectures.map((l) => l.id));
+
+        (att || []).forEach((a) => {
+          attMap[a.lecture_id] = a;
+        });
+      }
+
+      liveClasses = lectures.map((l) => {
+        const status = getSlotStatus(l.start_time, l.end_time, todayStr);
+        const att = attMap[l.id];
+        return {
+          id: l.id,
+          timetable_id: l.id,
+          subject_name: l.subject?.name || l.topic || 'Class',
+          subject_code: l.subject?.code || '',
+          teacher_name: l.teacher?.user?.full_name || 'Assigned Faculty',
+          room_number: 'Room 101',
+          is_lab: (l.topic || '').toLowerCase().includes('lab') || (l.topic || '').toLowerCase().includes('practical'),
+          start_time: l.start_time,
+          end_time: l.end_time,
+          status,
+          is_attended: att?.status === 'PRESENT',
+          attendance_status: att ? att.status : 'NOT_MARKED',
+          marked_at: att?.marked_at || null,
+        };
+      });
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      date: todayStr,
+      day_name: dayName,
+      is_holiday: dayName === 'Sunday',
+      classes_count: liveClasses.length,
+      classes: liveClasses,
+      source: isFromTimetable ? 'division_timetables' : 'daily_lectures',
+    },
+  });
+});
+
 module.exports = {
   getActiveLectures,
   getAllLectures,
@@ -393,5 +555,7 @@ module.exports = {
   deleteLecture,
   getTodaySchedule,
   getTimetableMatrix,
+  getStudentTodayClasses,
 };
+
 

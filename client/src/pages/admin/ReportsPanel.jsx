@@ -8,47 +8,42 @@ import api from '../../lib/api'
 import toast from 'react-hot-toast'
 
 export default function ReportsPanel() {
+  const [tab, setTab]           = useState('OVERVIEW') // 'OVERVIEW' | 'AUDIT_LOGS'
   const [stats, setStats]       = useState(null)
   const [loading, setLoading]   = useState(true)
   const [lowAtt, setLowAtt]     = useState([])
   const [period, setPeriod]     = useState('30')
+  const [liveSummary, setLiveSummary] = useState(null)
+  const [auditLogs, setAuditLogs] = useState([])
 
   const fetchStats = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await api.get(`/attendance/reports/overview?days=${period}`)
-      setStats(data.data)
-      setLowAtt(data.data?.low_attendance || [])
-    } catch {
-      // fallback with admin stats
-      try {
-        const [tRes, sRes, lRes] = await Promise.all([
-          api.get('/admin/teachers'),
-          api.get('/admin/students'),
-          api.get('/lectures'),
-        ])
-        const teachers  = tRes.data.data?.teachers || []
-        const students  = sRes.data.data?.students || []
-        const lectures  = lRes.data.data?.lectures || []
-        setStats({
-          total_teachers:   teachers.length,
-          active_teachers:  teachers.filter(t => t.status === 'ACTIVE').length,
-          total_students:   students.length,
-          active_students:  students.filter(s => s.users?.status === 'ACTIVE').length,
-          total_lectures:   lectures.length,
-          completed_lectures: lectures.filter(l => l.status === 'COMPLETED').length,
-          avg_attendance:   null,
-          low_attendance:   [],
-        })
-      } catch {
-        toast.error('Could not load reports')
+      const [ovRes, liveRes, audRes] = await Promise.allSettled([
+        api.get(`/attendance/reports/overview?days=${period}`),
+        api.get('/admin/attendance/live-summary'),
+        api.get('/admin/attendance/audit-logs'),
+      ])
+
+      if (ovRes.status === 'fulfilled') {
+        setStats(ovRes.value.data?.data)
+        setLowAtt(ovRes.value.data?.data?.low_attendance || [])
       }
+      if (liveRes.status === 'fulfilled') {
+        setLiveSummary(liveRes.value.data?.data || null)
+      }
+      if (audRes.status === 'fulfilled') {
+        setAuditLogs(audRes.value.data?.data?.logs || [])
+      }
+    } catch {
+      toast.error('Could not load reports')
     } finally {
       setLoading(false)
     }
   }, [period])
 
   useEffect(() => { fetchStats() }, [fetchStats])
+
 
   function exportToCSV() {
     if (!stats) return toast.error('No report data available to export')
@@ -222,12 +217,67 @@ export default function ReportsPanel() {
         </div>
       </div>
 
+      {/* Sub-Tabs */}
+      <div className="flex gap-2 mb-5">
+        <button
+          onClick={() => setTab('OVERVIEW')}
+          className={`btn btn-sm ${tab === 'OVERVIEW' ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          <BarChart2 size={14} /> Analytics & Defaulters
+        </button>
+        <button
+          onClick={() => setTab('AUDIT_LOGS')}
+          className={`btn btn-sm ${tab === 'AUDIT_LOGS' ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          <Clock size={14} /> Teacher Overrides Audit Log ({auditLogs.length})
+        </button>
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-24">
           <div className="w-10 h-10 border-4 border-white/10 border-t-brand-accent rounded-full animate-spin" />
         </div>
-      ) : (
+      ) : tab === 'OVERVIEW' ? (
         <>
+          {/* Live Today Attendance Oversight Strip (Step 7 / Fix #4) */}
+          {liveSummary && (
+            <div className="card !p-4 mb-6 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-900/40 shadow-lg">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <h3 className="text-white font-bold text-sm tracking-wide">
+                    Live Attendance Today ({liveSummary.date ? new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'short', day: 'numeric' }) : 'Today'})
+                  </h3>
+                </div>
+                <span className="badge badge-info text-xs">
+                  {liveSummary.today_lectures_count} Scheduled Lectures Today
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <span className="text-slate-400 text-xs block mb-0.5">Total Enrolled Students</span>
+                  <span className="text-xl font-bold text-white">{liveSummary.total_students}</span>
+                </div>
+                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <span className="text-emerald-400 text-xs block mb-0.5">Students Present</span>
+                  <span className="text-xl font-bold text-emerald-400">{liveSummary.present_count}</span>
+                </div>
+                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <span className="text-red-400 text-xs block mb-0.5">Students Absent</span>
+                  <span className="text-xl font-bold text-red-400">{liveSummary.absent_count}</span>
+                </div>
+                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                  <span className="text-brand-accent text-xs block mb-0.5">Today's Attendance Rate</span>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xl font-bold text-brand-accent">{liveSummary.attendance_percentage}%</span>
+                    <span className="text-[11px] text-slate-500">({liveSummary.total_marked} marked)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* KPI Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <KpiCard
@@ -341,12 +391,72 @@ export default function ReportsPanel() {
               <Clock size={16} className="text-brand-muted" />
               <p className="text-brand-muted text-sm">Last updated: {new Date().toLocaleTimeString('en-IN')}</p>
             </div>
-            <p className="text-brand-muted text-xs">
-              Note: Full attendance analytics require active lecture sessions with marked attendance.
-              Schedule lectures and have teachers/students mark attendance to see detailed reports here.
+            <p className="text-brand-muted text-xs leading-relaxed">
+              Attendance analytics reflect verified lectures and student check-ins.
+              Use the Export CSV and Print Register buttons above to generate official examination eligibility rosters.
             </p>
           </div>
         </>
+      ) : (
+        /* ══════════════════════════════════════════════════════════════════
+           TAB 2: TEACHER OVERRIDES AUDIT LOG (Immutable)
+        ══════════════════════════════════════════════════════════════════ */
+        <div className="card !p-0 overflow-hidden border border-slate-800">
+          <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <h3 className="text-white font-bold text-sm">Attendance Override Audit Log</h3>
+              <p className="text-slate-400 text-xs">Immutable security record of all manual status overrides made by faculty or admins</p>
+            </div>
+            <span className="badge badge-info text-xs">{auditLogs.length} Records</span>
+          </div>
+
+          <div className="table-wrapper">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Changed By (Faculty / Admin)</th>
+                  <th>Status Transition</th>
+                  <th>Audit Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-800/40">
+                    <td className="text-slate-400 text-xs font-mono">
+                      {log.created_at || log.changed_at ? new Date(log.created_at || log.changed_at).toLocaleString('en-IN') : '—'}
+                    </td>
+                    <td>
+                      <p className="text-white font-medium text-xs">
+                        {log.user?.full_name || 'Faculty Member'}
+                      </p>
+                      <p className="text-slate-500 text-[11px]">{log.user?.email || ''}</p>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="badge badge-danger text-[10px]">{log.old_status || log.previous_status || 'ABSENT'}</span>
+                        <span className="text-slate-500">➔</span>
+                        <span className="badge badge-active text-[10px]">{log.new_status || 'PRESENT'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-slate-300 text-xs italic">
+                        "{log.reason || 'Manual override'}"
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {auditLogs.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-center py-16 text-slate-400 text-xs">
+                      No attendance overrides recorded yet. All attendance records are verified.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   )

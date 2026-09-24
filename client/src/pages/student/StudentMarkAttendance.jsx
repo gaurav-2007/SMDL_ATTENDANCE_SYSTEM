@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { MapPin, Camera, RefreshCw, UserCheck, AlertTriangle, CheckCircle2, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
@@ -19,12 +20,14 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
 }
 
 export default function StudentMarkAttendance() {
+  const routerLocation = useLocation()
+  const preselectedId = routerLocation?.state?.lectureId || ''
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
 
   const [lectures, setLectures] = useState([])
-  const [selectedLecture, setSelectedLecture] = useState('')
+  const [selectedLecture, setSelectedLecture] = useState(preselectedId)
   const [loadingLectures, setLoadingLectures] = useState(true)
 
   const [latitude, setLatitude] = useState(null)
@@ -51,9 +54,30 @@ export default function StudentMarkAttendance() {
     (async () => {
       try {
         const { data } = await api.get('/lectures/active')
-        const list = data?.data?.lectures || []
+        let list = data?.data?.lectures || []
+
+        // If no active lecture manually started by teacher, load scheduled timetable classes for today
+        if (list.length === 0) {
+          try {
+            const todayRes = await api.get('/student/today-classes')
+            const todayClasses = todayRes?.data?.data?.classes || []
+            list = todayClasses.map(c => ({
+              id: c.id || c.timetable_id,
+              topic: `${c.start_time?.slice(0, 5)} - ${c.end_time?.slice(0, 5)} · ${c.room_number || 'Room'}`,
+              subject: { name: c.subject_name, code: c.subject_code },
+              division: { name: c.teacher_name || 'Faculty', division_name: '' },
+              teacher_name: c.teacher_name,
+              is_timetable: true
+            }))
+          } catch (_e) {}
+        }
+
         setLectures(list)
-        if (list.length === 1) setSelectedLecture(list[0].id)
+        if (preselectedId && list.some(l => l.id === preselectedId)) {
+          setSelectedLecture(preselectedId)
+        } else if (list.length === 1) {
+          setSelectedLecture(list[0].id)
+        }
       } catch (e) {
         toast.error(e?.response?.data?.message || 'Failed to load active lectures')
       } finally {
@@ -62,7 +86,7 @@ export default function StudentMarkAttendance() {
     })()
     return () => stopCamera()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [preselectedId])
 
   async function fetchLocation() {
     setFetchingLoc(true)

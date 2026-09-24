@@ -3,7 +3,8 @@ import {
   BookOpen, Plus, X, GraduationCap, Layers,
   RefreshCw, CheckCircle2, ChevronRight, Loader2,
   Trash2, Search, Filter, Sparkles, BookMarked,
-  ArrowRight, Hash, Check
+  ArrowRight, Hash, Check, Calendar, Clock, MapPin,
+  AlertCircle, Edit2, User
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
@@ -75,6 +76,26 @@ export default function AcademicPanel() {
   const [quickSubjectForm, setQuickSubjectForm] = useState({ division_id: '', name: '', code: '' })
   const [savingQuickSubject, setSavingQuickSubject] = useState(false)
 
+  // Timetable State (Step 4: Weekly Timetable Builder)
+  const [timetableDivId, setTimetableDivId] = useState('')
+  const [timetableSlots, setTimetableSlots] = useState([])
+  const [teachersList, setTeachersList] = useState([])
+  const [loadingTimetable, setLoadingTimetable] = useState(false)
+  const [showSlotModal, setShowSlotModal] = useState(false)
+  const [slotForm, setSlotForm] = useState({
+    id: null,
+    day_of_week: 'Monday',
+    start_time: '08:00:00',
+    end_time: '09:00:00',
+    subject_id: '',
+    teacher_id: '',
+    room_number: 'Room 101',
+    is_lab: false,
+  })
+  const [savingSlot, setSavingSlot] = useState(false)
+  const [conflictError, setConflictError] = useState('')
+  const [smdlLoading, setSmdlLoading] = useState(false)
+
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('ALL')
@@ -87,9 +108,13 @@ export default function AcademicPanel() {
         api.get('/academic/divisions'),
         api.get('/academic/subjects'),
       ])
-      setCourses(cRes.data.data?.courses || [])
-      setDivisions(dRes.data.data?.divisions || [])
-      setSubjects(sRes.data.data?.subjects || [])
+      const cList = cRes.data.data?.courses || []
+      const dList = dRes.data.data?.divisions || []
+      const sList = sRes.data.data?.subjects || []
+      setCourses(cList)
+      setDivisions(dList)
+      setSubjects(sList)
+      setTimetableDivId(prev => prev || dList[0]?.id || '')
     } catch {
       toast.error('Failed to load academic structure')
     } finally {
@@ -97,9 +122,88 @@ export default function AcademicPanel() {
     }
   }, [])
 
+  const fetchTimetable = useCallback(async (divId) => {
+    if (!divId) return
+    setLoadingTimetable(true)
+    try {
+      const { data } = await api.get(`/academic/timetable/${divId}`)
+      setTimetableSlots(data.data?.slots || [])
+    } catch {
+      toast.error('Failed to load timetable')
+    } finally {
+      setLoadingTimetable(false)
+    }
+  }, [])
+
+  const fetchTeachersList = useCallback(async () => {
+    try {
+      const { data } = await api.get('/academic/teachers-list')
+      setTeachersList(data.data?.teachers || [])
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  useEffect(() => {
+    if (tab === 'TIMETABLE') {
+      if (timetableDivId) fetchTimetable(timetableDivId)
+      fetchTeachersList()
+    }
+  }, [tab, timetableDivId, fetchTimetable, fetchTeachersList])
+
+  async function handleSaveSlot(e) {
+    e?.preventDefault()
+    if (!slotForm.subject_id) {
+      toast.error('Please select a subject')
+      return
+    }
+    setSavingSlot(true)
+    setConflictError('')
+    try {
+      await api.post('/academic/timetable', {
+        ...slotForm,
+        division_id: timetableDivId,
+      })
+      toast.success(slotForm.id ? 'Slot updated successfully! ✅' : 'Slot added to timetable! ✅')
+      setShowSlotModal(false)
+      fetchTimetable(timetableDivId)
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Failed to save timetable slot'
+      setConflictError(msg)
+      toast.error(msg)
+    } finally {
+      setSavingSlot(false)
+    }
+  }
+
+  async function handleDeleteSlot(id, name) {
+    if (!window.confirm(`Delete ${name || 'this slot'} from the timetable?`)) return
+    try {
+      await api.delete(`/academic/timetable/${id}`)
+      toast.success('Slot removed from timetable')
+      setTimetableSlots(ts => ts.filter(s => s.id !== id))
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete slot')
+    }
+  }
+
+  async function handleLoadSmdlMatrix() {
+    if (!timetableDivId) return toast.error('Select a division first')
+    if (!window.confirm('Populate official SMDL 14-subject timetable for this division? This will schedule Monday through Saturday slots.')) return
+    setSmdlLoading(true)
+    try {
+      const { data } = await api.post('/academic/timetable/load-smdl-matrix', { division_id: timetableDivId })
+      toast.success(data.message || 'Official SMDL Timetable Loaded! ⚡')
+      fetchTimetable(timetableDivId)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load timetable matrix')
+    } finally {
+      setSmdlLoading(false)
+    }
+  }
+
 
   // Count subjects per course
   const subjectCountByCourse = useMemo(() => {
@@ -413,6 +517,14 @@ export default function AcademicPanel() {
           >
             <BookOpen size={15} /> Subjects ({subjects.length})
           </button>
+          <button
+            onClick={() => setTab('TIMETABLE')}
+            className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
+              tab === 'TIMETABLE' ? 'bg-gradient-brand text-white shadow-md' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Calendar size={15} /> Weekly Timetable
+          </button>
         </div>
 
         {/* Filter & Search Bar for non-course tabs */}
@@ -661,6 +773,200 @@ export default function AcademicPanel() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* ═══════════ TAB 4: WEEKLY TIMETABLE BUILDER ═══════════ */}
+          {tab === 'TIMETABLE' && (
+            <div className="space-y-4">
+              {/* Top Controls: Division Picker & Actions */}
+              <div className="card !p-4 bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-slate-400 text-xs font-medium">Select Division:</span>
+                  <select
+                    value={timetableDivId}
+                    onChange={e => {
+                      setTimetableDivId(e.target.value)
+                      fetchTimetable(e.target.value)
+                    }}
+                    className="form-input !py-1.5 text-xs font-semibold w-64 bg-slate-950 border-slate-700"
+                  >
+                    {divisions.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} Div {d.division_name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => fetchTimetable(timetableDivId)}
+                    className="btn btn-ghost btn-sm !p-2 text-slate-400 hover:text-white"
+                    title="Refresh schedule"
+                  >
+                    <RefreshCw size={14} className={loadingTimetable ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleLoadSmdlMatrix}
+                    disabled={smdlLoading}
+                    className="btn bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/50 flex items-center gap-2 text-xs"
+                    title="Import official 14-subject SMDL FYBSc CS schedule"
+                  >
+                    {smdlLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    ⚡ Load SMDL Presets
+                  </button>
+                  <button
+                    onClick={() => {
+                      const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
+                      setSlotForm({
+                        id: null,
+                        day_of_week: 'Monday',
+                        start_time: '08:00:00',
+                        end_time: '09:00:00',
+                        subject_id: matchedSubjects[0]?.id || '',
+                        teacher_id: teachersList[0]?.id || '',
+                        room_number: 'Room 101',
+                        is_lab: false,
+                      })
+                      setConflictError('')
+                      setShowSlotModal(true)
+                    }}
+                    className="btn btn-primary flex items-center gap-2 text-xs shadow-md"
+                  >
+                    <Plus size={14} /> Add Lecture Slot
+                  </button>
+                </div>
+              </div>
+
+              {/* 6-Day Weekly Matrix Grid */}
+              {loadingTimetable ? (
+                <div className="card text-center py-20">
+                  <Loader2 className="animate-spin w-8 h-8 mx-auto mb-2 text-brand-accent" />
+                  <p className="text-slate-400 text-xs">Loading division timetable...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => {
+                    const daySlots = timetableSlots
+                      .filter(s => s.day_of_week?.toLowerCase() === day.toLowerCase())
+                      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+
+                    return (
+                      <div key={day} className="flex flex-col bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+                        {/* Day Column Header */}
+                        <div className="px-3 py-2 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
+                          <span className="text-white font-bold text-xs">{day}</span>
+                          <span className="badge bg-slate-700/60 text-slate-300 text-[10px]">
+                            {daySlots.length} {daySlots.length === 1 ? 'Slot' : 'Slots'}
+                          </span>
+                        </div>
+
+                        {/* Slots container */}
+                        <div className="p-2 space-y-2 flex-1 min-h-[160px]">
+                          {daySlots.map(slot => (
+                            <div
+                              key={slot.id}
+                              className="group relative bg-slate-950/80 hover:bg-slate-800/70 border border-slate-800/90 rounded-lg p-2.5 transition-all text-xs"
+                            >
+                              {/* Slot Time */}
+                              <div className="flex items-center justify-between gap-1 text-[11px] font-mono text-slate-400 mb-1">
+                                <span className="flex items-center gap-1 font-semibold text-slate-300">
+                                  <Clock size={11} className="text-brand-accent" />
+                                  {(slot.start_time || '').slice(0, 5)} - {(slot.end_time || '').slice(0, 5)}
+                                </span>
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={() => {
+                                      setSlotForm({
+                                        id: slot.id,
+                                        day_of_week: slot.day_of_week,
+                                        start_time: slot.start_time,
+                                        end_time: slot.end_time,
+                                        subject_id: slot.subject?.id || slot.subject_id,
+                                        teacher_id: slot.teacher?.id || slot.teacher_id || '',
+                                        room_number: slot.room_number || 'Room 101',
+                                        is_lab: !!slot.is_lab,
+                                      })
+                                      setConflictError('')
+                                      setShowSlotModal(true)
+                                    }}
+                                    className="text-slate-400 hover:text-white p-0.5"
+                                    title="Edit slot"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteSlot(slot.id, slot.subject?.name)}
+                                    className="text-slate-400 hover:text-red-400 p-0.5"
+                                    title="Delete slot"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Subject Badge & Name */}
+                              <div className="flex items-start gap-1.5 mb-1.5">
+                                {slot.subject?.code && (
+                                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/50 flex-shrink-0">
+                                    {slot.subject.code}
+                                  </span>
+                                )}
+                                <p className="text-white font-medium line-clamp-2 leading-snug">
+                                  {slot.subject?.name || 'Class'}
+                                </p>
+                              </div>
+
+                              {/* Faculty & Room Footer */}
+                              <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-slate-800/50 text-[10px]">
+                                <span className="text-slate-400 truncate max-w-[110px] flex items-center gap-1" title={slot.teacher?.user?.full_name || 'Faculty'}>
+                                  <User size={10} className="text-slate-500" />
+                                  {slot.teacher?.user?.full_name || 'Assigned Faculty'}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                                  slot.is_lab
+                                    ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
+                                    : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                }`}>
+                                  {slot.room_number || 'Room 101'}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+
+                          {daySlots.length === 0 && (
+                            <div className="flex flex-col items-center justify-center h-full py-8 text-center text-slate-500">
+                              <p className="text-[11px] mb-2">No lectures</p>
+                              <button
+                                onClick={() => {
+                                  const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
+                                  setSlotForm({
+                                    id: null,
+                                    day_of_week: day,
+                                    start_time: '08:00:00',
+                                    end_time: '09:00:00',
+                                    subject_id: matchedSubjects[0]?.id || '',
+                                    teacher_id: teachersList[0]?.id || '',
+                                    room_number: 'Room 101',
+                                    is_lab: false,
+                                  })
+                                  setConflictError('')
+                                  setShowSlotModal(true)
+                                }}
+                                className="text-[10px] text-brand-accent hover:underline flex items-center gap-1"
+                              >
+                                <Plus size={11} /> Add slot
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </>
@@ -1396,6 +1702,165 @@ export default function AcademicPanel() {
           </div>
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL 4: ADD/EDIT TIMETABLE SLOT (With Double-Booking Conflict Check)
+      ══════════════════════════════════════════════════════════════════ */}
+      {showSlotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
+          <div className="card w-full max-w-lg relative bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl overflow-hidden p-6 sm:p-7">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-brand" />
+            <button
+              onClick={() => setShowSlotModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-xl bg-brand-accent/15 text-brand-accent">
+                <Calendar size={22} />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-lg">
+                  {slotForm.id ? 'Edit Timetable Slot' : 'Add Timetable Slot'}
+                </h3>
+                <p className="text-slate-400 text-xs">
+                  Schedule lecture slot for this division with faculty and classroom
+                </p>
+              </div>
+            </div>
+
+            {conflictError && (
+              <div className="p-3 mb-4 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs flex items-start gap-2">
+                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+                <span>{conflictError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSlot} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="form-label">Day of Week:</label>
+                  <select
+                    className="form-input"
+                    value={slotForm.day_of_week}
+                    onChange={e => setSlotForm({ ...slotForm, day_of_week: e.target.value })}
+                  >
+                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Classroom / Room Number:</label>
+                  <input
+                    type="text"
+                    required
+                    className="form-input"
+                    placeholder="e.g. Room 101 or Lab 202"
+                    value={slotForm.room_number}
+                    onChange={e => setSlotForm({ ...slotForm, room_number: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="form-group">
+                  <label className="form-label">Start Time:</label>
+                  <input
+                    type="time"
+                    step="1"
+                    required
+                    className="form-input"
+                    value={slotForm.start_time}
+                    onChange={e => setSlotForm({ ...slotForm, start_time: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">End Time:</label>
+                  <input
+                    type="time"
+                    step="1"
+                    required
+                    className="form-input"
+                    value={slotForm.end_time}
+                    onChange={e => setSlotForm({ ...slotForm, end_time: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Curriculum Subject:</label>
+                <select
+                  required
+                  className="form-input"
+                  value={slotForm.subject_id}
+                  onChange={e => setSlotForm({ ...slotForm, subject_id: e.target.value })}
+                >
+                  <option value="">-- Choose Subject --</option>
+                  {subjects
+                    .filter(s => !s.division_id || s.division_id === timetableDivId)
+                    .map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.code ? `[${s.code}] ` : ''}{s.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Assigned Faculty (Teacher):</label>
+                <select
+                  className="form-input"
+                  value={slotForm.teacher_id}
+                  onChange={e => setSlotForm({ ...slotForm, teacher_id: e.target.value })}
+                >
+                  <option value="">-- Optional / Assigned Faculty --</option>
+                  {teachersList.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.user?.full_name || t.teacher_id} ({t.department || 'Faculty'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="slot_is_lab"
+                  checked={slotForm.is_lab}
+                  onChange={e => setSlotForm({ ...slotForm, is_lab: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-brand-accent focus:ring-0 cursor-pointer"
+                />
+                <label htmlFor="slot_is_lab" className="text-slate-300 text-xs cursor-pointer select-none">
+                  Practical / Lab Session (hands-on)
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSlotModal(false)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSlot}
+                  className="btn btn-primary btn-sm flex items-center gap-1.5 shadow-md"
+                >
+                  {savingSlot ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  {slotForm.id ? 'Save Changes' : 'Add to Timetable'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+

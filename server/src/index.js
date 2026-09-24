@@ -25,6 +25,12 @@ app.use('/api/lectures', lectureRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/announcements', announcementRoutes);
 
+// Direct alias for Section 3: GET /student/today-classes & /api/student/today-classes
+const protect = require('./middleware/auth');
+const { getStudentTodayClasses } = require('./controllers/lectureController');
+app.get('/api/student/today-classes', protect, getStudentTodayClasses);
+app.get('/student/today-classes', protect, getStudentTodayClasses);
+
 
 app.get('/', (_req, res) => {
   res.json({
