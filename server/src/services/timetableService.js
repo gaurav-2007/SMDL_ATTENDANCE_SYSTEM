@@ -92,6 +92,12 @@ async function getAcademicEntities() {
   const subjectMap = {};
   (subjects || []).forEach((s) => {
     subjectMap[s.code] = s;
+    // Map by tag in parenthesis e.g. "Data Structures & Algorithms (DSA)" -> "DSA"
+    const match = s.name.match(/\(([^)]+)\)/);
+    if (match) {
+      subjectMap[match[1]] = s;
+      subjectMap[match[1].toUpperCase()] = s;
+    }
   });
 
   const teacherMap = {};

@@ -87,17 +87,33 @@
     @apply btn w-10 h-10 p-0 rounded-xl;
   }
 
-  /* Inputs */
-  .input {
-    @apply w-full bg-brand-dark border border-brand-border rounded-xl px-4 py-2.5 text-white placeholder-brand-muted text-sm focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition-colors duration-200;
+  /* Inputs & Forms */
+  .input,
+  .form-input {
+    @apply w-full bg-slate-900/90 border border-slate-700/80 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/20 transition-all duration-200 shadow-inner;
+  }
+
+  select.input,
+  select.form-input {
+    @apply pr-10 bg-slate-900 cursor-pointer;
+  }
+
+  select.input option,
+  select.form-input option {
+    @apply bg-slate-900 text-white py-2;
   }
 
   .input-error {
     @apply border-brand-danger focus:border-brand-danger focus:ring-brand-danger;
   }
 
-  .label {
-    @apply block text-sm font-medium text-brand-muted mb-1.5;
+  .label,
+  .form-label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5;
+  }
+
+  .form-group {
+    @apply space-y-1.5 mb-4;
   }
 
   /* Badges */

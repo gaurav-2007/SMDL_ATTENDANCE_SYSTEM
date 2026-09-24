@@ -248,6 +248,10 @@ function AddLectureModal({ teachers, subjects, divisions, onClose, onSuccess }) 
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  const filteredSubjects = form.division_id
+    ? subjects.filter(s => !s.division_id || s.division_id === form.division_id)
+    : subjects
+
   async function submit(e) {
     e.preventDefault()
     if (!form.subject_id || !form.teacher_id || !form.division_id) {
@@ -266,8 +270,8 @@ function AddLectureModal({ teachers, subjects, divisions, onClose, onSuccess }) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="card w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+      <div className="card w-full max-w-lg relative max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700/80 shadow-2xl rounded-2xl p-6">
         <button onClick={onClose} className="absolute top-4 right-4 btn-icon btn-ghost">
           <X size={16} />
         </button>
@@ -279,7 +283,33 @@ function AddLectureModal({ teachers, subjects, divisions, onClose, onSuccess }) 
 
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="form-group">
+            <div className="form-group sm:col-span-2">
+              <label className="form-label">Academic Division *</label>
+              <select
+                id="lecture-division"
+                className="form-input"
+                value={form.division_id}
+                onChange={e => {
+                  const divId = e.target.value
+                  setForm(p => ({
+                    ...p,
+                    division_id: divId,
+                    subject_id: '' // reset subject when division changes
+                  }))
+                }}
+                required
+              >
+                <option value="">-- Select Class Division --</option>
+                {divisions.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} - Division {d.division_name} ({d.courses?.name || 'General'})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">Select class division first to filter associated subjects</p>
+            </div>
+
+            <div className="form-group sm:col-span-2">
               <label className="form-label">Subject *</label>
               <select
                 id="lecture-subject"
@@ -288,14 +318,21 @@ function AddLectureModal({ teachers, subjects, divisions, onClose, onSuccess }) 
                 onChange={e => set('subject_id', e.target.value)}
                 required
               >
-                <option value="">Select Subject</option>
-                {subjects.map(s => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.code})</option>
+                <option value="">
+                  {form.division_id ? '-- Select Subject for this Division --' : '-- Select Division First --'}
+                </option>
+                {filteredSubjects.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.code}) {s.divisions ? `· ${s.divisions.name}` : ''}
+                  </option>
                 ))}
               </select>
+              {form.division_id && filteredSubjects.length === 0 && (
+                <p className="text-[11px] text-amber-400 mt-1">No subjects found for this division. Add subjects in Academics tab.</p>
+              )}
             </div>
 
-            <div className="form-group">
+            <div className="form-group sm:col-span-2">
               <label className="form-label">Teacher *</label>
               <select
                 id="lecture-teacher"
@@ -304,25 +341,9 @@ function AddLectureModal({ teachers, subjects, divisions, onClose, onSuccess }) 
                 onChange={e => set('teacher_id', e.target.value)}
                 required
               >
-                <option value="">Select Teacher</option>
+                <option value="">-- Select Teacher --</option>
                 {teachers.map(t => (
-                  <option key={t.id} value={t.id}>{t.full_name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Division *</label>
-              <select
-                id="lecture-division"
-                className="form-input"
-                value={form.division_id}
-                onChange={e => set('division_id', e.target.value)}
-                required
-              >
-                <option value="">Select Division</option>
-                {divisions.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={t.id} value={t.id}>{t.full_name} ({t.department || 'Faculty'})</option>
                 ))}
               </select>
             </div>

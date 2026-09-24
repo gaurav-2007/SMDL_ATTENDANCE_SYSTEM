@@ -40,11 +40,14 @@ const getDivisions = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc   Get subjects (optionally by division or teacher)
+// @desc   Get subjects (optionally by division, course, or teacher)
 // @route  GET /api/academic/subjects
 const getSubjects = asyncHandler(async (req, res) => {
-  const { division_id, teacher_id } = req.query;
-  let query = supabaseAdmin.from('subjects').select('*, divisions(name, division_name, course_id)');
+  const { division_id, teacher_id, course_id } = req.query;
+  let query = supabaseAdmin
+    .from('subjects')
+    .select('*, divisions(id, name, division_name, course_id, courses(id, name, code))')
+    .order('name', { ascending: true });
 
   if (division_id) {
     query = query.eq('division_id', division_id);
@@ -56,9 +59,14 @@ const getSubjects = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
+  let filtered = subjects || [];
+  if (course_id) {
+    filtered = filtered.filter(s => s.divisions?.course_id === course_id);
+  }
+
   res.json({
     success: true,
-    data: { subjects },
+    data: { subjects: filtered },
   });
 });
 
@@ -127,7 +135,7 @@ const createSubject = asyncHandler(async (req, res) => {
       code: code.trim().toUpperCase(),
       division_id,
     })
-    .select()
+    .select('*, divisions(id, name, division_name, course_id, courses(id, name, code))')
     .single();
 
   if (error) {
@@ -137,6 +145,90 @@ const createSubject = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, message: 'Subject created successfully', data: { subject: data } });
 });
 
+// @desc   Admin batch adds subjects to a course / divisions
+// @route  POST /api/academic/subjects/batch
+const batchCreateSubjects = asyncHandler(async (req, res) => {
+  const { division_ids, subjects } = req.body;
+  if (!division_ids || !Array.isArray(division_ids) || division_ids.length === 0) {
+    res.status(400);
+    throw new Error('At least one division must be selected');
+  }
+  if (!subjects || !Array.isArray(subjects) || subjects.length === 0) {
+    res.status(400);
+    throw new Error('At least one subject is required');
+  }
+
+  const rowsToInsert = [];
+  for (const divId of division_ids) {
+    for (const sub of subjects) {
+      if (sub.name?.trim() && sub.code?.trim()) {
+        rowsToInsert.push({
+          division_id: divId,
+          name: sub.name.trim(),
+          code: sub.code.trim().toUpperCase(),
+        });
+      }
+    }
+  }
+
+  if (rowsToInsert.length === 0) {
+    res.status(400);
+    throw new Error('Please provide valid subjects with name and code');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('subjects')
+    .insert(rowsToInsert)
+    .select('*, divisions(id, name, division_name, course_id, courses(id, name, code))');
+
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+
+  res.status(201).json({
+    success: true,
+    message: `${data.length} subject(s) added successfully`,
+    data: { subjects: data },
+  });
+});
+
+// @desc   Admin deletes Subject
+// @route  DELETE /api/academic/subjects/:id
+const deleteSubject = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { error } = await supabaseAdmin.from('subjects').delete().eq('id', id);
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+  res.json({ success: true, message: 'Subject deleted successfully' });
+});
+
+// @desc   Admin deletes Division
+// @route  DELETE /api/academic/divisions/:id
+const deleteDivision = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { error } = await supabaseAdmin.from('divisions').delete().eq('id', id);
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+  res.json({ success: true, message: 'Division deleted successfully' });
+});
+
+// @desc   Admin deletes Course
+// @route  DELETE /api/academic/courses/:id
+const deleteCourse = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { error } = await supabaseAdmin.from('courses').delete().eq('id', id);
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+  res.json({ success: true, message: 'Course deleted successfully' });
+});
+
 module.exports = {
   getCourses,
   getDivisions,
@@ -144,4 +236,8 @@ module.exports = {
   createCourse,
   createDivision,
   createSubject,
+  batchCreateSubjects,
+  deleteSubject,
+  deleteDivision,
+  deleteCourse,
 };
