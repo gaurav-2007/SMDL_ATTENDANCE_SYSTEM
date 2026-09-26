@@ -48,18 +48,38 @@ const buildUserResponse = async (u, token) => {
   } else if (u.role === 'teacher') {
     const { data: t } = await supabaseAdmin
       .from('teachers')
-      .select('teacher_id, department, designation')
+      .select('id, teacher_id, department, designation')
       .eq('user_id', u.id)
       .maybeSingle();
 
     if (t) {
+      const { data: ts } = await supabaseAdmin
+        .from('teacher_subjects')
+        .select('subject:subjects(id, name, code, division:divisions(id, name, division_name))')
+        .eq('teacher_id', t.id);
+
+      const assigned_subjects = ts?.map((x) => x.subject).filter(Boolean) || [];
+      const assigned_classes = [
+        ...new Set(
+          assigned_subjects
+            .map((s) => (s.division ? `${s.division.name} - Div ${s.division.division_name}` : ''))
+            .filter(Boolean)
+        ),
+      ];
+
       profile = {
+        teacher_id: t.id,
         employee_id: t.teacher_id,
         department: t.department,
         designation: t.designation,
+        assigned_subjects,
+        assigned_classes,
       };
       userObj.employee_id = t.teacher_id;
       userObj.department = t.department;
+      userObj.designation = t.designation;
+      userObj.assigned_subjects = assigned_subjects;
+      userObj.assigned_classes = assigned_classes;
     }
   }
 
@@ -239,6 +259,7 @@ const registerTeacher = asyncHandler(async (req, res) => {
     user_id: user.id,
     teacher_id: parsed.employee_id,
     department: parsed.department,
+    designation: parsed.designation || null,
     registration_submitted_at: new Date().toISOString(),
   });
 
@@ -386,21 +407,39 @@ const getMe = asyncHandler(async (req, res) => {
     const { data } = await supabaseAdmin
       .from('teachers')
       .select(
-        'teacher_id, department, designation, registration_submitted_at, approved_at, approved_by, rejection_reason'
+        'id, teacher_id, department, designation, registration_submitted_at, approved_at, approved_by, rejection_reason'
       )
       .eq('user_id', req.user.id)
       .maybeSingle();
-    extraProfile = data
-      ? {
-          employee_id: data.teacher_id,
-          department: data.department,
-          designation: data.designation,
-          registration_submitted_at: data.registration_submitted_at,
-          approved_at: data.approved_at,
-          approved_by: data.approved_by,
-          rejection_reason: data.rejection_reason,
-        }
-      : null;
+
+    if (data) {
+      const { data: ts } = await supabaseAdmin
+        .from('teacher_subjects')
+        .select('subject:subjects(id, name, code, division:divisions(id, name, division_name))')
+        .eq('teacher_id', data.id);
+
+      const assigned_subjects = ts?.map((x) => x.subject).filter(Boolean) || [];
+      const assigned_classes = [
+        ...new Set(
+          assigned_subjects
+            .map((s) => (s.division ? `${s.division.name} - Div ${s.division.division_name}` : ''))
+            .filter(Boolean)
+        ),
+      ];
+
+      extraProfile = {
+        teacher_id: data.id,
+        employee_id: data.teacher_id,
+        department: data.department,
+        designation: data.designation,
+        assigned_subjects,
+        assigned_classes,
+        registration_submitted_at: data.registration_submitted_at,
+        approved_at: data.approved_at,
+        approved_by: data.approved_by,
+        rejection_reason: data.rejection_reason,
+      };
+    }
   }
 
   res.json({

@@ -1,6 +1,6 @@
 const express = require('express');
 const protect = require('../middleware/auth');
-const { restrictTo } = require('../middleware/roles');
+const { restrictTo, restrictToActiveOnly } = require('../middleware/roles');
 const {
   markAttendance,
   getLectureAttendance,
@@ -15,8 +15,8 @@ router.use(protect);
 
 router.post('/mark', restrictTo('student', 'admin'), markAttendance);
 router.get('/my-stats', restrictTo('student', 'admin'), getMyStats);
-router.get('/lecture/:lectureId', restrictTo('teacher', 'admin'), getLectureAttendance);
-router.post('/override', restrictTo('teacher', 'admin'), overrideAttendance);
-router.get('/reports/overview', restrictTo('teacher', 'admin'), getReportsOverview);
+router.get('/lecture/:lectureId', restrictTo('teacher', 'admin'), restrictToActiveOnly, getLectureAttendance);
+router.post('/override', restrictTo('teacher', 'admin'), restrictToActiveOnly, overrideAttendance);
+router.get('/reports/overview', restrictTo('teacher', 'admin'), restrictToActiveOnly, getReportsOverview);
 
 module.exports = router;

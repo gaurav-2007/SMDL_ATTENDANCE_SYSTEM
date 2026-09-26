@@ -1,6 +1,6 @@
 const express = require('express');
 const protect = require('../middleware/auth');
-const { restrictTo } = require('../middleware/roles');
+const { restrictTo, restrictToActiveOnly } = require('../middleware/roles');
 const {
   getActiveLectures,
   getAllLectures,
@@ -21,9 +21,9 @@ router.get('/active', getActiveLectures);
 router.get('/today', getTodaySchedule);
 router.get('/today-classes', getStudentTodayClasses);
 router.get('/timetable', getTimetableMatrix);
-router.post('/', restrictTo('teacher', 'admin'), createLecture);
-router.patch('/:id/status', restrictTo('teacher', 'admin'), updateLectureStatus);
-router.delete('/:id', restrictTo('teacher', 'admin'), deleteLecture);
+router.post('/', restrictTo('teacher', 'admin'), restrictToActiveOnly, createLecture);
+router.patch('/:id/status', restrictTo('teacher', 'admin'), restrictToActiveOnly, updateLectureStatus);
+router.delete('/:id', restrictTo('teacher', 'admin'), restrictToActiveOnly, deleteLecture);
 
 module.exports = router;
 

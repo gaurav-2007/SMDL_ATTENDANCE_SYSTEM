@@ -31,6 +31,7 @@ const registerTeacherSchema = z.object({
   phone,
   employee_id: z.string().trim().min(2, 'Employee ID required').max(50),
   department: z.string().trim().min(2, 'Department required').max(100),
+  designation: z.string().trim().max(100).optional(),
 }).refine((data) => Boolean((data.name || data.full_name)?.trim()), {
   message: 'Name is required',
   path: ['name'],

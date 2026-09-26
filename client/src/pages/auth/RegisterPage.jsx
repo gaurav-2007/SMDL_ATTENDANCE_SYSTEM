@@ -25,7 +25,7 @@ const INITIAL_STUDENT = {
 
 const INITIAL_TEACHER = {
   full_name: '', email: '', password: '', confirm_password: '',
-  employee_id: '', department: '', phone: '',
+  employee_id: '', department: '', designation: '', phone: '',
 }
 
 function FieldInput({ id, label, name, type = 'text', placeholder, value, onChange, error, optional }) {
@@ -192,6 +192,7 @@ export default function RegisterPage() {
         employee_id: form.employee_id?.trim(),
         branch: form.branch,
         department: form.branch || form.department,
+        designation: form.designation?.trim() || undefined,
         course_id: form.course_id || undefined,
         division_id: form.division_id || undefined,
       }
@@ -395,24 +396,32 @@ export default function RegisterPage() {
                 )}
               </>
             ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <FieldInput
-                  id="reg-emp-id" label="Employee ID" name="employee_id"
-                  placeholder="TCH-1001" value={form.employee_id || ''}
-                  onChange={change} error={errors.employee_id}
-                />
-                <div>
-                  <label htmlFor="reg-dept" className="label">Department</label>
-                  <select
-                    id="reg-dept" name="department"
-                    value={form.department || ''} onChange={change}
-                    className={`input ${errors.department ? 'input-error' : ''}`}
-                  >
-                    <option value="">Select dept.</option>
-                    {TEACHER_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                  {errors.department && <p className="text-brand-danger text-xs mt-1">{errors.department}</p>}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <FieldInput
+                    id="reg-emp-id" label="Employee ID" name="employee_id"
+                    placeholder="TCH-1001" value={form.employee_id || ''}
+                    onChange={change} error={errors.employee_id}
+                  />
+                  <div>
+                    <label htmlFor="reg-dept" className="label">Department</label>
+                    <select
+                      id="reg-dept" name="department"
+                      value={form.department || ''} onChange={change}
+                      className={`input ${errors.department ? 'input-error' : ''}`}
+                    >
+                      <option value="">Select dept.</option>
+                      {TEACHER_DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    {errors.department && <p className="text-brand-danger text-xs mt-1">{errors.department}</p>}
+                  </div>
                 </div>
+
+                <FieldInput
+                  id="reg-designation" label="Designation" name="designation"
+                  placeholder="e.g. Assistant Professor / Head of Department" value={form.designation || ''}
+                  onChange={change} error={errors.designation} optional
+                />
               </div>
             )}
 

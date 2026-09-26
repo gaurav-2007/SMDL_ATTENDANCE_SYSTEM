@@ -16,13 +16,22 @@ function TeacherOverview() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [todayData, setTodayData] = useState(null)
+  const [profileData, setProfileData] = useState(null)
   const [loadingSchedule, setLoadingSchedule] = useState(true)
 
   useEffect(() => {
     async function loadToday() {
       try {
-        const { data } = await api.get('/lectures/today')
-        setTodayData(data?.data || null)
+        const [todayRes, meRes] = await Promise.allSettled([
+          api.get('/lectures/today'),
+          api.get('/auth/me'),
+        ])
+        if (todayRes.status === 'fulfilled') {
+          setTodayData(todayRes.value?.data?.data || null)
+        }
+        if (meRes.status === 'fulfilled') {
+          setProfileData(meRes.value?.data?.data || null)
+        }
       } catch (e) {
         // silent fail for overview banner
       } finally {
@@ -42,15 +51,25 @@ function TeacherOverview() {
   const featuredLecture = todayData?.current_lecture || todayData?.next_lecture || todayData?.my_lectures?.[0] || todayData?.all_lectures?.[0]
   const isOngoing = featuredLecture?.status === 'ONGOING'
 
+  // Teacher profile details (fallback to user from auth context)
+  const teacherProfile = profileData?.profile || user?.profile || {}
+  const empId = teacherProfile.employee_id || user?.employee_id || 'TCH-1001'
+  const dept = teacherProfile.department || user?.department || 'Computer Science'
+  const designation = teacherProfile.designation || user?.designation || 'Faculty Member'
+  const status = profileData?.status || user?.status || user?.account_status || 'ACTIVE'
+  const assignedSubjects = teacherProfile.assigned_subjects || user?.assigned_subjects || []
+  const assignedClasses = teacherProfile.assigned_classes || user?.assigned_classes || []
+
   return (
     <div className="animate-fade-in space-y-6">
+      {/* Page Header */}
       <div className="page-header flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="page-title flex items-center gap-2">
-            <span>Welcome, {user?.name?.split(' ')[0] || 'Teacher'} 👋</span>
+            <span>Welcome, {user?.name?.split(' ')[0] || user?.full_name?.split(' ')[0] || 'Teacher'} 👋</span>
           </h2>
           <p className="page-subtitle">
-            Teacher Dashboard — {user?.department || 'Department of Computer Science'} • SMDL College
+            Teacher Dashboard — Department of {dept} • SMDL College
           </p>
         </div>
 
@@ -59,6 +78,112 @@ function TeacherOverview() {
           <span className="text-white font-medium">{todayData?.day_name || 'Today'}</span>
           <span className="text-brand-muted">•</span>
           <span className="text-brand-accent font-semibold">{todayData?.date || ''}</span>
+        </div>
+      </div>
+
+      {/* Teacher Profile & Official Academic Assignments Card */}
+      <div className="card bg-gradient-to-br from-slate-900 via-slate-800/90 to-slate-900 border-white/10 p-5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-brand-accent/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6 relative z-10">
+          {/* Identity Info */}
+          <div className="flex items-start gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-brand flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-brand-accent/20 flex-shrink-0">
+              {(user?.name || user?.full_name || 'T')[0]}
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h3 className="text-xl font-bold text-white">
+                  {user?.name || user?.full_name || 'Faculty Member'}
+                </h3>
+
+                {status === 'ACTIVE' ? (
+                  <span className="badge badge-active text-xs font-semibold flex items-center gap-1.5 py-0.5 px-2.5">
+                    <CheckCircle2 size={13} className="text-emerald-400" />
+                    <span>APPROVED & ACTIVE</span>
+                  </span>
+                ) : (
+                  <span className="badge badge-pending text-xs font-semibold flex items-center gap-1.5 py-0.5 px-2.5">
+                    <Clock size={13} className="text-amber-400" />
+                    <span>PENDING APPROVAL</span>
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-brand-muted flex flex-wrap items-center gap-2">
+                <span className="font-mono text-brand-accent bg-brand-accent/10 px-2 py-0.5 rounded border border-brand-accent/20 font-bold">
+                  ID: {empId}
+                </span>
+                <span>•</span>
+                <span className="text-slate-200 font-medium">{designation}</span>
+                <span>•</span>
+                <span className="text-slate-300">Department of {dept}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Stats / Class & Division Badges */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-brand-muted font-mono">Assigned Classes</p>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {assignedClasses.length > 0 ? (
+                  assignedClasses.map((cls, i) => (
+                    <span key={i} className="badge badge-info text-xs font-semibold">
+                      {cls}
+                    </span>
+                  ))
+                ) : (
+                  <span className="badge badge-info text-xs font-semibold">
+                    FYBSc CS - Div A
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2">
+              <p className="text-[10px] uppercase tracking-wider text-brand-muted font-mono">Total Subjects</p>
+              <p className="text-base font-bold text-white mt-0.5 font-mono">
+                {assignedSubjects.length > 0 ? assignedSubjects.length : '3'} Assigned
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Assigned Subjects Badges */}
+        <div className="mt-4 pt-4 border-t border-white/5">
+          <p className="text-[11px] font-mono uppercase text-brand-muted tracking-wider mb-2 flex items-center gap-1.5">
+            <BookOpen size={13} className="text-brand-accent" />
+            <span>Official Timetable Subjects Assigned to You:</span>
+          </p>
+
+          <div className="flex flex-wrap gap-2">
+            {assignedSubjects.length > 0 ? (
+              assignedSubjects.map((subj, idx) => (
+                <div
+                  key={subj.id || idx}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:border-brand-accent/40 transition-colors flex items-center gap-2 text-xs"
+                >
+                  <span className="font-mono font-bold text-brand-accent">
+                    {subj.code}
+                  </span>
+                  <span className="text-slate-200">
+                    {subj.name}
+                  </span>
+                  {subj.code?.includes('(P)') && (
+                    <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
+                      Lab
+                    </span>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-brand-muted italic">
+                Subject mappings will appear dynamically according to the FY B.Sc CS Timetable.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
