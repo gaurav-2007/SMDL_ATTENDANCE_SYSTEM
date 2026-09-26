@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
-  const login = useCallback(async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password })
+  const login = useCallback(async (email, password, extra = {}) => {
+    const { data } = await api.post('/auth/login', { email, password, ...extra })
     // Backend returns: { success, data: { id, name, role, token, ...user fields, user: {...} } }
     // Extract token from the top-level data object
     const token = data?.data?.token
@@ -36,6 +36,14 @@ export function AuthProvider({ children }) {
       account_status: raw.account_status,
       phone:          raw.phone,
       created_at:     raw.created_at,
+      roll_number:    raw.roll_number || raw.profile?.roll_number,
+      course:         raw.course || raw.profile?.course,
+      course_code:    raw.course_code || raw.profile?.course_code,
+      division:       raw.division || raw.profile?.division,
+      class:          raw.class || raw.profile?.class,
+      employee_id:    raw.employee_id || raw.profile?.employee_id,
+      department:     raw.department || raw.profile?.department,
+      profile:        raw.profile,
     }
     if (token) localStorage.setItem('smdl_token', token)
     if (userData?.id) localStorage.setItem('smdl_user', JSON.stringify(userData))
@@ -63,6 +71,14 @@ export function AuthProvider({ children }) {
         account_status: raw.account_status,
         phone:          raw.phone,
         created_at:     raw.created_at,
+        roll_number:    raw.profile?.roll_number,
+        course:         raw.profile?.course,
+        course_code:    raw.profile?.course_code,
+        division:       raw.profile?.division,
+        class:          raw.profile?.class,
+        employee_id:    raw.profile?.employee_id,
+        department:     raw.profile?.department,
+        profile:        raw.profile,
       }
       localStorage.setItem('smdl_user', JSON.stringify(userData))
       setUser(userData)

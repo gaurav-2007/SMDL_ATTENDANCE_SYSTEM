@@ -12,8 +12,10 @@ const registerStudentSchema = z.object({
   password,
   phone,
   roll_number: z.string().trim().min(2, 'Roll number required').max(50),
-  course_id: z.string().uuid('Valid course_id required').optional().nullable(),
-  division_id: z.string().uuid('Valid division_id required').optional().nullable(),
+  course_id: z.string().optional().nullable().or(z.literal('')),
+  division_id: z.string().optional().nullable().or(z.literal('')),
+  branch: z.string().optional(),
+  department: z.string().optional(),
   class: z.string().optional(),
   division: z.string().optional(),
 }).refine((data) => Boolean((data.name || data.full_name)?.trim()), {
@@ -36,8 +38,10 @@ const registerTeacherSchema = z.object({
 
 
 const loginSchema = z.object({
-  email: z.string().trim().min(1, 'Email or username is required').max(255),
+  email: z.string().trim().min(1, 'Email, roll number, or username is required').max(255),
   password: z.string().min(1, 'Password is required').max(100),
+  branch: z.string().optional(),
+  course_id: z.string().optional(),
 });
 
 module.exports = {
