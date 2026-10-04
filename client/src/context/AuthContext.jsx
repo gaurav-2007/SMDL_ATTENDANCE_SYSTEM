@@ -96,13 +96,23 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
+  const sendOtp = useCallback(async (email, role = 'student', extra = {}) => {
+    const { data } = await api.post('/auth/send-otp', { email, role, ...extra })
+    return data
+  }, [])
+
+  const verifyOtp = useCallback(async (email, otp) => {
+    const { data } = await api.post('/auth/verify-otp', { email, otp })
+    return data
+  }, [])
+
   // Helpers
   const isAdmin   = user?.role === 'admin'
   const isTeacher = user?.role === 'teacher'
   const isStudent = user?.role === 'student'
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, refreshUser, isAdmin, isTeacher, isStudent }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, register, sendOtp, verifyOtp, refreshUser, isAdmin, isTeacher, isStudent }}>
       {children}
     </AuthContext.Provider>
   )

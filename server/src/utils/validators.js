@@ -18,6 +18,8 @@ const registerStudentSchema = z.object({
   department: z.string().optional(),
   class: z.string().optional(),
   division: z.string().optional(),
+  otp: z.string().optional(),
+  otp_token: z.string().optional(),
 }).refine((data) => Boolean((data.name || data.full_name)?.trim()), {
   message: 'Name is required',
   path: ['name'],
@@ -32,11 +34,37 @@ const registerTeacherSchema = z.object({
   employee_id: z.string().trim().min(2, 'Employee ID required').max(50),
   department: z.string().trim().min(2, 'Department required').max(100),
   designation: z.string().trim().max(100).optional(),
+  otp: z.string().optional(),
+  otp_token: z.string().optional(),
 }).refine((data) => Boolean((data.name || data.full_name)?.trim()), {
   message: 'Name is required',
   path: ['name'],
 });
 
+const sendOtpSchema = z.object({
+  email,
+  role: z.enum(['student', 'teacher']).default('student'),
+  roll_number: z.string().optional(),
+  employee_id: z.string().optional(),
+});
+
+const verifyOtpSchema = z.object({
+  email,
+  otp: z.string().trim().min(4, 'OTP code required').max(10),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email format').max(255),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, 'Reset token required'),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(100),
+  confirm_password: z.string().min(8, 'Confirm password required').max(100),
+}).refine((data) => data.password === data.confirm_password, {
+  message: 'Passwords do not match',
+  path: ['confirm_password'],
+});
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, 'Email, roll number, or username is required').max(255),
@@ -48,5 +76,9 @@ const loginSchema = z.object({
 module.exports = {
   registerStudentSchema,
   registerTeacherSchema,
+  sendOtpSchema,
+  verifyOtpSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
   loginSchema,
 };

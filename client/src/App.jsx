@@ -8,6 +8,8 @@ import { lazy, Suspense } from 'react'
 
 const LoginPage         = lazy(() => import('./pages/auth/LoginPage'))
 const RegisterPage      = lazy(() => import('./pages/auth/RegisterPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'))
+const ResetPasswordPage  = lazy(() => import('./pages/auth/ResetPasswordPage'))
 const PendingApproval   = lazy(() => import('./pages/auth/PendingApproval'))
 const AdminDashboard    = lazy(() => import('./pages/admin/AdminDashboard'))
 const TeacherDashboard  = lazy(() => import('./pages/teacher/TeacherDashboard'))
@@ -39,8 +41,10 @@ function AppRoutes() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public */}
-        <Route path="/login"         element={<LoginPage />} />
-        <Route path="/register"      element={<RegisterPage />} />
+        <Route path="/login"           element={<LoginPage />} />
+        <Route path="/register"        element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password"  element={<ResetPasswordPage />} />
         <Route path="/pending-approval" element={<PendingApproval />} />
 
         {/* Root → role-based redirect */}

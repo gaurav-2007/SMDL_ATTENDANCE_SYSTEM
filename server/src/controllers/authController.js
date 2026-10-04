@@ -5,8 +5,24 @@ const { signToken } = require('../utils/jwt');
 const {
   registerStudentSchema,
   registerTeacherSchema,
+  sendOtpSchema,
+  verifyOtpSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
   loginSchema,
 } = require('../utils/validators');
+const {
+  createOtp,
+  verifyOtp,
+  isEmailVerified,
+  consumeVerification,
+} = require('../services/otpService');
+const { sendOtpEmail } = require('../services/emailService');
+const {
+  requestPasswordReset,
+  validateResetToken,
+  executePasswordReset,
+} = require('../services/passwordResetService');
 
 const dbToUser = (u) => ({
   id: u.id,
@@ -95,9 +111,104 @@ const buildUserResponse = async (u, token) => {
 const USER_SELECT =
   'id, email, full_name, role, status, phone, password_hash, last_login_at, created_at, updated_at';
 
+const sendRegistrationOtp = asyncHandler(async (req, res) => {
+  const parsed = sendOtpSchema.parse(req.body);
+  const email = parsed.email.trim().toLowerCase();
+  const role = parsed.role || 'student';
+
+  // 1. Check if email already registered in users table
+  const { data: existingUser } = await supabaseAdmin
+    .from('users')
+    .select('id')
+    .ilike('email', email)
+    .maybeSingle();
+
+  if (existingUser) {
+    res.status(400);
+    throw new Error('This email address is already registered. Please log in.');
+  }
+
+  // 2. Check roll_number or employee_id uniqueness if provided
+  if (role === 'student' && parsed.roll_number?.trim()) {
+    const { data: rollCheck } = await supabaseAdmin
+      .from('students')
+      .select('id')
+      .ilike('student_id', parsed.roll_number.trim())
+      .maybeSingle();
+
+    if (rollCheck) {
+      res.status(400);
+      throw new Error('Roll number is already registered by another student.');
+    }
+  } else if (role === 'teacher' && parsed.employee_id?.trim()) {
+    const { data: empCheck } = await supabaseAdmin
+      .from('teachers')
+      .select('id')
+      .ilike('teacher_id', parsed.employee_id.trim())
+      .maybeSingle();
+
+    if (empCheck) {
+      res.status(400);
+      throw new Error('Employee ID is already registered by another teacher.');
+    }
+  }
+
+  // 3. Generate OTP
+  const otpData = createOtp(email, role);
+
+  // 4. Send email via real nodemailer SMTP
+  await sendOtpEmail(email, otpData.otp, role);
+
+  res.status(200).json({
+    success: true,
+    message: `Verification code sent to ${email}. Please check your Gmail inbox.`,
+    data: {
+      email,
+      expiresInSeconds: otpData.expiresInSeconds,
+    },
+  });
+});
+
+const verifyRegistrationOtp = asyncHandler(async (req, res) => {
+  const parsed = verifyOtpSchema.parse(req.body);
+  const email = parsed.email.trim().toLowerCase();
+  const otp = parsed.otp.trim();
+
+  const result = verifyOtp(email, otp);
+  if (!result.success) {
+    res.status(400);
+    throw new Error(result.message || 'Invalid or expired OTP');
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Email address verified successfully.',
+    data: {
+      email,
+      otp_token: result.otpToken,
+    },
+  });
+});
+
 const registerStudent = asyncHandler(async (req, res) => {
   const parsed = registerStudentSchema.parse(req.body);
   const studentFullName = (parsed.name || parsed.full_name || req.body.name || req.body.full_name || '').trim();
+
+  // Validate Email Verification with OTP
+  const isVerified = isEmailVerified(parsed.email, parsed.otp_token || req.body.otp_token);
+  if (!isVerified) {
+    const providedOtp = parsed.otp || req.body.otp;
+    if (providedOtp) {
+      const vResult = verifyOtp(parsed.email, providedOtp);
+      if (!vResult.success) {
+        res.status(400);
+        throw new Error(vResult.message || 'Email verification OTP is invalid or expired.');
+      }
+    } else {
+      res.status(400);
+      throw new Error('Please verify your email with OTP before completing registration.');
+    }
+  }
 
   const { data: existing } = await supabaseAdmin
     .from('users')
@@ -199,6 +310,9 @@ const registerStudent = asyncHandler(async (req, res) => {
     throw new Error(studErr.message || 'Failed to create student profile');
   }
 
+  // Verification consumed successfully
+  consumeVerification(parsed.email);
+
   const token = signToken({ id: user.id, role: user.role });
   const userData = await buildUserResponse(user, token);
 
@@ -212,6 +326,22 @@ const registerStudent = asyncHandler(async (req, res) => {
 const registerTeacher = asyncHandler(async (req, res) => {
   const parsed = registerTeacherSchema.parse(req.body);
   const teacherFullName = (parsed.name || parsed.full_name || req.body.name || req.body.full_name || '').trim();
+
+  // Validate Email Verification with OTP
+  const isVerified = isEmailVerified(parsed.email, parsed.otp_token || req.body.otp_token);
+  if (!isVerified) {
+    const providedOtp = parsed.otp || req.body.otp;
+    if (providedOtp) {
+      const vResult = verifyOtp(parsed.email, providedOtp);
+      if (!vResult.success) {
+        res.status(400);
+        throw new Error(vResult.message || 'Email verification OTP is invalid or expired.');
+      }
+    } else {
+      res.status(400);
+      throw new Error('Please verify your email with OTP before completing registration.');
+    }
+  }
 
   const { data: existing } = await supabaseAdmin
     .from('users')
@@ -268,6 +398,9 @@ const registerTeacher = asyncHandler(async (req, res) => {
     res.status(500);
     throw new Error(tchErr.message || 'Failed to create teacher profile');
   }
+
+  // Verification consumed successfully
+  consumeVerification(parsed.email);
 
   const token = signToken({ id: user.id, role: user.role });
   const userData = await buildUserResponse(user, token);
@@ -451,9 +584,37 @@ const getMe = asyncHandler(async (req, res) => {
   });
 });
 
+const forgotPassword = asyncHandler(async (req, res) => {
+  const parsed = forgotPasswordSchema.parse(req.body);
+  const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '';
+  const result = await requestPasswordReset(parsed.email, clientIp);
+  res.status(200).json(result);
+});
+
+const validateResetTokenController = asyncHandler(async (req, res) => {
+  const token = req.query.token;
+  const result = await validateResetToken(token);
+  if (!result.valid) {
+    res.status(400).json(result);
+  } else {
+    res.status(200).json(result);
+  }
+});
+
+const resetPasswordController = asyncHandler(async (req, res) => {
+  const parsed = resetPasswordSchema.parse(req.body);
+  const result = await executePasswordReset(parsed.token, parsed.password);
+  res.status(200).json(result);
+});
+
 module.exports = {
+  sendRegistrationOtp,
+  verifyRegistrationOtp,
   registerStudent,
   registerTeacher,
   login,
   getMe,
+  forgotPassword,
+  validateResetTokenController,
+  resetPasswordController,
 };
