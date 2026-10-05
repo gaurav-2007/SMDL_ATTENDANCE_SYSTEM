@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
+import NotificationCenter from '../notifications/NotificationCenter'
 
 // Nav items per role
 const NAV_CONFIG = {
@@ -150,11 +151,8 @@ export default function DashboardLayout({ children }) {
 
           <div className="flex-1" />
 
-          {/* Notifications placeholder */}
-          <button id="notifications-btn" className="btn-icon btn-ghost relative">
-            <Bell size={18} />
-            <span className="absolute top-2 right-2 w-2 h-2 bg-brand-accent rounded-full" />
-          </button>
+          {/* Notifications Center */}
+          <NotificationCenter />
 
           {/* Avatar */}
           <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center text-white font-bold text-xs">

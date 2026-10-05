@@ -135,6 +135,22 @@ const approveTeacher = asyncHandler(async (req, res) => {
     throw new Error(tchErr.message || 'Failed to update teacher profile');
   }
 
+  // Notify teacher of approval
+  (async () => {
+    try {
+      const { createNotification } = require('../services/notificationService');
+      await createNotification({
+        userId: teacher_id,
+        type: 'TEACHER_APPROVED',
+        title: 'Teacher Account Approved',
+        message: 'Your teacher account has been approved. You can now access the faculty dashboard and manage your assigned classes.',
+        relatedId: teacher_id,
+        relatedType: 'teacher',
+        metadata: { approved_by: req.user.id },
+      });
+    } catch (_e) {}
+  })();
+
   res.json({
     success: true,
     message: `Teacher ${t.full_name} (${t.email}) approved successfully. They now have full dashboard access.`,
@@ -195,6 +211,22 @@ const rejectTeacher = asyncHandler(async (req, res) => {
     res.status(500);
     throw new Error(tchErr.message || 'Failed to store rejection reason');
   }
+
+  // Notify teacher of rejection
+  (async () => {
+    try {
+      const { createNotification } = require('../services/notificationService');
+      await createNotification({
+        userId: teacher_id,
+        type: 'TEACHER_REJECTED',
+        title: 'Teacher Registration Update',
+        message: `Your teacher registration request was rejected. Reason: ${parsed.reason}. Please contact the college administrator for assistance.`,
+        relatedId: teacher_id,
+        relatedType: 'teacher',
+        metadata: { rejected_by: req.user.id, reason: parsed.reason },
+      });
+    } catch (_e) {}
+  })();
 
   res.json({
     success: true,

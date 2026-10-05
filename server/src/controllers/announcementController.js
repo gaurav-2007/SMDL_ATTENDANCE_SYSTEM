@@ -171,6 +171,30 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     }
   }
 
+  // Asynchronously dispatch in-app notifications and push to resolved recipients
+  (async () => {
+    try {
+      const { resolveAnnouncementRecipients, sendToUsers } = require('../services/notificationService');
+      const recipientIds = await resolveAnnouncementRecipients(target, target_id);
+      if (recipientIds && recipientIds.length > 0) {
+        await sendToUsers(recipientIds, {
+          type: 'ANNOUNCEMENT',
+          title: `New Announcement: ${title.trim()}`,
+          message: content.trim().slice(0, 160) + (content.length > 160 ? '...' : ''),
+          relatedId: announcement.id,
+          relatedType: 'announcement',
+          metadata: {
+            announcement_id: announcement.id,
+            target_type: target,
+            author_name: req.user.full_name,
+          },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[announcementController] Notification dispatch notice:', notifErr.message);
+    }
+  })();
+
   res.status(201).json({
     success: true,
     message: 'Announcement published successfully',

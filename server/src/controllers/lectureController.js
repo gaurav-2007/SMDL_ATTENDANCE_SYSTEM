@@ -357,6 +357,20 @@ const updateLectureStatus = asyncHandler(async (req, res) => {
     });
   }
 
+  // Notify students if lecture was cancelled or rescheduled
+  (async () => {
+    try {
+      const { notifyLectureCancellation, notifyLectureRescheduling } = require('../services/lectureScheduler');
+      if (status === 'CANCELLED') {
+        await notifyLectureCancellation(id, req.body.reason || 'Class cancelled');
+      } else if (status === 'RESCHEDULED') {
+        const newTime = req.body.new_time || updated?.start_time || '14:00';
+        const newDate = req.body.new_date || updated?.lecture_date || new Date().toISOString().split('T')[0];
+        await notifyLectureRescheduling(id, newTime, newDate, req.body.reason || 'Timetable updated');
+      }
+    } catch (_e) {}
+  })();
+
   res.json({
     success: true,
     message: `Lecture marked as ${status}`,

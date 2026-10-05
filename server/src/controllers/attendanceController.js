@@ -190,6 +190,35 @@ const markAttendance = asyncHandler(async (req, res) => {
       .eq('id', student.id);
   }
 
+  // Asynchronously dispatch ATTENDANCE_MARKED notification & check low attendance
+  (async () => {
+    try {
+      const { createNotification } = require('../services/notificationService');
+      const { checkAndNotifyLowAttendance } = require('../services/attendanceNotificationService');
+      const subjName = lecture?.subject?.name || lecture?.topic || 'Class';
+      await createNotification({
+        userId: req.user.id,
+        type: 'ATTENDANCE_MARKED',
+        title: 'Attendance Marked',
+        message: `Your ${subjName} attendance has been marked for today's lecture.`,
+        relatedId: resolvedLectureId,
+        relatedType: 'lecture',
+        metadata: {
+          lecture_id: resolvedLectureId,
+          subject_name: subjName,
+          marked_at: attendance.marked_at,
+        },
+      });
+
+      const targetSubjId = lecture?.subject_id || (lecture?.subject?.id);
+      if (targetSubjId) {
+        await checkAndNotifyLowAttendance(student.id, targetSubjId);
+      }
+    } catch (e) {
+      console.warn('[attendanceController] Notification notice:', e.message);
+    }
+  })();
+
   res.status(201).json({
     success: true,
     message: 'Attendance successfully marked! Physical presence verified.',
@@ -359,6 +388,44 @@ const overrideAttendance = asyncHandler(async (req, res) => {
     reason: finalReason,
     changed_at: new Date().toISOString(),
   });
+
+  // Asynchronously dispatch override notification to student & evaluate low attendance
+  (async () => {
+    try {
+      const { createNotification } = require('../services/notificationService');
+      const { checkAndNotifyLowAttendance } = require('../services/attendanceNotificationService');
+      const { data: stRec } = await supabaseAdmin
+        .from('students')
+        .select('user_id')
+        .eq('id', student_pk)
+        .single();
+
+      if (stRec?.user_id) {
+        const notifType = status === 'ABSENT' && previousStatus === 'PRESENT'
+          ? 'ATTENDANCE_REMOVED'
+          : 'ATTENDANCE_CORRECTED';
+        const notifTitle = notifType === 'ATTENDANCE_REMOVED' ? 'Attendance Removed' : 'Attendance Corrected';
+        const subjName = lecture?.subject?.name || 'Class';
+
+        await createNotification({
+          userId: stRec.user_id,
+          type: notifType,
+          title: notifTitle,
+          message: `Your ${subjName} attendance for ${lecture?.lecture_date || 'today'} was updated to ${status}. Reason: ${finalReason}.`,
+          relatedId: lecture_id,
+          relatedType: 'lecture',
+          metadata: { lecture_id, status, previousStatus, reason: finalReason },
+        });
+
+        const targetSubjId = lecture?.subject_id || (lecture?.subject?.id);
+        if (targetSubjId) {
+          await checkAndNotifyLowAttendance(student_pk, targetSubjId);
+        }
+      }
+    } catch (e) {
+      console.warn('[attendanceController] Override notification notice:', e.message);
+    }
+  })();
 
   res.json({
     success: true,

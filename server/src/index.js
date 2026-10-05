@@ -10,6 +10,8 @@ const academicRoutes = require('./routes/academicRoutes');
 const lectureRoutes = require('./routes/lectureRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const { initLectureScheduler } = require('./services/lectureScheduler');
 
 const app = express();
 
@@ -24,6 +26,10 @@ app.use('/api/academic', academicRoutes);
 app.use('/api/lectures', lectureRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/announcements', announcementRoutes);
+app.use('/api/notifications', notificationRoutes);
+
+// Initialize atomic lecture reminder scheduler (runs every minute in Asia/Kolkata timezone)
+initLectureScheduler();
 
 // Direct alias for Section 3: GET /student/today-classes & /api/student/today-classes
 const protect = require('./middleware/auth');
