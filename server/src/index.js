@@ -13,13 +13,52 @@ const announcementRoutes = require('./routes/announcementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { initLectureScheduler } = require('./services/lectureScheduler');
 
+const helmet = require('helmet');
+const hpp = require('hpp');
+const sanitizeInput = require('./middleware/sanitizer');
+const { globalApiLimiter } = require('./middleware/rateLimiter');
+
 const app = express();
 
-app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
-app.use(express.json({ limit: '20mb' }));
-app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+// 1. Remove technology footprint
+app.disable('x-powered-by');
 
-app.use('/api', healthRoutes);
+// 2. HTTP Security Headers (Anti-Clickjacking, NoSniff, XSS Protection, HSTS)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    frameguard: { action: 'deny' },
+    xssFilter: true,
+    noSniff: true,
+    hsts:
+      env.NODE_ENV === 'production'
+        ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+        : false,
+  })
+);
+
+// 3. Strict CORS configuration
+app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+
+// 4. Scoped High-Payload Parser for Attendance Photos (up to 15MB)
+app.use(
+  '/api/attendance/mark',
+  express.json({ limit: '15mb' }),
+  express.urlencoded({ extended: true, limit: '15mb' })
+);
+
+// 5. Hardened Global Body Limit for all standard routes (Max 100KB to prevent DoS)
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+
+// 6. HTTP Parameter Pollution Protection
+app.use(hpp());
+
+// 7. Input Sanitization against XSS & dangerous control characters
+app.use(sanitizeInput);
+
+// 8. Global API Rate Limiter
+app.use('/api', globalApiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academic', academicRoutes);

@@ -114,22 +114,27 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new Error(`Attendance already marked for this lecture at ${new Date(existing.marked_at).toLocaleTimeString()}`);
   }
 
-  // 4. Geolocation verification
+  // 4. Geolocation verification (Hardened against fake GPS & production bypass)
+  const isDev = process.env.NODE_ENV !== 'production';
+  const allowDemoBypass = isDev && Boolean(is_demo_bypass);
+
   let distanceMeters = null;
   let isWithinGeofence = false;
 
   if (latitude && longitude) {
     distanceMeters = calculateDistanceInMeters(latitude, longitude, COLLEGE_LAT, COLLEGE_LON);
-    isWithinGeofence = is_demo_bypass || distanceMeters <= DEFAULT_GEOFENCE_RADIUS;
-  } else if (is_demo_bypass) {
-    distanceMeters = 42; // simulated demo distance
+    isWithinGeofence = allowDemoBypass || distanceMeters <= DEFAULT_GEOFENCE_RADIUS;
+  } else if (allowDemoBypass) {
+    distanceMeters = 42; // simulated demo distance in development only
     isWithinGeofence = true;
   }
 
-  if (!isWithinGeofence && !is_demo_bypass) {
+  if (!isWithinGeofence) {
     res.status(400);
     throw new Error(
-      `Location verification failed: You are ${distanceMeters}m away from SMDL College (Max allowed: ${DEFAULT_GEOFENCE_RADIUS}m).`
+      distanceMeters !== null
+        ? `Location verification failed: You are ${distanceMeters}m away from SMDL College (Max allowed: ${DEFAULT_GEOFENCE_RADIUS}m).`
+        : 'Valid GPS coordinates (latitude and longitude) are required within college premises.'
     );
   }
 

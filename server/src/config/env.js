@@ -3,11 +3,16 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: path.join(__dirname, '..', '..', '.env') });
 
-const required = ['SUPABASE_URL', 'JWT_SECRET'];
+const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET'];
 const missing = required.filter((k) => !process.env[k]);
 
-if (missing.length && process.env.NODE_ENV !== 'development') {
-  console.error(`[env] Missing required env vars: ${missing.join(', ')}`);
+if (missing.length && process.env.NODE_ENV === 'production') {
+  console.error(`🚨 [FATAL SECURITY ERROR] Missing required env vars in production: ${missing.join(', ')}`);
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === 'production' && process.env.JWT_SECRET === 'dev_jwt_secret_change_me') {
+  console.error(`🚨 [FATAL SECURITY ERROR] Cannot use default 'dev_jwt_secret_change_me' JWT_SECRET in production! Please generate a strong 256-bit secret.`);
   process.exit(1);
 }
 

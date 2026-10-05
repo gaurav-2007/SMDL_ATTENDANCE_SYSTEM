@@ -15,6 +15,12 @@ const errorHandler = (err, req, res, next) => {
   } else if (err.name === 'TokenExpiredError') {
     statusCode = 401;
     message = 'Token expired';
+  } else if (err.type === 'entity.too.large') {
+    statusCode = 413;
+    message = 'Payload too large. Request body exceeds allowed limit.';
+  } else if (env.NODE_ENV === 'production' && statusCode === 500) {
+    // Prevent internal SQL, database schema, or code structure disclosures
+    message = 'Internal server error. Please try again later.';
   }
 
   res.status(statusCode).json({
