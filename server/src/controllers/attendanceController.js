@@ -327,11 +327,14 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
 // @desc   Teacher manual override or status correction (with Audit Log)
 // @route  POST /api/attendance/override
 const overrideAttendance = asyncHandler(async (req, res) => {
-  const { lecture_id, student_pk, status, reason } = req.body;
+  const lecture_id = req.body.lecture_id;
+  const student_pk = req.body.student_pk || req.body.student_id;
+  const status = req.body.status;
+  const reason = req.body.reason;
 
   if (!lecture_id || !student_pk || !status) {
     res.status(400);
-    throw new Error('lecture_id, student_pk, and status are required');
+    throw new Error('lecture_id, student_pk (or student_id), and status are required');
   }
 
   // 1. Check if an attendance record already exists
@@ -385,14 +388,21 @@ const overrideAttendance = asyncHandler(async (req, res) => {
   }
 
   // 2. Insert into attendance_audit_logs for dispute transparency
-  await supabaseAdmin.from('attendance_audit_logs').insert({
-    attendance_id: attendanceRecord.id,
-    old_status: previousStatus,
-    new_status: status,
-    changed_by: req.user.id,
-    reason: finalReason,
-    changed_at: new Date().toISOString(),
-  });
+  try {
+    const { error: auditErr } = await supabaseAdmin.from('attendance_audit_logs').insert({
+      attendance_id: attendanceRecord.id,
+      previous_status: previousStatus,
+      new_status: status,
+      changed_by: req.user.id,
+      reason: finalReason,
+      changed_at: new Date().toISOString(),
+    });
+    if (auditErr) {
+      console.warn('⚠️ attendance_audit_logs insert warning:', auditErr.message);
+    }
+  } catch (auditException) {
+    console.warn('⚠️ attendance_audit_logs exception:', auditException.message);
+  }
 
   // Asynchronously dispatch override notification to student & evaluate low attendance
   (async () => {

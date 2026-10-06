@@ -430,8 +430,203 @@ async function sendPasswordChangedSecurityEmail(toEmail, role = 'student') {
   }
 }
 
+/**
+ * Sends a notification email to a teacher when their account is APPROVED by an admin
+ * @param {string} toEmail 
+ * @param {string} teacherName 
+ */
+async function sendTeacherApprovalEmail(toEmail, teacherName = 'Faculty Member') {
+  const mailTransporter = getTransporter();
+  if (!mailTransporter) {
+    console.warn('[emailService] SMTP not configured; skipping teacher approval email.');
+    return { success: false, reason: 'SMTP not configured' };
+  }
+
+  const clientUrl = (env.CLIENT_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const loginUrl = `${clientUrl}/login`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Faculty Account Approved - SMDL College</title>
+      <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; }
+        .container { max-width: 580px; margin: 40px auto; background: #111827; border-radius: 16px; border: 1px solid #1f2937; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        .header { background: linear-gradient(135deg, #065f46 0%, #059669 100%); padding: 32px 24px; text-align: center; }
+        .header h1 { margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; }
+        .header p { margin: 6px 0 0 0; color: #a7f3d0; font-size: 13px; }
+        .content { padding: 36px 32px; }
+        .greeting { font-size: 16px; color: #e2e8f0; margin-bottom: 12px; }
+        .message { font-size: 14px; line-height: 1.6; color: #cbd5e1; }
+        .status-card { background: #064e3b; border: 1px solid #059669; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center; }
+        .status-badge { display: inline-block; background: #10b981; color: #ffffff; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .status-title { font-size: 16px; font-weight: 700; color: #ffffff; margin: 0; }
+        .btn-wrapper { text-align: center; margin: 28px 0; }
+        .btn { display: inline-block; background: #059669; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 15px; padding: 14px 32px; border-radius: 10px; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.35); }
+        .features-box { background: #1f2937; border-radius: 10px; padding: 16px; margin: 20px 0; font-size: 13px; color: #94a3b8; }
+        .features-box ul { margin: 8px 0 0 0; padding-left: 20px; }
+        .features-box li { margin-bottom: 6px; }
+        .footer { background-color: #0a0f1d; padding: 20px; text-align: center; font-size: 11px; color: #475569; border-top: 1px solid #1e293b; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>SES's S. M. Dadasaheb Limaye College</h1>
+          <p>Smart Attendance & Communication Portal &bull; Faculty Notice</p>
+        </div>
+        <div class="content">
+          <div class="greeting">Dear <strong>${teacherName}</strong>,</div>
+          <p class="message">
+            We are pleased to inform you that your teacher registration application has been <strong>reviewed and approved</strong> by the college administration.
+          </p>
+          
+          <div class="status-card">
+            <span class="status-badge">&check; Active &amp; Approved</span>
+            <p class="status-title">Faculty Portal Access Granted</p>
+          </div>
+
+          <p class="message">
+            You can now log in to the faculty portal using your registered email address (or Employee ID) and password to manage your academic assignments.
+          </p>
+
+          <div class="features-box">
+            <strong style="color: #f1f5f9;">What you can do now:</strong>
+            <ul>
+              <li>Access your daily lecture schedule and weekly timetable</li>
+              <li>Conduct lecture sessions and review live student attendance rosters</li>
+              <li>Inspect student verification proofs (live selfies &amp; GPS coordinates)</li>
+              <li>Mark attendance overrides for students without smartphones</li>
+              <li>Post announcements and share class study materials</li>
+            </ul>
+          </div>
+
+          <div class="btn-wrapper">
+            <a href="${loginUrl}" class="btn" target="_blank" rel="noopener noreferrer">Sign In to Faculty Portal &rarr;</a>
+          </div>
+
+          <p style="font-size: 12px; color: #64748b; line-height: 1.5;">
+            If you did not apply for an account with SMDL College or believe you received this message by mistake, please contact college administration immediately.
+          </p>
+        </div>
+        <div class="footer">
+          <p style="margin: 0 0 4px 0;">SES's Shikshan Maharshi Dadasaheb Limaye Arts, Commerce &amp; Science College</p>
+          <p style="margin: 0;">Sector 3E, CIDCO Colony, Kalamboli, Navi Mumbai, Maharashtra 410218</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const info = await mailTransporter.sendMail({
+      from: env.EMAIL_FROM,
+      to: toEmail,
+      subject: 'SMDL College - Faculty Account Approved',
+      text: `Hello ${teacherName},\n\nYour SMDL College faculty account has been approved by the administration. You can now log in at ${loginUrl} to access your classes and attendance dashboard.\n\nSES's S. M. Dadasaheb Limaye College, Kalamboli`,
+      html: htmlContent,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[emailService] Failed to send teacher approval email:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Sends a notification email to a teacher when their application is REJECTED by an admin
+ * @param {string} toEmail 
+ * @param {string} teacherName 
+ * @param {string} rejectionReason 
+ */
+async function sendTeacherRejectionEmail(toEmail, teacherName = 'Faculty Member', rejectionReason = 'Application details could not be verified') {
+  const mailTransporter = getTransporter();
+  if (!mailTransporter) {
+    console.warn('[emailService] SMTP not configured; skipping teacher rejection email.');
+    return { success: false, reason: 'SMTP not configured' };
+  }
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Faculty Application Update - SMDL College</title>
+      <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f19; color: #f1f5f9; }
+        .container { max-width: 580px; margin: 40px auto; background: #111827; border-radius: 16px; border: 1px solid #1f2937; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+        .header { background: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 100%); padding: 32px 24px; text-align: center; }
+        .header h1 { margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; }
+        .header p { margin: 6px 0 0 0; color: #fecaca; font-size: 13px; }
+        .content { padding: 36px 32px; }
+        .greeting { font-size: 16px; color: #e2e8f0; margin-bottom: 12px; }
+        .message { font-size: 14px; line-height: 1.6; color: #cbd5e1; }
+        .reason-card { background: #18181b; border-left: 4px solid #ef4444; border-radius: 0 8px 8px 0; padding: 16px; margin: 20px 0; font-size: 14px; color: #fca5a5; }
+        .contact-box { background: #1f2937; border-radius: 10px; padding: 16px; margin: 20px 0; font-size: 13px; color: #94a3b8; line-height: 1.6; }
+        .footer { background-color: #0a0f1d; padding: 20px; text-align: center; font-size: 11px; color: #475569; border-top: 1px solid #1e293b; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>SES's S. M. Dadasaheb Limaye College</h1>
+          <p>Smart Attendance & Communication Portal &bull; Application Status</p>
+        </div>
+        <div class="content">
+          <div class="greeting">Dear <strong>${teacherName}</strong>,</div>
+          <p class="message">
+            Thank you for your application to register as faculty on the SMDL Smart Attendance System.
+          </p>
+          <p class="message">
+            Following an administrative review, we regret to inform you that your registration could not be approved at this time.
+          </p>
+          
+          <div class="reason-card">
+            <strong style="color: #ffffff; display: block; margin-bottom: 4px;">Reason for Decision:</strong>
+            ${rejectionReason || 'Application credentials or employee record could not be verified by college administration.'}
+          </div>
+
+          <div class="contact-box">
+            <strong style="color: #f1f5f9;">What should you do?</strong><br />
+            If you are a faculty member at SMDL College and believe this decision was made in error, or if your registration contained incorrect details (e.g. Employee ID or Department), please visit the College Administration Office or contact the Principal's Office to verify your credentials.
+          </div>
+
+          <p style="font-size: 12px; color: #64748b; margin-top: 24px;">
+            Please do not submit duplicate registrations with alternate email addresses without contacting administration first.
+          </p>
+        </div>
+        <div class="footer">
+          <p style="margin: 0 0 4px 0;">SES's Shikshan Maharshi Dadasaheb Limaye Arts, Commerce &amp; Science College</p>
+          <p style="margin: 0;">Sector 3E, CIDCO Colony, Kalamboli, Navi Mumbai, Maharashtra 410218</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    const info = await mailTransporter.sendMail({
+      from: env.EMAIL_FROM,
+      to: toEmail,
+      subject: 'SMDL College - Faculty Registration Application Update',
+      text: `Hello ${teacherName},\n\nYour faculty registration on the SMDL Smart Attendance System was reviewed and could not be approved at this time.\n\nReason: ${rejectionReason}\n\nIf you believe this was in error, please contact the SMDL College Administration Office.\n\nSES's S. M. Dadasaheb Limaye College, Kalamboli`,
+      html: htmlContent,
+    });
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error('[emailService] Failed to send teacher rejection email:', err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 module.exports = {
   sendOtpEmail,
   sendPasswordResetEmail,
   sendPasswordChangedSecurityEmail,
+  sendTeacherApprovalEmail,
+  sendTeacherRejectionEmail,
 };

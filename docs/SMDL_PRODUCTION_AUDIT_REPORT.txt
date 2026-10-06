@@ -1,0 +1,380 @@
+================================================================================
+SMDL COLLEGE SMART ATTENDANCE & COMMUNICATION SYSTEM
+COMPREHENSIVE PRE-PRODUCTION SYSTEM AUDIT REPORT
+================================================================================
+Audit Date: October 2026
+Location: SMDL College, Kalamboli, Maharashtra
+Target Architecture:
+  - Frontend: React 18 + Vite + TailwindCSS
+  - Backend: Node.js + Express
+  - Database: Supabase PostgreSQL
+  - Authentication: Custom JWT (bcryptjs + jsonwebtoken)
+  - Target Platforms: Web + Android APK
+================================================================================
+
+
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. EXECUTIVE SUMMARY
+2. 24-POINT SYSTEM INSPECTION
+3. CATEGORIZED FINDINGS
+   - Working Correctly
+   - Partially Implemented
+   - Broken
+   - Missing
+   - Security Risks
+   - Production Blockers
+   - Android Blockers
+4. DUPLICATE IMPLEMENTATIONS & CONFLICTING SYSTEMS
+5. RECOMMENDED STEP-BY-STEP REMEDIATION ROADMAP
+
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+The SMDL College Smart Attendance & Communication System has a solid foundational
+codebase with working dashboards for Admin, Teacher, and Student portals,
+bcrypt password hashing, JWT authentication, and structured security headers.
+
+However, a deep technical inspection identified critical architectural conflicts,
+production blockers, and security vulnerabilities that must be addressed prior
+to live production deployment or Android APK generation:
+  1. Duplicate & conflicting timetable/attendance database schemas.
+  2. Missing Supabase Storage integration (photos stored as raw Base64 in PostgreSQL).
+  3. Hardcoded relative API URLs and single-origin CORS blocking Android & Production.
+  4. Broken authorization (BOLA) on Academic management endpoints.
+  5. In-memory OTP storage bypassing the database email_verifications table.
+  6. Supabase RLS policies configured for Supabase Auth instead of the custom JWT engine.
+
+
+================================================================================
+2. 24-POINT SYSTEM INSPECTION
+================================================================================
+
+1. FRONTEND STRUCTURE
+   - Status: Complete & well-organized.
+   - Stack: React 18, Vite 8, React Router v7, TailwindCSS v3, Lucide Icons, React Hot Toast.
+   - Organization: Clear separation in client/src (components, context, lib, pages).
+   - Layout: Responsive DashboardLayout with collapsible sidebar and mobile drawer.
+   - Note: Some page files are monolithic (AcademicPanel.jsx is 92KB, LoginPage.jsx is 59KB).
+
+2. BACKEND STRUCTURE
+   - Status: Complete Express 5 MVC pattern.
+   - Stack: Express 5, Supabase JS client (service_role), Helmet, HPP, Zod, Nodemailer.
+   - Organization: controllers, routes, middleware, services, config, utils, scripts.
+   - Middlewares: Global rate limiter, security headers, input sanitizer, centralized error handler.
+
+3. DATABASE SCHEMA
+   - Status: 11 SQL migrations present in server/supabase/migrations.
+   - Migration 001 to 009 set up core tables, RLS, audit logs, notifications, and device tokens.
+   - Migration 20260924 and 20260925 introduced secondary schemas (timetable, division_timetables, attendance_records).
+   - Structural issue: Dual sets of tables coexist for timetable and attendance.
+
+4. AUTHENTICATION
+   - Status: Working on Node.js/Express; Supabase Auth is NOT used.
+   - Passwords hashed with bcrypt (cost 10). Tokens signed with HMAC-SHA256 (jsonwebtoken).
+   - Tokens stored in localStorage (smdl_token, smdl_user).
+   - Multi-identifier support: Email, student roll number, teacher employee ID, and admin shorthand.
+
+5. STUDENT MODULE
+   - Status: Working correctly.
+   - Real-time today's class schedule fetched from /student/today-classes.
+   - Subject-wise attendance percentages, defaulter indicators (< 75%), calendar history.
+   - Announcement feed with document attachment download.
+
+6. TEACHER MODULE
+   - Status: Working correctly.
+   - Today's lecture schedule with live dynamic status (UPCOMING, ONGOING, COMPLETED).
+   - Manual attendance check-in ("Mark No Phone" fallback for students without smartphones).
+   - Live roster review with student selfie photo viewer and GPS distance inspection.
+   - Attendance status override (PRESENT <-> ABSENT) with mandatory audit reason.
+
+7. ADMIN MODULE
+   - Status: Working correctly.
+   - Complete CRUD for courses, divisions, subjects, and weekly timetable slots.
+   - Teacher approval, rejection (with reason), suspension, and account disabling.
+   - Student roster with status toggle, division transfers, and bulk CSV import.
+   - Defaulter list generation and CSV export.
+
+8. TEACHER APPROVAL WORKFLOW
+   - Status: Partially implemented.
+   - Teacher registration creates account with status PENDING.
+   - Pending teachers are blocked from active operations and redirected to PendingApproval page.
+   - Admin can approve/reject via AdminHome or TeachersPanel.
+   - GAP: Approving or rejecting a teacher does NOT send an email to the teacher.
+
+9. ATTENDANCE & GEOLOCATION VERIFICATION
+   - Status: Working with risks.
+   - Coordinates hardcoded in attendanceController.js (19.024790, 73.101596, radius 500m).
+   - Haversine distance calculation performed on backend.
+   - is_demo_bypass allowed only in development mode (NODE_ENV !== 'production').
+   - GAPS: Ignores dynamic geofence in system_config table; does not validate GPS accuracy or mock location.
+
+10. SELFIE UPLOAD
+    - Status: Broken architecture / Database bloat risk.
+    - Frontend captures camera frame and encodes as raw Base64 JPEG data URI.
+    - Sent via JSON payload to POST /api/attendance/mark.
+    - Backend stores raw Base64 string directly into PostgreSQL attendance.selfie_url column.
+    - CRITICAL IMPACT: 800KB-1.5MB per student per lecture. Class of 60 students mark = ~60MB.
+      Postgres database will bloat rapidly, and GET /attendance/lecture/:id payload will choke network.
+    - Supabase Storage is completely bypassed.
+
+11. TIMETABLE / LECTURE SYSTEM
+    - Status: Partially implemented with architectural conflict.
+    - timetableService.js has a hardcoded static JS matrix for FYBSc CS and auto-inserts into lectures table.
+    - academicController.js manages dynamic weekly slots in division_timetables table.
+    - lectureController.js queries division_timetables first, then falls back to lectures.
+    - Creates a split-brain system between code-defined and database-defined timetables.
+
+12. ANNOUNCEMENT SYSTEM
+    - Status: Partially implemented with size limit bug.
+    - Target audience filtering works (ALL, TEACHER, STUDENT, COURSE, DIVISION).
+    - BUG 1: Attachments are Base64 encoded inside content as [ATTACHMENT:{...}].
+    - BUG 2: Standard routes are limited to 100KB in index.js. Any PDF or image attachment > 100KB
+      is rejected with HTTP 413 Payload Too Large.
+    - BUG 3: Any teacher can delete announcements posted by any other teacher or admin.
+
+13. NOTIFICATION SYSTEM
+    - Status: Working in-app via polling; Supabase Realtime is inactive.
+    - In-app notification center polls every 30s as fallback.
+    - node-cron lecture reminders run every minute with atomic deduplication.
+    - Weekly low attendance calculation triggers automated student warnings.
+    - GAP: Client Supabase Realtime channel subscription fails due to RLS blocking anonymous role.
+
+14. EMAIL VERIFICATION / OTP
+    - Status: Working via Gmail SMTP, but state storage is volatile.
+    - Generates 6-digit cryptographic OTPs with 10-minute expiry and 45-second resend cooldown.
+    - Verified Gmail SMTP delivery (collegesmdl@gmail.com).
+    - CRITICAL FLAW: Stored in an in-memory Map() in otpService.js. All pending OTPs are lost on
+      server restart or across multiple load-balanced instances. The existing email_verifications
+      table is completely unused.
+
+15. FORGOT PASSWORD
+    - Status: Working correctly for students and teachers.
+    - Cryptographic 32-byte token hashed with SHA-256 and stored in password_reset_tokens table.
+    - 15-minute expiry, rate-limited against enumeration.
+    - Sends branded HTML reset link and confirmation security alert email.
+    - NOTE: Admin password reset via email is explicitly disallowed in passwordResetService.js.
+
+16. SUPABASE STORAGE
+    - Status: Completely missing / Unimplemented.
+    - .storage API is never referenced in server or client code.
+    - multer is installed in server/package.json but never used in any route.
+    - Buckets (attendance-selfies, announcements) are not wired.
+
+17. FCM / WEB PUSH
+    - Status: Partially implemented / Incomplete client setup.
+    - Server fcmService.js has complete multicast and token pruning logic.
+    - GAPS:
+      * Server .env lacks FIREBASE_SERVICE_ACCOUNT (operates in In-App Only mode).
+      * Client lacks .env with VITE_FIREBASE_* credentials.
+      * firebase-messaging-sw.js contains dummy placeholder keys.
+
+18. ENVIRONMENT VARIABLES
+    - Server: Present in server/.env.
+      * Risk: JWT_SECRET contains dev template text; Firebase keys missing.
+    - Client: MISSING ENTIRELY.
+      * No .env or .env.example in client/ directory.
+      * All VITE_* variables evaluate to undefined.
+
+19. SECURITY
+    - Strengths: Bcrypt passwords, Helmet headers, HPP protection, input sanitization, rate limiters.
+    - Vulnerabilities:
+      * BOLA on academic CRUD routes.
+      * Base64 injection into database rows.
+      * 7-day JWT expiration without token revocation.
+      * Demo credentials card visible in LoginPage.jsx.
+      * Default admin password (admin@123) in migration 004.
+
+20. ERROR HANDLING
+    - Status: Working correctly.
+    - Centralized errorHandler.js in Express handles Zod, JWT errors, payload limits.
+    - Global 401 logout interceptor in Axios client.
+    - User feedback managed via React Hot Toast.
+
+21. API AUTHORIZATION
+    - Status: Partially implemented with critical gaps.
+    - Routes in academicRoutes.js (courses, divisions, subjects, timetable) use protect but
+      omit restrictTo('admin'). Students can delete/modify college academic structures.
+    - Announcement deletion lacks author ownership verification.
+    - Admin cannot mark attendance directly at /api/attendance/mark (expects student profile).
+
+22. RLS / DATABASE POLICIES
+    - Status: Incompatible with custom auth engine.
+    - Migration 009 enables RLS and defines policies using auth.uid() = user_id.
+    - Custom JWT auth means client connections use anon key where auth.uid() is always NULL.
+    - Server connects via service_role key which bypasses RLS entirely.
+    - Client-side Supabase Realtime subscriptions receive 0 rows due to RLS rejection.
+
+23. PRODUCTION READINESS
+    - Status: NOT READY.
+    - Blocked by: Hardcoded relative API proxy, missing client .env, single-origin CORS,
+      Base64 photo storage in database, 100KB attachment cap, in-memory OTPs.
+
+24. ANDROID CONVERSION READINESS
+    - Status: NOT READY.
+    - Blocked by: Relative /api calls in WebView, strict CORS rejecting capacitor:// origins,
+      lack of Android runtime camera/GPS permission handling, Web Push service worker
+      incompatibility with Android background push, missing hardware back-button handler.
+
+
+================================================================================
+3. CATEGORIZED FINDINGS
+================================================================================
+
+[WORKING CORRECTLY]
+--------------------------------------------------------------------------------
+1. Custom JWT Authentication Engine (bcrypt password hashing, sign/verify).
+2. Multi-role Protected Routes and Route Guards (Admin, Teacher, Student).
+3. Student Attendance Analytics, Defaulter Tracking (<75%), and History View.
+4. Teacher Daily Schedule Overview and Status Tracking (UPCOMING, ONGOING, COMPLETED).
+5. Teacher Manual Override Check-in ("Mark No Phone") and Attendance Audit Logs.
+6. Admin Management Panels (Teacher approval, Student listing, CSV bulk import, division transfers).
+7. Password Recovery Workflow (Cryptographic reset tokens, branded HTML emails, security alerts).
+8. Input Sanitization against XSS and HTTP Parameter Pollution protection.
+9. Node-cron Automated Lecture Reminder Engine with atomic deduplication.
+10. Low Attendance Alert Dispatcher (Weekly calculation and student notification).
+
+[PARTIALLY IMPLEMENTED]
+--------------------------------------------------------------------------------
+1. Notification Center: In-app polling works; Supabase Realtime and FCM push are inactive.
+2. Announcement System: CRUD works, but attachments are Base64 and blocked by 100KB body limit.
+3. Teacher Approval Workflow: Status toggles and in-app alert created, but no email sent to teacher.
+4. Timetable Management: Split between hardcoded JS matrix and dynamic database tables.
+5. FCM Push Service: Backend multicast logic complete, but lacks Firebase credentials on both ends.
+
+[BROKEN]
+--------------------------------------------------------------------------------
+1. Supabase Realtime Notifications: Fails silently because client connects as anon and RLS blocks it.
+2. Announcement File Attachments (>100KB): Fails with HTTP 413 Payload Too Large due to express.json limit.
+3. Admin Attendance Marking: Route allows admin role, but controller crashes looking for student profile.
+4. Announcement Deletion Authorization: Any teacher can delete announcements posted by others.
+
+[MISSING]
+--------------------------------------------------------------------------------
+1. Supabase Storage: No buckets, upload handlers, or CDN URLs integrated for selfies or attachments.
+2. Client Environment Files: Neither client/.env nor client/.env.example exists.
+3. VITE_API_URL Configuration: Client api.js has hardcoded relative baseURL: '/api'.
+4. Teacher Approval/Rejection Email Notifications: Missing email dispatch in adminController.js.
+5. Persistent OTP Storage: otpService.js does not use the email_verifications table.
+6. Android Mobile Plugins: No Capacitor configuration, AndroidManifest permissions, or native push SDK.
+
+[SECURITY RISKS]
+--------------------------------------------------------------------------------
+1. CRITICAL: Broken Object-Level Authorization on Academic Routes.
+   Any logged-in student can POST or DELETE courses, divisions, subjects, and timetable slots.
+   File: server/src/routes/academicRoutes.js
+2. HIGH: PostgreSQL Database Bloat & DoS via Raw Base64 Selfies.
+   Selfie images stored directly as large Base64 strings in database rows.
+   File: server/src/controllers/attendanceController.js
+3. MEDIUM: In-Memory Volatile OTP Storage.
+   Pending OTPs lost on process restart; vulnerable to memory exhaustion.
+   File: server/src/services/otpService.js
+4. MEDIUM: Hardcoded Secrets and Demo Credentials.
+   Default admin seeded with admin@123; demo instant login cards in LoginPage.jsx.
+   Files: server/supabase/migrations/004_insert_admin.sql, client/src/pages/auth/LoginPage.jsx
+5. LOW: Missing Rate Limiting on Attendance Marking.
+   POST /api/attendance/mark lacks dedicated rate limiter against automated spamming.
+
+[PRODUCTION BLOCKERS]
+--------------------------------------------------------------------------------
+1. Relative baseURL '/api' fails in production static hosting without a reverse proxy.
+2. Missing client/.env prevents frontend from connecting to backend and third-party APIs.
+3. Backend CORS origin locked strictly to http://localhost:3000.
+4. Base64 photo storage will quickly degrade database memory and exceed HTTP response limits.
+5. 100KB Express body limit breaks PDF/image attachment uploads on announcements.
+
+[ANDROID BLOCKERS]
+--------------------------------------------------------------------------------
+1. Relative API URLs resolve to capacitor://localhost/api which does not exist on mobile.
+2. CORS policy rejects capacitor:// and http://localhost mobile origins.
+3. Android WebView blocks camera and location by default without native permissions and handlers.
+4. Web Push Service Worker fails in background on Android; requires native FCM SDK.
+5. Android hardware back button exits the app instead of navigating history or closing modals.
+6. Missing viewport safe-area handling for mobile notches and status bars.
+
+
+================================================================================
+4. DUPLICATE IMPLEMENTATIONS & CONFLICTING SYSTEMS
+================================================================================
+
+1. TIMETABLE SCHEMA CONFLICT:
+   - System A: timetableService.js contains hardcoded SMDL_TIMETABLE_MATRIX and inserts into 'lectures'.
+   - System B: academicController.js manages slots in 'division_timetables' (Migration 20260925).
+   - System C: Migration 20260924 created 'timetable' table which is largely orphaned.
+   - Result: lectureController.js has to run fallback logic between division_timetables and lectures.
+
+2. ATTENDANCE STORAGE CONFLICT:
+   - System A: attendanceController.js primarily writes to 'attendance' table (points to lecture_id).
+   - System B: attendanceController.js also tries a secondary insert into 'attendance_records'
+     (points to timetable_id) in case Migration 20260925 is active.
+   - Result: Dual writes, potential data divergence, and confusion over which table is authoritative.
+
+3. OTP STORAGE CONFLICT:
+   - Migration 006 created the 'email_verifications' table with indexes for OTP verification.
+   - otpService.js completely ignores this table and uses an in-memory Map().
+
+4. REALTIME NOTIFICATIONS CONFLICT:
+   - NotificationCenter.jsx attempts Supabase Realtime channel subscription (fails due to RLS).
+   - NotificationCenter.jsx also runs a 30-second polling interval to GET /api/notifications.
+
+5. OBSOLETE WORKSPACE PROTOTYPE:
+   - "d:\project by trae smdl\Lecture Planner" is an old standalone HTML/JS prototype that is
+     completely separate from the React app and should be archived.
+
+
+================================================================================
+5. RECOMMENDED STEP-BY-STEP REMEDIATION ROADMAP
+================================================================================
+
+PHASE 1: CRITICAL SECURITY & AUTHORIZATION FIXES
+--------------------------------------------------------------------------------
+1. Add restrictTo('admin') to all POST and DELETE routes in server/src/routes/academicRoutes.js.
+2. Add author ownership verification in server/src/controllers/announcementController.js
+   so teachers can only delete their own announcements.
+3. Migrate otpService.js from in-memory Map to the 'email_verifications' database table.
+4. Add sendTeacherApprovalEmail and sendTeacherRejectionEmail in emailService.js and call them
+   from adminController.js upon approval/rejection.
+5. Add dedicated rate limiting on POST /api/attendance/mark.
+
+PHASE 2: STORAGE INTEGRATION (ELIMINATE BASE64 DB BLOAT)
+--------------------------------------------------------------------------------
+1. Set up Supabase Storage buckets: 'attendance-selfies' and 'announcements'.
+2. Configure Multer middleware on Express for multipart/form-data file uploads.
+3. Update attendanceController.js to upload the selfie buffer to Supabase Storage and store
+   only the resulting public/signed CDN URL in the database.
+4. Update announcementController.js to upload attachment files to Supabase Storage.
+5. Increase body parser limit specifically for upload endpoints or handle via multipart streams.
+
+PHASE 3: UNIFY TIMETABLE & ATTENDANCE DATABASE SCHEMA
+--------------------------------------------------------------------------------
+1. Designate 'division_timetables' as the single authoritative weekly timetable table.
+2. Designate 'attendance' as the single authoritative attendance record table.
+3. Deprecate the hardcoded JS matrix in timetableService.js and make it purely database-driven.
+4. Clean up legacy tables ('timetable', 'attendance_records') and sync foreign keys.
+
+PHASE 4: ENVIRONMENT & PRODUCTION HARDENING
+--------------------------------------------------------------------------------
+1. Create client/.env and client/.env.example with VITE_API_URL, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY.
+2. Update client/src/lib/api.js to use import.meta.env.VITE_API_URL || '/api'.
+3. Update server CORS middleware to support multiple allowed origins (production web URL + mobile capacitor origins).
+4. Remove demo credentials auto-fill buttons from LoginPage.jsx before production build.
+5. Generate a cryptographically strong 256-bit JWT_SECRET in server/.env.
+
+PHASE 5: ANDROID APK PREPARATION (CAPACITOR INTEGRATION)
+--------------------------------------------------------------------------------
+1. Initialize Capacitor in client directory:
+   npx @capacitor/cli create
+2. Install Capacitor mobile plugins:
+   - @capacitor/camera (for native live selfie capture)
+   - @capacitor/geolocation (for native GPS verification)
+   - @capacitor/push-notifications (for native background FCM push)
+   - @capacitor/app (for hardware back-button handling)
+3. Configure AndroidManifest.xml with required permissions:
+   CAMERA, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, INTERNET.
+4. Add hardware back-button listener in App.jsx to handle mobile back navigation.
+5. Build production bundle (npm run build) and sync with Android project (npx cap sync android).
+
+================================================================================
+END OF AUDIT REPORT
+================================================================================

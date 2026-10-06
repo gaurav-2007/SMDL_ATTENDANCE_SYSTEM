@@ -9,9 +9,13 @@ const {
   updatePreferences,
   registerDeviceToken,
   unregisterDeviceToken,
+  getFirebasePublicConfig,
 } = require('../controllers/notificationController');
 
-// All notification routes require authenticated JWT session
+// Public route to retrieve public Web FCM client configuration (No server secrets)
+router.get('/firebase-config', getFirebasePublicConfig);
+
+// All notification routes below require authenticated JWT session
 router.use(protect);
 
 router.get('/', getNotifications);

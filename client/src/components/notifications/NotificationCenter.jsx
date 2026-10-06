@@ -13,10 +13,12 @@ import {
   Volume2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { requestWebPushPermission, onMessageListener } from '../../lib/firebase';
+import { getNotificationUrl } from '../../lib/notificationRouter';
 import NotificationPreferencesModal from './NotificationPreferencesModal';
 
 // Formats relative time
@@ -93,6 +95,30 @@ const CATEGORY_STYLES = {
     badge: 'Security Alert',
     badgeClass: 'badge-danger',
   },
+  PASSWORD_RESET: {
+    icon: ShieldAlert,
+    color: 'text-amber-400 bg-amber-950/40 border-amber-800/40',
+    badge: 'Password Reset',
+    badgeClass: 'badge-warning',
+  },
+  SECURITY_ALERT: {
+    icon: ShieldAlert,
+    color: 'text-rose-400 bg-rose-950/40 border-rose-800/40',
+    badge: 'Security Alert',
+    badgeClass: 'badge-danger',
+  },
+  NEW_STUDY_MATERIAL: {
+    icon: BookOpen,
+    color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
+    badge: 'Study Material',
+    badgeClass: 'badge-active',
+  },
+  STUDY_MATERIAL: {
+    icon: BookOpen,
+    color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
+    badge: 'Study Material',
+    badgeClass: 'badge-active',
+  },
   TEACHER_APPROVED: {
     icon: CheckCircle,
     color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
@@ -115,6 +141,7 @@ const CATEGORY_STYLES = {
 
 export default function NotificationCenter() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -414,6 +441,9 @@ export default function NotificationCenter() {
                     key={notif.id}
                     onClick={() => {
                       if (!notif.is_read) handleMarkAsRead(notif.id);
+                      setIsOpen(false);
+                      const targetUrl = getNotificationUrl(notif, user?.role);
+                      if (targetUrl) navigate(targetUrl);
                     }}
                     className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer group hover:bg-white/[0.04] ${
                       !notif.is_read ? 'bg-primary-950/20' : ''

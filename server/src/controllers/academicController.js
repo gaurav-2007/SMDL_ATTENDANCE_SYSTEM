@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 
+
 // @desc   Get all courses with divisions
 // @route  GET /api/academic/courses
 const getCourses = asyncHandler(async (req, res) => {
@@ -258,13 +259,6 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
 
   const { data, error } = await query;
   if (error) {
-    if (error.code === 'PGRST205') {
-      return res.json({
-        success: true,
-        data: { slots: [], table_missing: true },
-        message: 'Table division_timetables not yet created. Run migration 20260925_simplified_admin_schema.sql in Supabase SQL editor.',
-      });
-    }
     res.status(500);
     throw new Error(error.message);
   }

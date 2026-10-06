@@ -159,4 +159,5 @@ module.exports = {
   sendMulticastPush,
   isFirebaseActive: () => isFirebaseInitialized,
   initFirebaseAdmin,
+  deactivateTokens,
 };

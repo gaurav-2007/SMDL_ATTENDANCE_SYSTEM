@@ -192,6 +192,23 @@ const unregisterDeviceToken = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Get public Firebase Web client configuration (No private keys or server secrets)
+// @route  GET /api/notifications/firebase-config
+const getFirebasePublicConfig = asyncHandler(async (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || '',
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_WEB_AUTH_DOMAIN || '',
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || '',
+      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_WEB_STORAGE_BUCKET || '',
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+      appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_WEB_APP_ID || '',
+      vapidKey: process.env.VITE_FIREBASE_VAPID_KEY || process.env.FIREBASE_VAPID_KEY || '',
+    },
+  });
+});
+
 module.exports = {
   getNotifications,
   markAsRead,
@@ -200,4 +217,5 @@ module.exports = {
   updatePreferences,
   registerDeviceToken,
   unregisterDeviceToken,
+  getFirebasePublicConfig,
 };

@@ -1,12 +1,19 @@
 const { supabaseAdmin } = require('../config/db');
 const { sendMulticastPush } = require('./fcmService');
+const { resolveNotificationActionUrl } = require('../utils/notificationRouter');
 
 // Fallback in-memory stores for resilience if migration tables are not yet run
 const memoryDevices = new Map(); // key: userId, value: Set of { fcm_token, device_type, device_name }
 const memoryPreferences = new Map(); // key: userId, value: preferences object
 
 // Mandatory notification categories that cannot be disabled
-const MANDATORY_CATEGORIES = new Set(['SECURITY_ALERT', 'PASSWORD_CHANGED', 'PASSWORD_RESET']);
+const MANDATORY_CATEGORIES = new Set([
+  'SECURITY_ALERT',
+  'PASSWORD_CHANGED',
+  'PASSWORD_RESET',
+  'TEACHER_APPROVED',
+  'TEACHER_REJECTED',
+]);
 
 /**
  * Resolve recipient user IDs for announcements based on target_type and target_id
@@ -63,6 +70,7 @@ async function isPushAllowedForUser(userId, category) {
         ATTENDANCE_CORRECTED: pref.attendance_updates,
         ATTENDANCE_REMOVED: pref.attendance_updates,
         NEW_STUDY_MATERIAL: pref.study_material,
+        STUDY_MATERIAL: pref.study_material,
       };
       return mapping[category] !== false;
     }
@@ -79,6 +87,8 @@ async function isPushAllowedForUser(userId, category) {
         ATTENDANCE_MARKED: memPref.attendance_updates,
         ATTENDANCE_CORRECTED: memPref.attendance_updates,
         ATTENDANCE_REMOVED: memPref.attendance_updates,
+        NEW_STUDY_MATERIAL: memPref.study_material,
+        STUDY_MATERIAL: memPref.study_material,
       };
       return mapping[category] !== false;
     }
@@ -139,6 +149,13 @@ async function createNotification({
 
   // 1. IN-APP DATABASE INSERT FIRST
   let savedRecord = null;
+  const actionUrl = metadata?.actionUrl || resolveNotificationActionUrl(type, metadata);
+  const enrichedMetadata = {
+    ...metadata,
+    actionUrl,
+    notificationType: type,
+  };
+
   const insertPayload = {
     user_id: userId,
     title: title.trim(),
@@ -156,7 +173,7 @@ async function createNotification({
         type,
         related_id: relatedId,
         related_type: relatedType,
-        metadata,
+        metadata: enrichedMetadata,
         expires_at: expiresAt,
       })
       .select()
@@ -174,11 +191,11 @@ async function createNotification({
         })
         .select()
         .single();
-      savedRecord = baseRec || { ...insertPayload, id: 'mem_' + Date.now(), type, metadata };
+      savedRecord = baseRec || { ...insertPayload, id: 'mem_' + Date.now(), type, metadata: enrichedMetadata };
     }
   } catch (err) {
     console.error('[notificationService] DB insert error:', err.message);
-    savedRecord = { ...insertPayload, id: 'mem_' + Date.now(), type, metadata };
+    savedRecord = { ...insertPayload, id: 'mem_' + Date.now(), type, metadata: enrichedMetadata };
   }
 
   // 2. CHECK PREFERENCES FOR PUSH
@@ -198,7 +215,8 @@ async function createNotification({
           notificationId: savedRecord?.id || '',
           relatedId: relatedId || '',
           relatedType: relatedType || '',
-          ...metadata,
+          actionUrl,
+          ...enrichedMetadata,
         },
         notificationType: type,
       }).catch((e) => console.warn('[notificationService] Push dispatch warning:', e.message));
@@ -269,12 +287,14 @@ async function sendToUsers(userIds, {
   try {
     const devices = await getActiveDevicesForUsers(uniqueUserIds);
     if (devices.length > 0) {
+      const actionUrl = metadata?.actionUrl || resolveNotificationActionUrl(type, metadata);
       sendMulticastPush(devices, {
         title,
         body: message,
         data: {
           relatedId: relatedId || '',
           relatedType: relatedType || '',
+          actionUrl,
           ...metadata,
         },
         notificationType: type,
@@ -338,12 +358,13 @@ async function registerDevice(userId, { fcmToken, deviceType = 'WEB', deviceName
  * Unregister device token on logout
  */
 async function unregisterDevice(userId, fcmToken) {
-  if (!fcmToken) return;
+  if (!fcmToken || !userId) return;
   try {
     await supabaseAdmin
       .from('user_devices')
       .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq('fcm_token', fcmToken);
+      .eq('fcm_token', fcmToken)
+      .eq('user_id', userId);
   } catch (_e) {
     if (memoryDevices.has(userId)) {
       const list = memoryDevices.get(userId).filter((d) => d.fcm_token !== fcmToken);
@@ -423,6 +444,8 @@ module.exports = {
   unregisterDevice,
   getUserPreferences,
   updateUserPreferences,
+  isPushAllowedForUser,
+  MANDATORY_CATEGORIES,
   _memoryDevices: memoryDevices,
   _memoryPreferences: memoryPreferences,
 };

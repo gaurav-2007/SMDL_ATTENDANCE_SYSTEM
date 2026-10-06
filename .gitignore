@@ -10,6 +10,9 @@ server/node_modules/
 .env.development.local
 .env.test.local
 .env.production.local
+*serviceAccount*.json
+firebase-admin*.json
+service-account*.json
 
 # Logs
 logs

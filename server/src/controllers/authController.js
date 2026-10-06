@@ -154,7 +154,7 @@ const sendRegistrationOtp = asyncHandler(async (req, res) => {
   }
 
   // 3. Generate OTP
-  const otpData = createOtp(email, role);
+  const otpData = await createOtp(email, role);
 
   // 4. Send email via real nodemailer SMTP
   await sendOtpEmail(email, otpData.otp, role);
@@ -165,6 +165,7 @@ const sendRegistrationOtp = asyncHandler(async (req, res) => {
     data: {
       email,
       expiresInSeconds: otpData.expiresInSeconds,
+      ...(process.env.NODE_ENV !== 'production' ? { dev_otp: otpData.otp } : {}),
     },
   });
 });
@@ -174,7 +175,7 @@ const verifyRegistrationOtp = asyncHandler(async (req, res) => {
   const email = parsed.email.trim().toLowerCase();
   const otp = parsed.otp.trim();
 
-  const result = verifyOtp(email, otp);
+  const result = await verifyOtp(email, otp);
   if (!result.success) {
     res.status(400);
     throw new Error(result.message || 'Invalid or expired OTP');
@@ -195,11 +196,11 @@ const registerStudent = asyncHandler(async (req, res) => {
   const studentFullName = (parsed.name || parsed.full_name || req.body.name || req.body.full_name || '').trim();
 
   // Validate Email Verification with OTP
-  const isVerified = isEmailVerified(parsed.email, parsed.otp_token || req.body.otp_token);
+  const isVerified = await isEmailVerified(parsed.email, parsed.otp_token || req.body.otp_token);
   if (!isVerified) {
     const providedOtp = parsed.otp || req.body.otp;
     if (providedOtp) {
-      const vResult = verifyOtp(parsed.email, providedOtp);
+      const vResult = await verifyOtp(parsed.email, providedOtp);
       if (!vResult.success) {
         res.status(400);
         throw new Error(vResult.message || 'Email verification OTP is invalid or expired.');
@@ -311,7 +312,7 @@ const registerStudent = asyncHandler(async (req, res) => {
   }
 
   // Verification consumed successfully
-  consumeVerification(parsed.email);
+  await consumeVerification(parsed.email);
 
   const token = signToken({ id: user.id, role: user.role });
   const userData = await buildUserResponse(user, token);
@@ -328,11 +329,11 @@ const registerTeacher = asyncHandler(async (req, res) => {
   const teacherFullName = (parsed.name || parsed.full_name || req.body.name || req.body.full_name || '').trim();
 
   // Validate Email Verification with OTP
-  const isVerified = isEmailVerified(parsed.email, parsed.otp_token || req.body.otp_token);
+  const isVerified = await isEmailVerified(parsed.email, parsed.otp_token || req.body.otp_token);
   if (!isVerified) {
     const providedOtp = parsed.otp || req.body.otp;
     if (providedOtp) {
-      const vResult = verifyOtp(parsed.email, providedOtp);
+      const vResult = await verifyOtp(parsed.email, providedOtp);
       if (!vResult.success) {
         res.status(400);
         throw new Error(vResult.message || 'Email verification OTP is invalid or expired.');
@@ -400,7 +401,7 @@ const registerTeacher = asyncHandler(async (req, res) => {
   }
 
   // Verification consumed successfully
-  consumeVerification(parsed.email);
+  await consumeVerification(parsed.email);
 
   const token = signToken({ id: user.id, role: user.role });
   const userData = await buildUserResponse(user, token);

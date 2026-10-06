@@ -3,7 +3,7 @@ import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messagi
 import api from './api';
 
 // Public Web Client Configuration (Safe for browser)
-const firebaseConfig = {
+let clientConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -12,18 +12,49 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+let clientVapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
 let app = null;
 let messaging = null;
 
+/**
+ * Fetch public configuration from backend if missing in Vite env
+ */
+async function loadPublicConfig() {
+  if (clientConfig.apiKey && clientConfig.projectId) {
+    return { config: clientConfig, vapidKey: clientVapidKey };
+  }
+
+  try {
+    const { data } = await api.get('/notifications/firebase-config');
+    if (data?.data?.apiKey && data?.data?.projectId) {
+      clientConfig = {
+        apiKey: data.data.apiKey,
+        authDomain: data.data.authDomain,
+        projectId: data.data.projectId,
+        storageBucket: data.data.storageBucket,
+        messagingSenderId: data.data.messagingSenderId,
+        appId: data.data.appId,
+      };
+      if (data.data.vapidKey) {
+        clientVapidKey = data.data.vapidKey;
+      }
+    }
+  } catch (_e) {
+    // Backend endpoint unreachable or not yet ready
+  }
+
+  return { config: clientConfig, vapidKey: clientVapidKey };
+}
+
 // Initialize Firebase client safely
-function getFirebaseMessaging() {
+async function getFirebaseMessaging() {
   if (messaging) return messaging;
 
-  if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+  const { config } = await loadPublicConfig();
+  if (config.apiKey && config.projectId) {
     try {
-      app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+      app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
       messaging = getMessaging(app);
       return messaging;
     } catch (err) {
@@ -47,7 +78,7 @@ export async function requestWebPushPermission() {
     return { supported: false, reason: 'Firebase Messaging not supported in this environment' };
   }
 
-  const msgInstance = getFirebaseMessaging();
+  const msgInstance = await getFirebaseMessaging();
   if (!msgInstance) {
     return { supported: false, reason: 'Firebase credentials not configured in client environment' };
   }
@@ -62,19 +93,25 @@ export async function requestWebPushPermission() {
     let swReg = null;
     if ('serviceWorker' in navigator) {
       swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      if (swReg && swReg.active && clientConfig.apiKey) {
+        swReg.active.postMessage({ type: 'FIREBASE_CONFIG', config: clientConfig });
+      }
     }
 
     const tokenOptions = {
       serviceWorkerRegistration: swReg || undefined,
     };
-    if (VAPID_KEY) {
-      tokenOptions.vapidKey = VAPID_KEY;
+    if (clientVapidKey) {
+      tokenOptions.vapidKey = clientVapidKey;
     }
 
     const currentToken = await getToken(msgInstance, tokenOptions);
 
     if (currentToken) {
-      // Register token with backend
+      // Store locally for lifecycle management
+      localStorage.setItem('smdl_fcm_token', currentToken);
+
+      // Register token with backend API
       await api.post('/notifications/devices', {
         fcm_token: currentToken,
         device_type: 'WEB',
@@ -92,15 +129,39 @@ export async function requestWebPushPermission() {
 }
 
 /**
+ * Unregisters the current device token from backend on logout
+ */
+export async function unregisterWebPushToken() {
+  if (typeof window === 'undefined') return;
+  const currentToken = localStorage.getItem('smdl_fcm_token');
+  if (currentToken) {
+    try {
+      await api.delete('/notifications/devices', {
+        data: { fcm_token: currentToken },
+      });
+    } catch (_e) {
+      // Ignore network errors during logout
+    }
+    localStorage.removeItem('smdl_fcm_token');
+  }
+}
+
+/**
  * Foreground message listener callback
  */
 export function onMessageListener(callback) {
-  const msgInstance = getFirebaseMessaging();
-  if (!msgInstance) return () => {};
-
-  return onMessage(msgInstance, (payload) => {
-    if (typeof callback === 'function') {
-      callback(payload);
+  let unsubscribe = () => {};
+  getFirebaseMessaging().then((msgInstance) => {
+    if (msgInstance) {
+      unsubscribe = onMessage(msgInstance, (payload) => {
+        if (typeof callback === 'function') {
+          callback(payload);
+        }
+      });
     }
   });
+
+  return () => {
+    if (typeof unsubscribe === 'function') unsubscribe();
+  };
 }

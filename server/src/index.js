@@ -89,8 +89,12 @@ app.get('/', (_req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(env.PORT, () => {
-  console.log(`\n🚀 SMDL Attendance Server running on http://localhost:${env.PORT}`);
-  console.log(`🌍 Environment: ${env.NODE_ENV}`);
-  console.log(`🔗 Client URL: ${env.CLIENT_URL}\n`);
-});
+if (require.main === module) {
+  app.listen(env.PORT, () => {
+    console.log(`\n🚀 SMDL Attendance Server running on http://localhost:${env.PORT}`);
+    console.log(`🌍 Environment: ${env.NODE_ENV}`);
+    console.log(`🔗 Client URL: ${env.CLIENT_URL}\n`);
+  });
+}
+
+module.exports = app;

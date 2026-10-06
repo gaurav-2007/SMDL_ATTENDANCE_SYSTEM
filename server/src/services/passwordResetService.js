@@ -117,6 +117,7 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
       role: user.role,
       expiresAt,
       used: false,
+      rawToken: process.env.NODE_ENV !== 'production' ? rawToken : undefined,
     });
 
     // 5. Attempt to persist in Supabase if table exists
@@ -138,7 +139,24 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
     // 7. Send branded HTML password reset email
     await sendPasswordResetEmail(user.email, resetUrl, user.role);
 
-    return { success: true, message: genericMessage };
+    // 8. Create in-app security notification
+    try {
+      const { createNotification } = require('./notificationService');
+      await createNotification({
+        userId: user.id,
+        type: 'PASSWORD_RESET',
+        title: 'Password Reset Requested',
+        message: 'A password reset link was requested for your account. If this was not you, please contact the administrator.',
+        relatedType: 'security',
+        metadata: { client_ip: clientIp },
+      });
+    } catch (_nErr) {}
+
+    return {
+      success: true,
+      message: genericMessage,
+      ...(process.env.NODE_ENV !== 'production' ? { dev_token: rawToken } : {}),
+    };
   } catch (error) {
     console.error('[passwordResetService] Error processing reset request:', error.message);
     return { success: true, message: genericMessage };
@@ -286,11 +304,13 @@ async function executePasswordReset(rawToken, newPassword) {
 
   // Create security notification in notifications table
   try {
-    await supabaseAdmin.from('notifications').insert({
-      user_id: userId,
+    const { createNotification } = require('./notificationService');
+    await createNotification({
+      userId,
+      type: 'PASSWORD_CHANGED',
       title: 'Password Changed',
       message: 'Your SMDL account password was successfully changed.',
-      is_read: false,
+      relatedType: 'security',
     });
   } catch (notifErr) {
     console.warn('[passwordResetService] Security notification warning:', notifErr.message);

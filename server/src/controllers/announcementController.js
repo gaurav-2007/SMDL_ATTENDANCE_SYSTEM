@@ -177,9 +177,21 @@ const createAnnouncement = asyncHandler(async (req, res) => {
       const { resolveAnnouncementRecipients, sendToUsers } = require('../services/notificationService');
       const recipientIds = await resolveAnnouncementRecipients(target, target_id);
       if (recipientIds && recipientIds.length > 0) {
+        const isStudyMaterial = Boolean(
+          req.body.category === 'STUDY_MATERIAL' ||
+          req.body.is_study_material ||
+          attachment?.type === 'DOCUMENT' ||
+          attachment?.type === 'NOTES' ||
+          (attachment && String(attachment.name || '').match(/\.(pdf|doc|docx|ppt|pptx)$/i))
+        );
+        const notifType = isStudyMaterial ? 'NEW_STUDY_MATERIAL' : 'ANNOUNCEMENT';
+        const notifTitle = isStudyMaterial
+          ? `Study Material: ${title.trim()}`
+          : `New Announcement: ${title.trim()}`;
+
         await sendToUsers(recipientIds, {
-          type: 'ANNOUNCEMENT',
-          title: `New Announcement: ${title.trim()}`,
+          type: notifType,
+          title: notifTitle,
           message: content.trim().slice(0, 160) + (content.length > 160 ? '...' : ''),
           relatedId: announcement.id,
           relatedType: 'announcement',
@@ -187,6 +199,7 @@ const createAnnouncement = asyncHandler(async (req, res) => {
             announcement_id: announcement.id,
             target_type: target,
             author_name: req.user.full_name,
+            is_study_material: isStudyMaterial,
           },
         });
       }
@@ -226,24 +239,55 @@ const createAnnouncement = asyncHandler(async (req, res) => {
 const deleteAnnouncement = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  let query = supabaseAdmin
+  // 1. Fetch announcement to check existence and ownership
+  const { data: announcement, error: fetchErr } = await supabaseAdmin
+    .from('announcements')
+    .select('id, sent_by, title')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchErr) {
+    res.status(500);
+    throw new Error(fetchErr.message);
+  }
+
+  if (!announcement) {
+    res.status(404);
+    throw new Error('Announcement not found');
+  }
+
+  // 2. Authorization check: Admin can delete any announcement;
+  // Teachers can ONLY delete announcements they authored.
+  if (req.user.role !== 'admin' && announcement.sent_by !== req.user.id) {
+    res.status(403);
+    throw new Error('Not authorized to delete this announcement. You can only delete announcements you published.');
+  }
+
+  // 3. Clean up attachments first if table exists
+  try {
+    await supabaseAdmin
+      .from('announcement_attachments')
+      .delete()
+      .eq('announcement_id', id);
+  } catch (_attErr) {
+    /* ignore if attachments table doesn't exist */
+  }
+
+  // 4. Delete the announcement record
+  const { error: delErr } = await supabaseAdmin
     .from('announcements')
     .delete()
     .eq('id', id);
 
-  if (req.user.role !== 'admin') {
-    query = query.eq('sent_by', req.user.id);
-  }
-
-  const { error } = await query;
-  if (error) {
+  if (delErr) {
     res.status(500);
-    throw new Error(error.message);
+    throw new Error(delErr.message);
   }
 
   res.json({
     success: true,
     message: 'Announcement deleted successfully',
+    data: { id },
   });
 });
 

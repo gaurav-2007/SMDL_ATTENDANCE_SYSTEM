@@ -32,4 +32,7 @@ module.exports = {
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
   EMAIL_FROM: process.env.EMAIL_FROM || '"SMDL College Smart Attendance" <noreply@smdl.ac.in>',
+  // Attendance rate limiting
+  ATTENDANCE_LIMIT_WINDOW_MS: parseInt(process.env.ATTENDANCE_LIMIT_WINDOW_MS || '60000', 10),
+  ATTENDANCE_LIMIT_MAX: parseInt(process.env.ATTENDANCE_LIMIT_MAX || '10', 10),
 };

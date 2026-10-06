@@ -12,12 +12,15 @@ CREATE TABLE IF NOT EXISTS email_verifications (
   attempts INT DEFAULT 0,
   expires_at TIMESTAMPTZ NOT NULL,
   verified_at TIMESTAMPTZ,
+  otp_token VARCHAR(255),
+  consumed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Index for speedy email queries and expiry checks
 CREATE INDEX IF NOT EXISTS idx_email_verifications_email ON email_verifications(email);
 CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at);
+CREATE INDEX IF NOT EXISTS idx_email_verifications_token ON email_verifications(otp_token);
 
 -- Optional: Add email_verified boolean flag on users table
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;

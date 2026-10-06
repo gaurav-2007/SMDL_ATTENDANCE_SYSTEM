@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '../lib/api'
+import { unregisterWebPushToken, requestWebPushPermission } from '../lib/firebase'
 
 const AuthContext = createContext(null)
 
@@ -48,11 +49,20 @@ export function AuthProvider({ children }) {
     if (token) localStorage.setItem('smdl_token', token)
     if (userData?.id) localStorage.setItem('smdl_user', JSON.stringify(userData))
     setUser(userData)
+
+    // Re-sync push device token if browser notification permission was granted
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      requestWebPushPermission().catch(() => {})
+    }
+
     return userData
   }, [])
 
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await unregisterWebPushToken()
+    } catch (_e) {}
     localStorage.removeItem('smdl_token')
     localStorage.removeItem('smdl_user')
     setUser(null)

@@ -13,6 +13,8 @@ const {
   transferStudentDivision,
   getLiveAttendanceSummary,
   getAttendanceAuditLogs,
+  getSystemConfig,
+  updateSystemConfig,
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -32,6 +34,9 @@ router.post('/students/:student_id/transfer', transferStudentDivision);
 
 router.get('/attendance/live-summary', getLiveAttendanceSummary);
 router.get('/attendance/audit-logs', getAttendanceAuditLogs);
+
+router.get('/config', getSystemConfig);
+router.put('/config', updateSystemConfig);
 
 module.exports = router;
 

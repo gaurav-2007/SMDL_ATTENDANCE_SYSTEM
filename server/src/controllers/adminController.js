@@ -1,6 +1,10 @@
 const { z } = require('zod');
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const {
+  sendTeacherApprovalEmail,
+  sendTeacherRejectionEmail,
+} = require('../services/emailService');
 
 const approveSchema = z.object({
   reason: z.string().max(500).optional(),
@@ -149,6 +153,12 @@ const approveTeacher = asyncHandler(async (req, res) => {
         metadata: { approved_by: req.user.id },
       });
     } catch (_e) {}
+
+    try {
+      await sendTeacherApprovalEmail(t.email, t.full_name);
+    } catch (e) {
+      console.error('Failed to send teacher approval email:', e.message);
+    }
   })();
 
   res.json({
@@ -226,6 +236,12 @@ const rejectTeacher = asyncHandler(async (req, res) => {
         metadata: { rejected_by: req.user.id, reason: parsed.reason },
       });
     } catch (_e) {}
+
+    try {
+      await sendTeacherRejectionEmail(t.email, t.full_name, parsed.reason);
+    } catch (e) {
+      console.error('Failed to send teacher rejection email:', e.message);
+    }
   })();
 
   res.json({
@@ -370,6 +386,20 @@ const suspendTeacher = asyncHandler(async (req, res) => {
     console.warn('Notice: global auth sign-out call:', authErr.message);
   }
 
+  // Security alert notification
+  try {
+    const { createNotification } = require('../services/notificationService');
+    await createNotification({
+      userId: teacher_id,
+      type: 'SECURITY_ALERT',
+      title: 'Account Suspended',
+      message: `Your teacher account has been suspended by the administration.${reason ? ` Reason: ${reason}` : ''}`,
+      relatedId: teacher_id,
+      relatedType: 'teacher',
+      metadata: { reason },
+    });
+  } catch (_e) {}
+
   res.json({
     success: true,
     message: `Teacher ${user.full_name} has been suspended and their active sessions were terminated.`,
@@ -425,6 +455,20 @@ const disableTeacher = asyncHandler(async (req, res) => {
   } catch (authErr) {
     console.warn('Notice: global auth sign-out call:', authErr.message);
   }
+
+  // Security alert notification
+  try {
+    const { createNotification } = require('../services/notificationService');
+    await createNotification({
+      userId: teacher_id,
+      type: 'SECURITY_ALERT',
+      title: 'Account Disabled',
+      message: `Your account has been permanently disabled by the administration.${reason ? ` Reason: ${reason}` : ''}`,
+      relatedId: teacher_id,
+      relatedType: 'teacher',
+      metadata: { reason },
+    });
+  } catch (_e) {}
 
   res.json({
     success: true,
@@ -551,11 +595,25 @@ const bulkImportStudents = asyncHandler(async (req, res) => {
 // @route  POST /api/admin/students/:student_id/transfer
 const transferStudentDivision = asyncHandler(async (req, res) => {
   const { student_id } = req.params;
-  const { new_division_id, new_course_id, reason } = req.body;
+  const new_division_id = req.body.new_division_id || req.body.division_id;
+  const new_course_id = req.body.new_course_id || req.body.course_id;
+  const reason = req.body.reason;
 
   if (!new_division_id) {
     res.status(400);
     throw new Error('New division is required');
+  }
+
+  // 1. Look up student record by internal id, user_id, or roll number (student_id)
+  const { data: stRec } = await supabaseAdmin
+    .from('students')
+    .select('id, user_id, student_id')
+    .or(`id.eq.${student_id},user_id.eq.${student_id},student_id.eq.${student_id}`)
+    .maybeSingle();
+
+  if (!stRec) {
+    res.status(404);
+    throw new Error('Student record not found');
   }
 
   const updateData = {
@@ -569,9 +627,9 @@ const transferStudentDivision = asyncHandler(async (req, res) => {
   const { data: updated, error } = await supabaseAdmin
     .from('students')
     .update(updateData)
-    .or(`id.eq.${student_id},student_id.eq.${student_id}`)
+    .eq('id', stRec.id)
     .select('*, divisions(name, division_name), users(full_name, email)')
-    .maybeSingle();
+    .single();
 
   if (error || !updated) {
     res.status(500);
@@ -642,32 +700,123 @@ const getLiveAttendanceSummary = asyncHandler(async (_req, res) => {
 // @desc   Get Attendance Override Audit Logs (Fix #1 viewable by Admin only)
 // @route  GET /api/admin/attendance/audit-logs
 const getAttendanceAuditLogs = asyncHandler(async (_req, res) => {
-  const { data: logs, error } = await supabaseAdmin
+  let logs = [];
+  const { data: richLogs, error: rErr } = await supabaseAdmin
     .from('attendance_audit_logs')
     .select(`
       *,
       user:users!attendance_audit_logs_changed_by_fkey(id, full_name, role, email)
     `)
-    .order('created_at', { ascending: false })
+    .order('changed_at', { ascending: false })
     .limit(100);
 
-  if (error) {
-    const { data: fallbackLogs, error: fErr } = await supabaseAdmin
+  if (!rErr && richLogs) {
+    logs = richLogs;
+  } else {
+    const { data: rawLogs } = await supabaseAdmin
       .from('attendance_audit_logs')
       .select('*')
-      .order('created_at', { ascending: false })
+      .order('changed_at', { ascending: false })
       .limit(100);
+    logs = rawLogs || [];
+  }
 
-    if (fErr) {
-      return res.json({ success: true, data: { logs: [] } });
+  const mappedLogs = (logs || []).map((l) => ({
+    ...l,
+    old_status: l.previous_status || l.old_status_enum || l.old_status,
+    created_at: l.changed_at || l.created_at,
+  }));
+
+  res.json({
+    success: true,
+    count: mappedLogs.length,
+    data: { logs: mappedLogs },
+  });
+});
+
+// @desc   Get system configuration
+// @route  GET /api/admin/config
+const getSystemConfig = asyncHandler(async (_req, res) => {
+  const { data: configs, error } = await supabaseAdmin
+    .from('system_config')
+    .select('*')
+    .order('config_key', { ascending: true });
+
+  if (error) {
+    res.status(500);
+    throw new Error(error.message);
+  }
+
+  const settings = {};
+  (configs || []).forEach((c) => {
+    settings[c.config_key] = c.config_value;
+  });
+
+  res.json({
+    success: true,
+    data: {
+      configs: configs || [],
+      settings,
+    },
+  });
+});
+
+// @desc   Update system configuration
+// @route  PUT /api/admin/config
+const updateSystemConfig = asyncHandler(async (req, res) => {
+  const updates = req.body;
+
+  if (!updates || typeof updates !== 'object') {
+    res.status(400);
+    throw new Error('Configuration payload is required');
+  }
+
+  if (updates.key && updates.value !== undefined) {
+    const { data, error } = await supabaseAdmin
+      .from('system_config')
+      .upsert(
+        {
+          config_key: updates.key,
+          config_value: String(updates.value),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'config_key' }
+      )
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return res.json({
+      success: true,
+      message: `Configuration ${updates.key} updated`,
+      data: { config: data },
+    });
+  }
+
+  const results = [];
+  for (const [key, val] of Object.entries(updates)) {
+    if (val !== undefined && val !== null) {
+      const { data, error } = await supabaseAdmin
+        .from('system_config')
+        .upsert(
+          {
+            config_key: key,
+            config_value: String(val),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'config_key' }
+        )
+        .select()
+        .maybeSingle();
+
+      if (!error && data) results.push(data);
     }
-    return res.json({ success: true, data: { logs: fallbackLogs || [] } });
   }
 
   res.json({
     success: true,
-    count: logs?.length || 0,
-    data: { logs: logs || [] },
+    message: 'System configurations updated successfully',
+    data: { updated: results },
   });
 });
 
@@ -683,5 +832,7 @@ module.exports = {
   transferStudentDivision,
   getLiveAttendanceSummary,
   getAttendanceAuditLogs,
+  getSystemConfig,
+  updateSystemConfig,
 };
 
