@@ -1,5 +1,12 @@
+const crypto = require('crypto');
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const {
+  validateAndDecodeSelfie,
+  uploadAttendanceSelfie,
+  deleteSelfieObject,
+  generateSelfieSignedUrl,
+} = require('../services/selfieStorageService');
 
 // SMDL College coordinates
 const COLLEGE_LAT = 19.024790336362205;
@@ -138,35 +145,92 @@ const markAttendance = asyncHandler(async (req, res) => {
     );
   }
 
-  // 5. Selfie check
+  // 5. Selfie check & server-side validation
   if (!selfie) {
     res.status(400);
     throw new Error('Live camera selfie is required to verify physical presence');
   }
 
-  // 6. Record attendance
-  const { data: attendance, error: attErr } = await supabaseAdmin
-    .from('attendance')
-    .insert({
-      lecture_id: resolvedLectureId,
-      student_id: student.id,
-      status: 'PRESENT',
-      location_verified: true,
-      latitude: latitude || COLLEGE_LAT,
-      longitude: longitude || COLLEGE_LON,
-      geofence_radius: DEFAULT_GEOFENCE_RADIUS,
-      selfie_url: selfie,
-      marked_at: new Date().toISOString(),
-      marked_by: req.user.id,
-      source: 'AUTO_VERIFIED',
-      notes: 'Student self-verified attendance via GPS + live selfie',
-    })
-    .select()
-    .single();
+  // Validate format, MIME type, magic bytes, and size (Max 5MB)
+  const validatedImage = validateAndDecodeSelfie(selfie);
 
-  if (attErr) {
+  // Generate deterministic attendance UUID for collision-resistant storage path
+  const targetAttendanceId = crypto.randomUUID();
+
+  // 6. Upload selfie to private Supabase Storage
+  let storageUploadResult;
+  try {
+    storageUploadResult = await uploadAttendanceSelfie({
+      studentId: student.id,
+      attendanceId: targetAttendanceId,
+      buffer: validatedImage.buffer,
+      mimeType: validatedImage.mimeType,
+      extension: validatedImage.extension,
+    });
+  } catch (uploadErr) {
+    res.status(502);
+    throw new Error(`Failed to securely store attendance selfie: ${uploadErr.message}`);
+  }
+
+  const { storagePath, uploadedAt, expiresAt } = storageUploadResult;
+
+  // 7. Record attendance with storage reference (NO Base64 stored in DB!)
+  const insertPayload = {
+    id: targetAttendanceId,
+    lecture_id: resolvedLectureId,
+    student_id: student.id,
+    status: 'PRESENT',
+    location_verified: true,
+    latitude: latitude || COLLEGE_LAT,
+    longitude: longitude || COLLEGE_LON,
+    geofence_radius: DEFAULT_GEOFENCE_RADIUS,
+    selfie_url: storagePath,
+    marked_at: uploadedAt,
+    marked_by: req.user.id,
+    source: 'AUTO_VERIFIED',
+    notes: 'Student self-verified attendance via GPS + live selfie (private storage)',
+  };
+
+  let attendance = null;
+  let attErr = null;
+
+  try {
+    const res = await supabaseAdmin
+      .from('attendance')
+      .insert({
+        ...insertPayload,
+        selfie_storage_path: storagePath,
+        selfie_uploaded_at: uploadedAt,
+        selfie_expires_at: expiresAt,
+      })
+      .select()
+      .single();
+    attendance = res.data;
+    attErr = res.error;
+  } catch (e) {
+    attErr = e;
+  }
+
+  // Fallback if dedicated columns not in remote schema cache
+  if (attErr && (attErr.code === 'PGRST204' || attErr.code === '42703' || attErr.message?.includes('schema cache') || attErr.message?.includes('selfie_'))) {
+    const fallbackRes = await supabaseAdmin
+      .from('attendance')
+      .insert(insertPayload)
+      .select()
+      .single();
+    attendance = fallbackRes.data;
+    attErr = fallbackRes.error;
+  }
+
+  // COMPENSATION / ROLLBACK: If DB insertion failed after successful storage upload,
+  // delete the uploaded storage object immediately so no unmanaged orphan file remains!
+  if (attErr || !attendance) {
+    console.warn(`[attendanceController] DB insert failed: ${attErr?.message || JSON.stringify(attErr)}. Executing compensation cleanup for storage object: ${storagePath}`);
+    await deleteSelfieObject(storagePath).catch((delErr) =>
+      console.error('[attendanceController] Compensation cleanup error:', delErr)
+    );
     res.status(500);
-    throw new Error(attErr.message || 'Failed to record attendance');
+    throw new Error(attErr?.message || 'Failed to record attendance in database');
   }
 
   // Also record into attendance_records table if timetableId is known
@@ -286,29 +350,36 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
   const allRosterStudents = [...(divisionStudents || []), ...extraStudents];
   const attMap = new Map((attendanceRecords || []).map((a) => [a.student_id, a]));
 
-  // Combine to create complete class roster
-  const roster = allRosterStudents.map((s) => {
-    const att = attMap.get(s.id);
-    const isTeacherOverride = att?.source === 'TEACHER_OVERRIDE';
-    return {
-      student_pk: s.id,
-      roll_number: s.student_id,
-      full_name: s.users?.full_name || 'Student',
-      email: s.users?.email,
-      phone: s.users?.phone,
-      attendance_id: att?.id || null,
-      status: att?.status || 'ABSENT',
-      marked_at: att?.marked_at || null,
-      location_verified: att?.location_verified || false,
-      distance_meters: att?.latitude && att?.longitude
-        ? calculateDistanceInMeters(att.latitude, att.longitude, COLLEGE_LAT, COLLEGE_LON)
-        : null,
-      selfie_url: att?.selfie_url || null,
-      is_teacher_override: isTeacherOverride,
-      override_notes: att?.notes || null,
-      source: att?.source || null,
-    };
-  });
+  // Combine to create complete class roster with dynamic short-lived signed URLs for selfies
+  const roster = await Promise.all(
+    allRosterStudents.map(async (s) => {
+      const att = attMap.get(s.id);
+      const isTeacherOverride = att?.source === 'TEACHER_OVERRIDE';
+      const rawSelfie = att?.selfie_storage_path || att?.selfie_url || null;
+      let signedSelfieUrl = null;
+      if (rawSelfie) {
+        signedSelfieUrl = await generateSelfieSignedUrl(rawSelfie, 1800); // 30-min signed URL
+      }
+      return {
+        student_pk: s.id,
+        roll_number: s.student_id,
+        full_name: s.users?.full_name || 'Student',
+        email: s.users?.email,
+        phone: s.users?.phone,
+        attendance_id: att?.id || null,
+        status: att?.status || 'ABSENT',
+        marked_at: att?.marked_at || null,
+        location_verified: att?.location_verified || false,
+        distance_meters: att?.latitude && att?.longitude
+          ? calculateDistanceInMeters(att.latitude, att.longitude, COLLEGE_LAT, COLLEGE_LON)
+          : null,
+        selfie_url: signedSelfieUrl,
+        is_teacher_override: isTeacherOverride,
+        override_notes: att?.notes || null,
+        source: att?.source || null,
+      };
+    })
+  );
 
   res.json({
     success: true,
@@ -336,6 +407,13 @@ const overrideAttendance = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error('lecture_id, student_pk (or student_id), and status are required');
   }
+
+  // Fetch lecture info for notification metadata
+  const { data: lecture } = await supabaseAdmin
+    .from('lectures')
+    .select('id, lecture_date, subject_id, subject:subjects(name)')
+    .eq('id', lecture_id)
+    .maybeSingle();
 
   // 1. Check if an attendance record already exists
   const { data: existing } = await supabaseAdmin
@@ -625,9 +703,122 @@ const getReportsOverview = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Get authorized short-lived signed URL for an attendance selfie
+// @route  GET /api/attendance/:attendanceId/selfie
+const getAttendanceSelfie = asyncHandler(async (req, res) => {
+  const { attendanceId } = req.params;
+
+  // 1. Fetch attendance record (with schema cache fallback)
+  let att = null;
+  try {
+    const { data: attWithCols, error: attErr1 } = await supabaseAdmin
+      .from('attendance')
+      .select('id, student_id, lecture_id, selfie_url, selfie_storage_path, selfie_expires_at, lectures(division_id, subject_id, teacher_id)')
+      .eq('id', attendanceId)
+      .single();
+
+    if (!attErr1 && attWithCols) {
+      att = attWithCols;
+    }
+  } catch (_e) {}
+
+  if (!att) {
+    const { data: attFallback, error: attErr2 } = await supabaseAdmin
+      .from('attendance')
+      .select('id, student_id, lecture_id, selfie_url, marked_at, lectures(division_id, subject_id, teacher_id)')
+      .eq('id', attendanceId)
+      .single();
+
+    if (attErr2 || !attFallback) {
+      res.status(404);
+      throw new Error('Attendance record not found');
+    }
+    att = attFallback;
+  }
+
+  // 2. Authorization check
+  const user = req.user;
+  if (user.role === 'student') {
+    // Student can only access their own selfie
+    const { data: studentProfile } = await supabaseAdmin
+      .from('students')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!studentProfile || studentProfile.id !== att.student_id) {
+      res.status(403);
+      throw new Error('Access denied: You are not authorized to view this selfie');
+    }
+  } else if (user.role === 'teacher') {
+    // Teacher must be assigned to this lecture or teach the division/subject
+    const { data: teacherProfile } = await supabaseAdmin
+      .from('teachers')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!teacherProfile) {
+      res.status(403);
+      throw new Error('Teacher profile not found');
+    }
+
+    const isAssigned = att.lectures?.teacher_id === teacherProfile.id;
+    if (!isAssigned) {
+      const { data: ts } = await supabaseAdmin
+        .from('teacher_subjects')
+        .select('id')
+        .eq('teacher_id', teacherProfile.id)
+        .eq('subject_id', att.lectures?.subject_id)
+        .maybeSingle();
+
+      if (!ts) {
+        res.status(403);
+        throw new Error('Access denied: You are not authorized to view selfies for this lecture');
+      }
+    }
+  } else if (user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Unauthorized role');
+  }
+
+  // 3. Check if selfie exists and is not expired
+  const storagePath = att.selfie_storage_path || att.selfie_url;
+  if (!storagePath) {
+    res.status(404);
+    throw new Error('No selfie on record or selfie has been cleared under the 48-hour retention policy');
+  }
+
+  const expiresAt = att.selfie_expires_at
+    ? new Date(att.selfie_expires_at)
+    : (att.marked_at ? new Date(new Date(att.marked_at).getTime() + 48 * 3600 * 1000) : null);
+
+  if (expiresAt && expiresAt <= new Date()) {
+    res.status(410);
+    throw new Error('Attendance selfie has expired under the 48-hour retention policy');
+  }
+
+  // 4. Generate signed URL (valid for 15 minutes)
+  const signedUrl = await generateSelfieSignedUrl(storagePath, 900);
+  if (!signedUrl) {
+    res.status(404);
+    throw new Error('Selfie image object not found in storage');
+  }
+
+  res.json({
+    success: true,
+    data: {
+      attendance_id: att.id,
+      signed_url: signedUrl,
+      expires_in_seconds: 900,
+    },
+  });
+});
+
 module.exports = {
   markAttendance,
   getLectureAttendance,
+  getAttendanceSelfie,
   overrideAttendance,
   getMyStats,
   getReportsOverview,

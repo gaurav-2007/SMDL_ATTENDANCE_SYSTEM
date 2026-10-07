@@ -206,7 +206,16 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
       messageId: info.messageId,
     };
   } catch (error) {
-    console.error('[emailService] Failed to send email via SMTP:', error);
+    console.error('[emailService] Failed to send email via SMTP:', error.message);
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[emailService] Non-production fallback: returning dev mock delivery due to SMTP limit (${error.message})`);
+      return {
+        success: true,
+        delivered: false,
+        messageId: `mock-dev-${Date.now()}`,
+        devFallback: true,
+      };
+    }
     throw new Error(`Failed to deliver verification email: ${error.message || 'SMTP delivery failed'}`);
   }
 }
@@ -387,7 +396,16 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
       messageId: info.messageId,
     };
   } catch (error) {
-    console.error('[emailService] Failed to send password reset email:', error);
+    console.error('[emailService] Failed to send password reset email:', error.message);
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(`[emailService] Non-production fallback: returning dev mock delivery due to SMTP limit (${error.message})`);
+      return {
+        success: true,
+        delivered: false,
+        messageId: `mock-dev-${Date.now()}`,
+        devFallback: true,
+      };
+    }
     throw new Error(`Failed to deliver password reset email: ${error.message || 'SMTP delivery failed'}`);
   }
 }

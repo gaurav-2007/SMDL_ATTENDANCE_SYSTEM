@@ -12,6 +12,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { initLectureScheduler } = require('./services/lectureScheduler');
+const { initSelfieCleanupJob } = require('./services/selfieCleanupJob');
 
 const helmet = require('helmet');
 const hpp = require('hpp');
@@ -59,6 +60,7 @@ app.use(sanitizeInput);
 
 // 8. Global API Rate Limiter
 app.use('/api', globalApiLimiter);
+app.use('/api', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/academic', academicRoutes);
@@ -69,6 +71,9 @@ app.use('/api/notifications', notificationRoutes);
 
 // Initialize atomic lecture reminder scheduler (runs every minute in Asia/Kolkata timezone)
 initLectureScheduler();
+
+// Initialize 48-hour attendance selfie retention cleanup job (runs hourly)
+initSelfieCleanupJob();
 
 // Direct alias for Section 3: GET /student/today-classes & /api/student/today-classes
 const protect = require('./middleware/auth');

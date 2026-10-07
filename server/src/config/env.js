@@ -35,4 +35,10 @@ module.exports = {
   // Attendance rate limiting
   ATTENDANCE_LIMIT_WINDOW_MS: parseInt(process.env.ATTENDANCE_LIMIT_WINDOW_MS || '60000', 10),
   ATTENDANCE_LIMIT_MAX: parseInt(process.env.ATTENDANCE_LIMIT_MAX || '10', 10),
+  // Attendance selfie private storage & 48-hour retention
+  ATTENDANCE_SELFIE_BUCKET: process.env.ATTENDANCE_SELFIE_BUCKET || 'attendance-selfies',
+  ATTENDANCE_SELFIE_RETENTION_HOURS: (() => {
+    const hours = parseInt(process.env.ATTENDANCE_SELFIE_RETENTION_HOURS || '48', 10);
+    return isNaN(hours) || hours <= 0 ? 48 : hours;
+  })(),
 };
