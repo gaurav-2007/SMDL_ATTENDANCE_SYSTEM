@@ -215,8 +215,10 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
         messageId: `mock-dev-${Date.now()}`,
         devFallback: true,
       };
-    }
-    throw new Error(`Failed to deliver verification email: ${error.message || 'SMTP delivery failed'}`);
+    const sanitizedMsg = process.env.NODE_ENV === 'production'
+      ? 'Failed to deliver verification email. Please try again later or contact college admin.'
+      : `Failed to deliver verification email: ${error.message || 'SMTP delivery failed'}`;
+    throw new Error(sanitizedMsg);
   }
 }
 
@@ -405,8 +407,10 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
         messageId: `mock-dev-${Date.now()}`,
         devFallback: true,
       };
-    }
-    throw new Error(`Failed to deliver password reset email: ${error.message || 'SMTP delivery failed'}`);
+    const sanitizedMsg = process.env.NODE_ENV === 'production'
+      ? 'Failed to deliver password reset email. Please try again later.'
+      : `Failed to deliver password reset email: ${error.message || 'SMTP delivery failed'}`;
+    throw new Error(sanitizedMsg);
   }
 }
 

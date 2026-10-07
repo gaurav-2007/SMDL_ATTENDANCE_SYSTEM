@@ -38,8 +38,28 @@ app.use(
   })
 );
 
-// 3. Strict CORS configuration
-app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+// 3. Strict Production CORS configuration
+const allowedOrigins = (env.CLIENT_URL || '')
+  .split(',')
+  .map((u) => u.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g., mobile apps, curl, same-origin)
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(origin))
+      ) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS policy violation: Origin '${origin}' is not authorized.`));
+    },
+    credentials: true,
+  })
+);
 
 // 4. Scoped High-Payload Parser for Attendance Photos (up to 15MB)
 app.use(

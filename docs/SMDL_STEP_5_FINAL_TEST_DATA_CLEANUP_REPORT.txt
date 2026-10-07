@@ -1,0 +1,112 @@
+================================================================================
+SMDL COLLEGE SMART ATTENDANCE & COMMUNICATION SYSTEM
+STEP 5 — FINAL TEST-DATA CLEANUP EXECUTION & VERIFICATION REPORT
+================================================================================
+Execution Timestamp: 2026-10-07T16:05:00+05:30 (IST)
+Location: SES's S. M. Dadasaheb Limaye College, Kalamboli, Navi Mumbai
+Database: Supabase PostgreSQL (Production: sxdaghnxmypmwyobhuds.supabase.co)
+Mode: Production Test-Data Purge with Verified Pre-Execution Backup
+================================================================================
+
+1. BACKUP VERIFICATION (POINT-IN-TIME SNAPSHOT)
+--------------------------------------------------------------------------------
+Before executing any deletion, a full point-in-time backup was saved and verified:
+Directory: backups/pre_step5_backup_20261007/
+- database_full_backup.json (509.9 KB - full dump of all 23 database tables)
+- database_restore.sql      (490.5 KB - SQL INSERT script for disaster recovery)
+- Individual Table JSONs    (23 separate table files)
+- storage/attendance-selfies/ (All 8 pre-cleanup selfie files saved locally)
+- storage_inventory.json    (Full metadata and checksums of storage objects)
+
+2. EXECUTION SUMMARY: DELETED ARTIFACTS
+--------------------------------------------------------------------------------
+In accordance with user confirmation ("Option 1A" and personal Gmail accounts for students):
+
+1. attendance:
+   - Rows Deleted: 5
+   - Details: All 5 synthetic pre-production attendance test marks cleared.
+   - Status: 0 rows (Clean slate ready for live attendance).
+
+2. Supabase Storage (attendance-selfies):
+   - Objects Deleted: 8 JPEG image files
+   - Details: All synthetic test webcam images purged from private storage bucket.
+   - Status: 0 objects (Clean slate).
+
+3. lectures (Option 1A: Complete Clean Slate):
+   - Rows Deleted: 19
+   - Details: All test lectures and past simulated slots cleared.
+   - Status: 0 rows (Atomic scheduler automatically populates today's timetable).
+
+4. notifications:
+   - Rows Deleted: 311
+   - Details: All test notifications (124 SYSTEM, 150 STUDY_MATERIAL, 31 ANNOUNCEMENT, 6 ATTENDANCE_MARKED).
+   - Status: 0 rows (Clean slate).
+
+5. announcements:
+   - Rows Deleted: 2
+   - Details: Test announcements ("just test", "test1") purged.
+   - Status: 0 rows (Clean slate).
+
+6. email_verifications:
+   - Rows Deleted: 12
+   - Details: Expired OTP test records for test.student.* and test.teacher.* purged.
+   - Status: 0 rows (Clean slate).
+
+7. user_devices:
+   - Rows Deleted: 3
+   - Details: Mock browser FCM tokens purged.
+   - Status: 0 rows (Clean slate).
+
+8. Demo Students (@smdl.ac.in):
+   - Rows Deleted: 18 student accounts + 18 student profile rows
+   - Details: Removed demo students (CS-2026-001..006, IT-2026-001..006, BCOM-2026-001..006).
+   - Status: All students now use personal Gmail as per college policy.
+
+3. PRESERVED PRODUCTION ASSETS (ZERO DELETION)
+--------------------------------------------------------------------------------
+1. Admin Account (1 user):
+   - admin@smdl.ac.in (SMDL Admin) — ACTIVE
+
+2. Approved College Faculty (8 teachers):
+   - arati.sawant@smdl.ac.in     (Arati Sawant, IT Dept) — ACTIVE
+   - pooja.chande@smdl.ac.in     (Pooja Chande, CS Dept) — ACTIVE
+   - joshila.chanu@smdl.ac.in    (Joshila Chanu Soraisam, CS Dept) — ACTIVE
+   - pooja.sawant@smdl.ac.in     (Pooja Sawant, CS Dept) — ACTIVE
+   - girish.kumbhar@smdl.ac.in   (Girish Kumbhar, Arts Dept) — ACTIVE
+   - nilam.sonawane@smdl.ac.in   (Nilam Sonawane, Commerce Dept) — ACTIVE
+   - sabina.shaikh@smdl.ac.in    (Sabina Shaikh, Arts Dept) — ACTIVE
+   - maithili.sawant@smdl.ac.in  (Maithili Sawant, Commerce Dept) — ACTIVE
+
+3. Student Accounts with Personal Gmail (3 users):
+   - gauravmar155@gmail.com      (Gaurav Maurya, BSC-CS) — ACTIVE
+   - mauryavandana873@gmail.com  (pooja Maurya, BSC-CS) — ACTIVE
+   - studentsstudy02@gmail.com   (Rahul kumar, BSC-CS) — ACTIVE
+
+4. Academic & Curriculum Infrastructure:
+   - courses: 3 (BSC-IT, BSC-CS, BCOM)
+   - divisions: 9 (FY/SY/TY divisions)
+   - subjects: 31 official curriculum subjects
+   - teacher_subjects: 15 active faculty assignments
+   - system_config: 10 college parameters
+
+4. VERIFICATION SCORECARD
+--------------------------------------------------------------------------------
+[PASS] Full database and storage backup verified on disk
+[PASS] 0 test attendance records remain
+[PASS] 0 test storage objects remain in attendance-selfies
+[PASS] 0 test lectures remain (ready for timetable scheduler)
+[PASS] 0 test notifications remain
+[PASS] 0 test announcements remain
+[PASS] 0 test email OTP records remain
+[PASS] 0 mock device tokens remain
+[PASS] 18 demo @smdl.ac.in student accounts removed
+[PASS] 3 personal Gmail student accounts preserved and active
+[PASS] All 8 official approved teachers preserved and active
+[PASS] Required Admin account preserved and active
+[PASS] All 3 courses, 9 divisions, 31 subjects, 15 teacher-subject mappings intact
+[PASS] Row Level Security (RLS) policies intact
+[PASS] Foreign Key & Referential Integrity 100% (0 orphan records)
+
+================================================================================
+END OF STEP 5 FINAL CLEANUP REPORT
+================================================================================
