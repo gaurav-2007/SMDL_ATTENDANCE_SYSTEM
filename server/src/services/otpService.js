@@ -151,6 +151,8 @@ async function createOtp(rawEmail, role = 'student') {
       verified: false,
       verifiedAt: null,
       otpToken: null,
+    });
+
     if (process.env.NODE_ENV !== 'production') {
       console.log(`🔑 [DEV ONLY] OTP for ${email}: ${code}`);
     }
