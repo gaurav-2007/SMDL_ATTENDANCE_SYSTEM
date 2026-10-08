@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SMDL Attendance</string>
+    <string name="title_activity_main">SMDL Attendance</string>
+    <string name="package_name">in.ac.smdl.attendance</string>
+    <string name="custom_url_scheme">in.ac.smdl.attendance</string>
+</resources>

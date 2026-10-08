@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
+import { openAttachment } from '../../utils/attachmentHelper'
 
 const TARGET_TYPES = [
   { value: 'ALL',      label: 'Everyone (All roles)',  icon: '🌐' },
@@ -130,6 +131,10 @@ export default function AnnouncementsPanel() {
                               download={att.file_name}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                openAttachment(att.file_url)
+                              }}
                               className="btn btn-secondary !py-1 !px-2.5 text-[11px] flex items-center gap-1 text-brand-accent hover:text-white"
                               title="Download document / image"
                             >

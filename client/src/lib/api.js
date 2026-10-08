@@ -1,6 +1,14 @@
 import axios from 'axios'
+import { Capacitor } from '@capacitor/core'
 
-const baseURL = import.meta.env.VITE_API_URL || '/api'
+// Multi-environment API URL resolution (Step 8 architecture):
+// 1. Explicit VITE_API_URL if configured in environment
+// 2. Native Android APK fallback: Host Wi-Fi LAN IP (avoids dead localhost inside APK)
+// 3. Web browser fallback: Relative '/api' via Vite development proxy
+const isNative = Capacitor.isNativePlatform()
+const DEFAULT_NATIVE_API_URL = 'http://172.16.225.19:5000/api'
+
+const baseURL = import.meta.env.VITE_API_URL || (isNative ? DEFAULT_NATIVE_API_URL : '/api')
 
 const api = axios.create({
   baseURL,

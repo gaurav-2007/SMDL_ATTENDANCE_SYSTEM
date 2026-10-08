@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Users, UserCheck, UserX, Clock, TrendingUp, RefreshCw, CheckCircle, XCircle, GraduationCap } from 'lucide-react'
+import { Users, UserCheck, UserX, Clock, TrendingUp, RefreshCw, CheckCircle, XCircle, GraduationCap, MapPin, Save, RotateCcw } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
 
@@ -7,6 +7,81 @@ export default function AdminHome() {
   const [teachers, setTeachers] = useState([])
   const [loading,  setLoading]  = useState(true)
   const [actingId, setActingId] = useState(null)
+
+  // Geofence configuration state
+  const [geofenceForm, setGeofenceForm] = useState({ latitude: '', longitude: '', radius: '' })
+  const [activeGeofence, setActiveGeofence] = useState({ latitude: '19.02479', longitude: '73.10159', radius: '100' })
+  const [loadingGeofence, setLoadingGeofence] = useState(false)
+  const [savingGeofence, setSavingGeofence] = useState(false)
+
+  const fetchGeofence = useCallback(async () => {
+    setLoadingGeofence(true)
+    try {
+      const { data } = await api.get('/admin/config')
+      const s = data.data?.settings || {}
+      const current = {
+        latitude: s.college_latitude || '19.02479',
+        longitude: s.college_longitude || '73.10159',
+        radius: s.geofence_radius_meters || '100',
+      }
+      setActiveGeofence(current)
+      setGeofenceForm(current)
+    } catch {
+      // Keep defaults on fetch error
+    } finally {
+      setLoadingGeofence(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchGeofence()
+  }, [fetchGeofence])
+
+  async function handleSaveGeofence(e) {
+    e.preventDefault()
+    const lat = parseFloat(geofenceForm.latitude)
+    const lon = parseFloat(geofenceForm.longitude)
+    const rad = parseInt(geofenceForm.radius, 10)
+
+    if (isNaN(lat) || lat < -90 || lat > 90) {
+      toast.error('Latitude must be a valid number between -90 and 90')
+      return
+    }
+    if (isNaN(lon) || lon < -180 || lon > 180) {
+      toast.error('Longitude must be a valid number between -180 and 180')
+      return
+    }
+    if (isNaN(rad) || rad <= 0 || !/^\d+$/.test(String(geofenceForm.radius).trim())) {
+      toast.error('Radius must be a positive integer greater than 0')
+      return
+    }
+    if (rad > 50000) {
+      toast.error('Radius cannot exceed 50,000 meters')
+      return
+    }
+
+    setSavingGeofence(true)
+    try {
+      await api.put('/admin/config', {
+        college_latitude: String(lat),
+        college_longitude: String(lon),
+        geofence_radius_meters: String(rad),
+      })
+      toast.success('Geofence settings updated successfully!')
+      const updated = { latitude: String(lat), longitude: String(lon), radius: String(rad) }
+      setActiveGeofence(updated)
+      setGeofenceForm(updated)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update geofence settings')
+    } finally {
+      setSavingGeofence(false)
+    }
+  }
+
+  function handleResetGeofence() {
+    setGeofenceForm(activeGeofence)
+    toast.success('Reset to current active configuration')
+  }
 
   const fetchTeachers = useCallback(async () => {
     setLoading(true)
@@ -245,6 +320,146 @@ export default function AdminHome() {
             </div>
           </a>
         </div>
+      </div>
+
+      {/* Attendance Geofence Settings */}
+      <div className="card" id="geofence-settings-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-white font-semibold flex items-center gap-2">
+              <MapPin size={18} className="text-brand-accent" />
+              Attendance Geofence Settings
+            </h3>
+            <p className="text-brand-muted text-xs mt-0.5">
+              Configure college GPS coordinates and the allowed physical radius for student attendance verification.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchGeofence}
+            disabled={loadingGeofence}
+            className="btn-ghost btn-sm gap-1"
+          >
+            <RefreshCw size={13} className={loadingGeofence ? 'animate-spin' : ''} />
+            Refresh Settings
+          </button>
+        </div>
+
+        {/* Current Active Configuration Status */}
+        <div className="p-4 rounded-xl bg-slate-900/60 border border-brand-border/80 mb-5">
+          <p className="text-xs uppercase font-semibold text-brand-muted tracking-wider mb-2">
+            Current Active Configuration
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-brand-card/90 p-3 rounded-lg border border-brand-border">
+              <span className="text-brand-muted text-xs block">Active Latitude</span>
+              <span className="text-white font-mono font-semibold text-sm">
+                {activeGeofence.latitude || '19.02479'}
+              </span>
+            </div>
+            <div className="bg-brand-card/90 p-3 rounded-lg border border-brand-border">
+              <span className="text-brand-muted text-xs block">Active Longitude</span>
+              <span className="text-white font-mono font-semibold text-sm">
+                {activeGeofence.longitude || '73.10159'}
+              </span>
+            </div>
+            <div className="bg-brand-card/90 p-3 rounded-lg border border-brand-border">
+              <span className="text-brand-muted text-xs block">Allowed Radius</span>
+              <span className="text-brand-accent font-mono font-bold text-sm">
+                {activeGeofence.radius || '100'} meters
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Geofence Form */}
+        <form onSubmit={handleSaveGeofence} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label htmlFor="geo-latitude" className="block text-xs font-medium text-brand-muted mb-1.5">
+                College Latitude <span className="text-brand-danger">*</span>
+              </label>
+              <input
+                id="geo-latitude"
+                type="number"
+                step="any"
+                required
+                value={geofenceForm.latitude}
+                onChange={(e) => setGeofenceForm((prev) => ({ ...prev, latitude: e.target.value }))}
+                placeholder="19.02479"
+                className="input font-mono text-sm"
+              />
+              <span className="text-[11px] text-brand-muted/70 mt-1 block">Valid range: -90.0 to +90.0</span>
+            </div>
+
+            <div>
+              <label htmlFor="geo-longitude" className="block text-xs font-medium text-brand-muted mb-1.5">
+                College Longitude <span className="text-brand-danger">*</span>
+              </label>
+              <input
+                id="geo-longitude"
+                type="number"
+                step="any"
+                required
+                value={geofenceForm.longitude}
+                onChange={(e) => setGeofenceForm((prev) => ({ ...prev, longitude: e.target.value }))}
+                placeholder="73.10159"
+                className="input font-mono text-sm"
+              />
+              <span className="text-[11px] text-brand-muted/70 mt-1 block">Valid range: -180.0 to +180.0</span>
+            </div>
+
+            <div>
+              <label htmlFor="geo-radius" className="block text-xs font-medium text-brand-muted mb-1.5">
+                Allowed Radius (Meters) <span className="text-brand-danger">*</span>
+              </label>
+              <input
+                id="geo-radius"
+                type="number"
+                min="1"
+                step="1"
+                required
+                value={geofenceForm.radius}
+                onChange={(e) => setGeofenceForm((prev) => ({ ...prev, radius: e.target.value }))}
+                placeholder="100"
+                className="input font-mono text-sm"
+              />
+              <span className="text-[11px] text-brand-muted/70 mt-1 block">Default: 100 meters</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <button
+              id="save-geofence-btn"
+              type="submit"
+              disabled={savingGeofence}
+              className="btn-primary btn-sm gap-1.5"
+            >
+              {savingGeofence ? (
+                <>
+                  <div className="spinner w-3.5 h-3.5" />
+                  <span>Saving Settings...</span>
+                </>
+              ) : (
+                <>
+                  <Save size={14} />
+                  <span>Save Geofence Settings</span>
+                </>
+              )}
+            </button>
+
+            <button
+              id="reset-geofence-btn"
+              type="button"
+              onClick={handleResetGeofence}
+              disabled={savingGeofence}
+              className="btn-secondary btn-sm gap-1.5"
+            >
+              <RotateCcw size={14} />
+              <span>Reset to Current Saved</span>
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

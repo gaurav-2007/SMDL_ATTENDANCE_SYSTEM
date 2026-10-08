@@ -1,0 +1,22 @@
+{
+  "appId": "in.ac.smdl.attendance",
+  "appName": "SMDL Attendance",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0B1120"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0B1120"
+    }
+  }
+}

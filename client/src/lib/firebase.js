@@ -64,11 +64,68 @@ async function getFirebaseMessaging() {
   return null;
 }
 
+import { Capacitor } from '@capacitor/core'
+import { PushNotifications } from '@capacitor/push-notifications'
+
 /**
- * Requests browser notification permission, retrieves FCM web push token,
- * and registers it with the backend server.
+ * Requests notification permission, retrieves FCM token,
+ * registers Android notification channel, and registers token with backend.
  */
 export async function requestWebPushPermission() {
+  // --- NATIVE ANDROID FCM WORKFLOW (Capacitor) ---
+  if (Capacitor.isNativePlatform()) {
+    try {
+      // 1. Create native Android notification channel matching backend fcmService
+      await PushNotifications.createChannel({
+        id: 'smdl_alerts',
+        name: 'SMDL Campus Alerts',
+        description: 'Attendance alerts, lecture notifications, and campus updates',
+        importance: 5,
+        visibility: 1,
+        vibration: true,
+      }).catch((e) => console.warn('[firebase.js] Channel create warning:', e.message))
+
+      // 2. Request runtime push permission (Android 13+)
+      let permStatus = await PushNotifications.checkPermissions()
+      if (permStatus.receive !== 'granted') {
+        permStatus = await PushNotifications.requestPermissions()
+      }
+
+      if (permStatus.receive !== 'granted') {
+        return { supported: true, granted: false, reason: 'Push notification permission denied by user' }
+      }
+
+      // 3. Register with Google FCM
+      return new Promise((resolve) => {
+        PushNotifications.addListener('registration', async (token) => {
+          const nativeToken = token.value
+          localStorage.setItem('smdl_fcm_token', nativeToken)
+          try {
+            await api.post('/notifications/devices', {
+              fcm_token: nativeToken,
+              device_type: 'ANDROID',
+              device_name: 'Android Device',
+            })
+          } catch (_e) {
+            // Token registration recorded locally
+          }
+          resolve({ supported: true, granted: true, token: nativeToken })
+        })
+
+        PushNotifications.addListener('registrationError', (err) => {
+          console.warn('[firebase.js] Native FCM registration error:', err.error)
+          resolve({ supported: true, granted: false, error: err.error })
+        })
+
+        PushNotifications.register()
+      })
+    } catch (err) {
+      console.warn('[firebase.js] Native push exception:', err.message)
+      return { supported: true, granted: false, error: err.message }
+    }
+  }
+
+  // --- WEB BROWSER WORKFLOW ---
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return { supported: false, reason: 'Notifications not supported in this browser' };
   }

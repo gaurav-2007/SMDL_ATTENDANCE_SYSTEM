@@ -87,9 +87,54 @@ function AppRoutes() {
   )
 }
 
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
+import { App as CapApp } from '@capacitor/app'
+import { StatusBar, Style } from '@capacitor/status-bar'
+import { SplashScreen } from '@capacitor/splash-screen'
+
+function NativeBridgeListener() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    // 1. Set dark theme status bar matching brand design
+    StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
+    StatusBar.setBackgroundColor({ color: '#0B1120' }).catch(() => {})
+
+    // 2. Hide splash screen after React mounts
+    SplashScreen.hide().catch(() => {})
+
+    // 3. Handle Android physical & gesture back button
+    let backListener = null
+    CapApp.addListener('backButton', ({ canGoBack }) => {
+      const path = window.location.pathname
+      const isRootPortal = path === '/login' || path === '/student' || path === '/teacher' || path === '/admin'
+      if (isRootPortal) {
+        CapApp.minimizeApp().catch(() => {})
+      } else if (canGoBack) {
+        window.history.back()
+      } else {
+        navigate(-1)
+      }
+    }).then((sub) => {
+      backListener = sub
+    })
+
+    return () => {
+      if (backListener) backListener.remove()
+    }
+  }, [navigate])
+
+  return null
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <NativeBridgeListener />
       <AuthProvider>
         <AppRoutes />
         <Toaster

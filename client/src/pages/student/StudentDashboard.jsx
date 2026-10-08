@@ -10,6 +10,7 @@ import {
   Download, Image as ImageIcon, CheckCircle, XCircle
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { openAttachment } from '../../utils/attachmentHelper'
 
 // Lazy-load heavy components to reduce initial bundle size
 const StudentMarkAttendance = lazy(() => import('./StudentMarkAttendance'))
@@ -604,6 +605,10 @@ function StudentAnnouncements() {
                             download={att.file_name}
                             target="_blank"
                             rel="noreferrer"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              openAttachment(att.file_url)
+                            }}
                             className="btn btn-secondary !py-1 !px-2.5 text-[11px] flex items-center gap-1 text-brand-accent hover:text-white"
                             title="Download document / image"
                           >

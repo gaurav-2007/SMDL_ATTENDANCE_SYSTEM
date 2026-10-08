@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { MapPin, Camera, RefreshCw, UserCheck, AlertTriangle, CheckCircle2, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { Capacitor } from '@capacitor/core'
+import { Geolocation } from '@capacitor/geolocation'
+import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera'
 import api from '../../lib/api'
 
-const COLLEGE_LAT = 19.024790336362205
-const COLLEGE_LON = 73.10159687914933
-const GEOFENCE_RADIUS = 500
+const DEFAULT_COLLEGE_LAT = 19.02479
+const DEFAULT_COLLEGE_LON = 73.10159
+const DEFAULT_GEOFENCE_RADIUS = 100
 
 function haversineMeters(lat1, lon1, lat2, lon2) {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null
@@ -25,6 +28,12 @@ export default function StudentMarkAttendance() {
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
+
+  const [geofenceConfig, setGeofenceConfig] = useState({
+    collegeLat: DEFAULT_COLLEGE_LAT,
+    collegeLon: DEFAULT_COLLEGE_LON,
+    radiusMeters: DEFAULT_GEOFENCE_RADIUS,
+  })
 
   const [lectures, setLectures] = useState([])
   const [selectedLecture, setSelectedLecture] = useState(preselectedId)
@@ -46,9 +55,30 @@ export default function StudentMarkAttendance() {
   const [successData, setSuccessData] = useState(null)
 
   const isDev = import.meta.env.DEV
-  const locationOk = isDemoBypass || (distanceMeters != null && distanceMeters <= GEOFENCE_RADIUS)
+  const locationOk = isDemoBypass || (distanceMeters != null && distanceMeters <= geofenceConfig.radiusMeters)
   const selfieOk = !!selfiePreview
   const canSubmit = !!selectedLecture && (locationOk || isDemoBypass) && selfieOk && !submitting
+
+  // Fetch dynamic geofence configuration from backend
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: geoData } = await api.get('/attendance/geofence-config')
+        if (geoData?.data) {
+          const lat = parseFloat(geoData.data.college_latitude)
+          const lon = parseFloat(geoData.data.college_longitude)
+          const rad = parseInt(geoData.data.geofence_radius_meters, 10)
+          setGeofenceConfig({
+            collegeLat: !isNaN(lat) ? lat : DEFAULT_COLLEGE_LAT,
+            collegeLon: !isNaN(lon) ? lon : DEFAULT_COLLEGE_LON,
+            radiusMeters: !isNaN(rad) && rad > 0 ? rad : DEFAULT_GEOFENCE_RADIUS,
+          })
+        }
+      } catch (_e) {
+        // Fallback defaults retained
+      }
+    })()
+  }, [])
 
   useEffect(() => {
     (async () => {
@@ -92,18 +122,43 @@ export default function StudentMarkAttendance() {
     setFetchingLoc(true)
     setLocError('')
     try {
-      const pos = await new Promise((resolve, reject) => {
-        if (!navigator.geolocation) reject(new Error('Geolocation not supported'))
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 12000 })
-      })
-      const lat = pos.coords.latitude
-      const lon = pos.coords.longitude
+      let coords = null
+      if (Capacitor.isNativePlatform()) {
+        const perm = await Geolocation.checkPermissions()
+        if (perm.location !== 'granted') {
+          const req = await Geolocation.requestPermissions()
+          if (req.location !== 'granted') {
+            throw new Error('Location permission was not granted on this device')
+          }
+        }
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 })
+        coords = pos.coords
+      } else {
+        const pos = await new Promise((resolve, reject) => {
+          if (!navigator.geolocation) reject(new Error('Geolocation not supported in browser'))
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 12000 })
+        })
+        coords = pos.coords
+      }
+
+      if (!coords || coords.latitude == null || coords.longitude == null) {
+        throw new Error('Could not acquire valid GPS coordinates')
+      }
+
+      const lat = coords.latitude
+      const lon = coords.longitude
       setLatitude(lat)
       setLongitude(lon)
-      const d = haversineMeters(lat, lon, COLLEGE_LAT, COLLEGE_LON)
+
+      // Correction 3: Check GPS accuracy and distinguish weak satellite signal from outside geofence
+      if (coords.accuracy != null && coords.accuracy > 80 && !isDemoBypass) {
+        toast.error(`⚠️ GPS accuracy is low (±${Math.round(coords.accuracy)}m). Please step outdoors or wait for satellite lock before marking.`)
+      }
+
+      const d = haversineMeters(lat, lon, geofenceConfig.collegeLat, geofenceConfig.collegeLon)
       setDistanceMeters(d)
-      if (d != null && d > GEOFENCE_RADIUS && !isDemoBypass) {
-        toast.error(`📍 You are ${d}m away — outside the 300m college geofence.`)
+      if (d != null && d > geofenceConfig.radiusMeters && !isDemoBypass) {
+        toast.error(`📍 You are ${d}m away — outside the ${geofenceConfig.radiusMeters}m college geofence.`)
       } else if (d != null) {
         toast.success(`📍 Location verified — ${d}m from SMDL College.`)
       }
@@ -128,7 +183,33 @@ export default function StudentMarkAttendance() {
     setCameraError('')
     setSelfiePreview('')
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera not supported in this browser')
+      if (Capacitor.isNativePlatform()) {
+        const perm = await CapCamera.checkPermissions()
+        if (perm.camera !== 'granted') {
+          const req = await CapCamera.requestPermissions()
+          if (req.camera !== 'granted') {
+            throw new Error('Camera permission was not granted on this device')
+          }
+        }
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        if (Capacitor.isNativePlatform()) {
+          const photo = await CapCamera.getPhoto({
+            quality: 85,
+            allowEditing: false,
+            resultType: CameraResultType.DataUrl,
+            source: CameraSource.Camera,
+            direction: 'front',
+          })
+          if (photo?.dataUrl) {
+            setSelfiePreview(photo.dataUrl)
+            return
+          }
+        }
+        throw new Error('Camera not supported in this browser')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 480 } },
         audio: false,
@@ -356,9 +437,18 @@ export default function StudentMarkAttendance() {
 
           <div className="card-sm !p-4 bg-brand-dark/60 space-y-1 text-xs">
             <div className="text-brand-muted mb-2 font-semibold text-sm">SMDL College Geofence</div>
-            <div className="flex justify-between"><span>Campus Coordinates</span><span className="text-white">19.0248° N, 73.1016° E</span></div>
-            <div className="flex justify-between"><span>Allowed Radius</span><span className="text-white">{GEOFENCE_RADIUS} meters</span></div>
-            <div className="flex justify-between"><span>Your Location</span><span className="text-white">{latitude && longitude ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` : '—'}</span></div>
+            <div className="flex justify-between">
+              <span>Campus Coordinates</span>
+              <span className="text-white font-mono">{geofenceConfig.collegeLat.toFixed(4)}° N, {geofenceConfig.collegeLon.toFixed(4)}° E</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Allowed Radius</span>
+              <span className="text-brand-accent font-semibold">{geofenceConfig.radiusMeters} meters</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Your Location</span>
+              <span className="text-white font-mono">{latitude && longitude ? `${latitude.toFixed(4)}, ${longitude.toFixed(4)}` : '—'}</span>
+            </div>
           </div>
         </section>
 

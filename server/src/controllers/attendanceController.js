@@ -8,10 +8,61 @@ const {
   generateSelfieSignedUrl,
 } = require('../services/selfieStorageService');
 
-// SMDL College coordinates
-const COLLEGE_LAT = 19.024790336362205;
-const COLLEGE_LON = 73.10159687914933;
-const DEFAULT_GEOFENCE_RADIUS = 500; // 500 meters
+// Default fallback SMDL College coordinates and radius
+const DEFAULT_COLLEGE_LAT = 19.02479;
+const DEFAULT_COLLEGE_LON = 73.10159;
+const DEFAULT_GEOFENCE_RADIUS = 100; // default 100 meters per Step 8 requirements
+
+/**
+ * Loads the active geofence configuration from system_config table with fallback defaults.
+ */
+async function getActiveGeofenceConfig() {
+  try {
+    const { data: configs, error } = await supabaseAdmin
+      .from('system_config')
+      .select('config_key, config_value')
+      .in('config_key', ['college_latitude', 'college_longitude', 'geofence_radius_meters']);
+
+    if (!error && configs && configs.length > 0) {
+      const map = {};
+      configs.forEach((c) => {
+        map[c.config_key] = c.config_value;
+      });
+
+      const lat = parseFloat(map['college_latitude']);
+      const lon = parseFloat(map['college_longitude']);
+      const rad = parseInt(map['geofence_radius_meters'], 10);
+
+      return {
+        latitude: !isNaN(lat) && isFinite(lat) && lat >= -90 && lat <= 90 ? lat : DEFAULT_COLLEGE_LAT,
+        longitude: !isNaN(lon) && isFinite(lon) && lon >= -180 && lon <= 180 ? lon : DEFAULT_COLLEGE_LON,
+        radiusMeters: !isNaN(rad) && isFinite(rad) && rad > 0 ? rad : DEFAULT_GEOFENCE_RADIUS,
+      };
+    }
+  } catch (err) {
+    console.warn('[attendanceController] Could not load system_config geofence, using fallback defaults:', err.message);
+  }
+
+  return {
+    latitude: DEFAULT_COLLEGE_LAT,
+    longitude: DEFAULT_COLLEGE_LON,
+    radiusMeters: DEFAULT_GEOFENCE_RADIUS,
+  };
+}
+
+// @desc   Get active geofence configuration (read-only for students, teachers, admins)
+// @route  GET /api/attendance/geofence-config
+const getGeofenceConfig = asyncHandler(async (_req, res) => {
+  const config = await getActiveGeofenceConfig();
+  res.json({
+    success: true,
+    data: {
+      college_latitude: config.latitude,
+      college_longitude: config.longitude,
+      geofence_radius_meters: config.radiusMeters,
+    },
+  });
+});
 
 // Haversine Formula for distance calculation in meters
 function calculateDistanceInMeters(lat1, lon1, lat2, lon2) {
@@ -125,12 +176,18 @@ const markAttendance = asyncHandler(async (req, res) => {
   const isDev = process.env.NODE_ENV !== 'production';
   const allowDemoBypass = isDev && Boolean(is_demo_bypass);
 
+  // Load latest active geofence settings from system_config (with resilient fallback)
+  const geofenceConfig = await getActiveGeofenceConfig();
+  const collegeLat = geofenceConfig.latitude;
+  const collegeLon = geofenceConfig.longitude;
+  const allowedRadius = geofenceConfig.radiusMeters;
+
   let distanceMeters = null;
   let isWithinGeofence = false;
 
   if (latitude && longitude) {
-    distanceMeters = calculateDistanceInMeters(latitude, longitude, COLLEGE_LAT, COLLEGE_LON);
-    isWithinGeofence = allowDemoBypass || distanceMeters <= DEFAULT_GEOFENCE_RADIUS;
+    distanceMeters = calculateDistanceInMeters(latitude, longitude, collegeLat, collegeLon);
+    isWithinGeofence = allowDemoBypass || distanceMeters <= allowedRadius;
   } else if (allowDemoBypass) {
     distanceMeters = 42; // simulated demo distance in development only
     isWithinGeofence = true;
@@ -140,7 +197,7 @@ const markAttendance = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error(
       distanceMeters !== null
-        ? `Location verification failed: You are ${distanceMeters}m away from SMDL College (Max allowed: ${DEFAULT_GEOFENCE_RADIUS}m).`
+        ? `Location verification failed: You are ${distanceMeters}m away from SMDL College (Max allowed: ${allowedRadius}m).`
         : 'Valid GPS coordinates (latitude and longitude) are required within college premises.'
     );
   }
@@ -181,9 +238,9 @@ const markAttendance = asyncHandler(async (req, res) => {
     student_id: student.id,
     status: 'PRESENT',
     location_verified: true,
-    latitude: latitude || COLLEGE_LAT,
-    longitude: longitude || COLLEGE_LON,
-    geofence_radius: DEFAULT_GEOFENCE_RADIUS,
+    latitude: latitude || collegeLat,
+    longitude: longitude || collegeLon,
+    geofence_radius: allowedRadius,
     selfie_url: storagePath,
     marked_at: uploadedAt,
     marked_by: req.user.id,
@@ -351,6 +408,7 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
   const attMap = new Map((attendanceRecords || []).map((a) => [a.student_id, a]));
 
   // Combine to create complete class roster with dynamic short-lived signed URLs for selfies
+  const geofenceConfig = await getActiveGeofenceConfig();
   const roster = await Promise.all(
     allRosterStudents.map(async (s) => {
       const att = attMap.get(s.id);
@@ -371,7 +429,7 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
         marked_at: att?.marked_at || null,
         location_verified: att?.location_verified || false,
         distance_meters: att?.latitude && att?.longitude
-          ? calculateDistanceInMeters(att.latitude, att.longitude, COLLEGE_LAT, COLLEGE_LON)
+          ? calculateDistanceInMeters(att.latitude, att.longitude, geofenceConfig.latitude, geofenceConfig.longitude)
           : null,
         selfie_url: signedSelfieUrl,
         is_teacher_override: isTeacherOverride,
@@ -822,5 +880,7 @@ module.exports = {
   overrideAttendance,
   getMyStats,
   getReportsOverview,
+  getGeofenceConfig,
+  getActiveGeofenceConfig,
 };
 

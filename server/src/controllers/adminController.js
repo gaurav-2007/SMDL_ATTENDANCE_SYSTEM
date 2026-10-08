@@ -761,6 +761,42 @@ const getSystemConfig = asyncHandler(async (_req, res) => {
   });
 });
 
+function validateGeofenceConfigValue(key, value) {
+  if (key === 'college_latitude') {
+    const lat = parseFloat(value);
+    if (isNaN(lat) || !isFinite(lat) || lat < -90 || lat > 90) {
+      const err = new Error('Invalid latitude: must be a number between -90 and 90');
+      err.statusCode = 400;
+      throw err;
+    }
+    return lat.toString();
+  }
+  if (key === 'college_longitude') {
+    const lon = parseFloat(value);
+    if (isNaN(lon) || !isFinite(lon) || lon < -180 || lon > 180) {
+      const err = new Error('Invalid longitude: must be a number between -180 and 180');
+      err.statusCode = 400;
+      throw err;
+    }
+    return lon.toString();
+  }
+  if (key === 'geofence_radius_meters') {
+    const rad = parseInt(value, 10);
+    if (isNaN(rad) || !isFinite(rad) || rad <= 0 || !/^\d+$/.test(String(value).trim())) {
+      const err = new Error('Invalid geofence radius: must be a positive integer greater than 0');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (rad > 50000) {
+      const err = new Error('Invalid geofence radius: cannot exceed 50,000 meters');
+      err.statusCode = 400;
+      throw err;
+    }
+    return rad.toString();
+  }
+  return String(value);
+}
+
 // @desc   Update system configuration
 // @route  PUT /api/admin/config
 const updateSystemConfig = asyncHandler(async (req, res) => {
@@ -772,36 +808,55 @@ const updateSystemConfig = asyncHandler(async (req, res) => {
   }
 
   if (updates.key && updates.value !== undefined) {
-    const { data, error } = await supabaseAdmin
-      .from('system_config')
-      .upsert(
-        {
-          config_key: updates.key,
-          config_value: String(updates.value),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'config_key' }
-      )
-      .select()
-      .single();
+    try {
+      const sanitizedVal = validateGeofenceConfigValue(updates.key, updates.value);
+      const { data, error } = await supabaseAdmin
+        .from('system_config')
+        .upsert(
+          {
+            config_key: updates.key,
+            config_value: sanitizedVal,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'config_key' }
+        )
+        .select()
+        .single();
 
-    if (error) throw new Error(error.message);
-    return res.json({
-      success: true,
-      message: `Configuration ${updates.key} updated`,
-      data: { config: data },
-    });
+      if (error) throw new Error(error.message);
+      return res.json({
+        success: true,
+        message: `Configuration ${updates.key} updated`,
+        data: { config: data },
+      });
+    } catch (valErr) {
+      res.status(valErr.statusCode || 400);
+      throw valErr;
+    }
+  }
+
+  // Pre-validate all entries before writing to prevent partial corrupt state
+  for (const [key, val] of Object.entries(updates)) {
+    if (val !== undefined && val !== null) {
+      try {
+        validateGeofenceConfigValue(key, val);
+      } catch (valErr) {
+        res.status(valErr.statusCode || 400);
+        throw valErr;
+      }
+    }
   }
 
   const results = [];
   for (const [key, val] of Object.entries(updates)) {
     if (val !== undefined && val !== null) {
+      const sanitizedVal = validateGeofenceConfigValue(key, val);
       const { data, error } = await supabaseAdmin
         .from('system_config')
         .upsert(
           {
             config_key: key,
-            config_value: String(val),
+            config_value: sanitizedVal,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'config_key' }
