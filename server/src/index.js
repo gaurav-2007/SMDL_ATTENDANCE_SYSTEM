@@ -51,7 +51,12 @@ app.use(
       if (!origin) return callback(null, true);
       if (
         allowedOrigins.includes(origin) ||
-        (env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?$/.test(origin))
+        origin === 'https://localhost' ||
+        origin === 'capacitor://localhost' ||
+        (env.NODE_ENV !== 'production' && /^https?:\/\/localhost(:\d+)?$/.test(origin)) ||
+        /^https?:\/\/172\.16\.\d+\.\d+(:\d+)?$/.test(origin) ||
+        /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin) ||
+        /^https?:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/.test(origin)
       ) {
         return callback(null, true);
       }
@@ -77,6 +82,12 @@ app.use(hpp());
 
 // 7. Input Sanitization against XSS & dangerous control characters
 app.use(sanitizeInput);
+
+// Global Request Logger for debugging mobile connections
+app.use((req, res, next) => {
+  console.log(`📡 [REQ] ${new Date().toLocaleTimeString()} ${req.method} ${req.url} from ${req.ip} origin: ${req.headers.origin || 'none'}`);
+  next();
+});
 
 // 8. Global API Rate Limiter
 app.use('/api', globalApiLimiter);
@@ -115,8 +126,9 @@ app.use(notFound);
 app.use(errorHandler);
 
 if (require.main === module) {
-  app.listen(env.PORT, () => {
+  app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`\n🚀 SMDL Attendance Server running on http://localhost:${env.PORT}`);
+    console.log(`📱 Mobile/LAN Network URL: http://172.16.225.19:${env.PORT}`);
     console.log(`🌍 Environment: ${env.NODE_ENV}`);
     console.log(`🔗 Client URL: ${env.CLIENT_URL}\n`);
   });

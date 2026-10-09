@@ -4,9 +4,9 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 
 // Lazy-loaded pages (will be created step by step)
+import LoginPage from './pages/auth/LoginPage'
 import { lazy, Suspense } from 'react'
 
-const LoginPage         = lazy(() => import('./pages/auth/LoginPage'))
 const RegisterPage      = lazy(() => import('./pages/auth/RegisterPage'))
 const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'))
 const ResetPasswordPage  = lazy(() => import('./pages/auth/ResetPasswordPage'))
@@ -49,6 +49,7 @@ function AppRoutes() {
 
         {/* Root → role-based redirect */}
         <Route path="/" element={<RootRedirect />} />
+        <Route path="/index.html" element={<RootRedirect />} />
 
         {/* Admin routes */}
         <Route
