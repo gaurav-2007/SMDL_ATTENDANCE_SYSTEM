@@ -83,30 +83,36 @@ export default function StudentMarkAttendance() {
   useEffect(() => {
     (async () => {
       try {
+        setLoadingLectures(true)
         const { data } = await api.get('/lectures/active')
         let list = data?.data?.lectures || []
 
-        // If no active lecture manually started by teacher, load scheduled timetable classes for today
+        // If no active lecture manually started by teacher, load scheduled timetable classes for today that are within active window
         if (list.length === 0) {
           try {
-            const todayRes = await api.get('/student/today-classes')
+            const todayRes = await api.get('/student/today-classes?active_only=true')
             const todayClasses = todayRes?.data?.data?.classes || []
-            list = todayClasses.map(c => ({
-              id: c.id || c.timetable_id,
-              topic: `${c.start_time?.slice(0, 5)} - ${c.end_time?.slice(0, 5)} · ${c.room_number || 'Room'}`,
-              subject: { name: c.subject_name, code: c.subject_code },
-              division: { name: c.teacher_name || 'Faculty', division_name: '' },
-              teacher_name: c.teacher_name,
-              is_timetable: true
-            }))
+            list = todayClasses
+              .filter(c => c.can_mark_attendance)
+              .map(c => ({
+                id: c.id || c.timetable_id,
+                topic: `${c.start_time?.slice(0, 5)} - ${c.end_time?.slice(0, 5)} · ${c.room_number || 'Room'}`,
+                subject: { name: c.subject_name, code: c.subject_code },
+                division: { name: c.teacher_name || 'Faculty', division_name: '' },
+                teacher_name: c.teacher_name,
+                is_timetable: true,
+                window_expires_at: c.window_expires_at,
+              }))
           } catch (_e) {}
         }
 
         setLectures(list)
         if (preselectedId && list.some(l => l.id === preselectedId)) {
           setSelectedLecture(preselectedId)
-        } else if (list.length === 1) {
+        } else if (list.length >= 1) {
           setSelectedLecture(list[0].id)
+        } else {
+          setSelectedLecture('')
         }
       } catch (e) {
         toast.error(e?.response?.data?.message || 'Failed to load active lectures')
@@ -375,23 +381,32 @@ export default function StudentMarkAttendance() {
           </div>
 
           <div>
-            <label className="label">Active Lecture (Today)</label>
+            <label className="label">Active Lecture (Attendance Window Open)</label>
             {loadingLectures ? (
               <div className="input flex items-center gap-3"><div className="spinner" /><span className="text-brand-muted">Loading lectures…</span></div>
             ) : lectures.length === 0 ? (
-              <div className="input !py-6 text-center">
-                <AlertTriangle size={22} className="text-yellow-400 inline mr-2" />
-                <span className="text-brand-muted text-sm">No active lectures for your class today.</span>
+              <div className="card-sm !p-4 !bg-brand-dark/70 !border-yellow-500/30 text-center">
+                <AlertTriangle size={24} className="text-yellow-400 mx-auto mb-2" />
+                <p className="text-white text-sm font-semibold">No Lecture Open for Attendance</p>
+                <p className="text-brand-muted text-xs mt-1">
+                  Attendance can only be marked from lecture start until 1 hour after class ends (maximum 2 hours). No lecture is currently open for your division.
+                </p>
               </div>
             ) : (
-              <select id="lecture-select" className="input" value={selectedLecture} onChange={e => setSelectedLecture(e.target.value)}>
-                <option value="">— Choose a lecture —</option>
-                {lectures.map(l => (
-                  <option key={l.id} value={l.id}>
-                    {l.subject?.name || 'Subject'} · {l.division?.name || ''} Div {l.division?.division_name || ''} · {l.topic || ''}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <select id="lecture-select" className="input" value={selectedLecture} onChange={e => setSelectedLecture(e.target.value)}>
+                  <option value="">— Choose an active lecture —</option>
+                  {lectures.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.subject?.name || 'Subject'} · {l.division?.name || ''} Div {l.division?.division_name || ''} · {l.topic || ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-2 text-xs flex items-center justify-between text-brand-muted">
+                  <span className="text-green-400 font-medium">● Attendance window active</span>
+                  <span>Closes 1 hr after class (max 2 hrs)</span>
+                </div>
+              </div>
             )}
           </div>
 
@@ -529,8 +544,8 @@ export default function StudentMarkAttendance() {
       <div className="mt-8 card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="text-sm space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            {!selectedLecture && <span className="badge badge-rejected">⚠️ Lecture not selected</span>}
-            {selectedLecture && <span className="badge badge-active">✓ Lecture selected</span>}
+            {!selectedLecture && <span className="badge badge-rejected">⚠️ No active lecture open</span>}
+            {selectedLecture && <span className="badge badge-active">✓ Lecture window open</span>}
             {!locationOk && !isDemoBypass && <span className="badge badge-rejected">⚠️ Location not verified</span>}
             {(locationOk || isDemoBypass) && <span className="badge badge-active">✓ Location OK</span>}
             {!selfieOk && <span className="badge badge-rejected">⚠️ Selfie not captured</span>}

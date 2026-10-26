@@ -126,9 +126,24 @@ app.use(notFound);
 app.use(errorHandler);
 
 if (require.main === module) {
+  const os = require('os');
+  const getLocalIp = () => {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+    return '127.0.0.1';
+  };
+
+  const localIp = getLocalIp();
+
   app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`\n🚀 SMDL Attendance Server running on http://localhost:${env.PORT}`);
-    console.log(`📱 Mobile/LAN Network URL: http://172.16.225.19:${env.PORT}`);
+    console.log(`📱 Mobile/LAN Network URL: http://${localIp}:${env.PORT}`);
     console.log(`🌍 Environment: ${env.NODE_ENV}`);
     console.log(`🔗 Client URL: ${env.CLIENT_URL}\n`);
   });

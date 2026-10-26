@@ -1,23 +1,38 @@
 import axios from 'axios'
 import { Capacitor } from '@capacitor/core'
 
-// Multi-environment API URL resolution (Step 8 architecture):
-// 1. Explicit VITE_API_URL if configured in environment
-// 2. Native Android APK fallback: Host Wi-Fi LAN IP (avoids dead localhost inside APK)
-// 3. Web browser fallback: Relative '/api' via Vite development proxy
-const isNative = Capacitor.isNativePlatform()
-const DEFAULT_NATIVE_API_URL = 'http://172.16.225.19:5000/api'
+export const getBaseURL = () => {
+  const custom = typeof window !== 'undefined' ? localStorage.getItem('smdl_api_url') : null
+  if (custom) return custom
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  if (Capacitor.isNativePlatform()) {
+    return 'http://10.75.38.19:5000/api'
+  }
+  return '/api'
+}
 
-const baseURL = import.meta.env.VITE_API_URL || (isNative ? DEFAULT_NATIVE_API_URL : '/api')
+export const setCustomApiUrl = (url) => {
+  if (!url) {
+    localStorage.removeItem('smdl_api_url')
+  } else {
+    let clean = url.trim().replace(/\/+$/, '')
+    if (!clean.endsWith('/api')) clean += '/api'
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = `http://${clean}`
+    }
+    localStorage.setItem('smdl_api_url', clean)
+  }
+}
 
 const api = axios.create({
-  baseURL,
+  baseURL: getBaseURL(),
   headers: { 'Content-Type': 'application/json' },
   timeout: 15000,
 })
 
-// Automatically attach JWT token to every request
+// Automatically attach JWT token & dynamically resolve active baseURL
 api.interceptors.request.use((config) => {
+  config.baseURL = getBaseURL()
   const token = localStorage.getItem('smdl_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config

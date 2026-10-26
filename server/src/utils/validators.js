@@ -71,6 +71,7 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required').max(100),
   branch: z.string().optional(),
   course_id: z.string().optional(),
+  role: z.enum(['student', 'teacher', 'admin']).optional(),
 });
 
 module.exports = {

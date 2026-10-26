@@ -15,11 +15,15 @@ import {
   RotateCw,
   CheckCircle2,
   AlertCircle,
-  Edit3
+  Edit3,
+  Wifi,
+  Settings,
+  Server
 } from 'lucide-react'
+import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
-import api from '../../lib/api'
+import api, { getBaseURL, setCustomApiUrl } from '../../lib/api'
 
 const DEFAULT_COURSES = [
   { id: '80acc4c6-829f-40a4-ab0b-6cd44032fffc', name: 'B.Sc. Computer Science', code: 'BSC-CS', department: 'Computer Science' },
@@ -34,7 +38,7 @@ const TEACHER_DEPARTMENTS = [
 ]
 
 export default function LoginPage() {
-  const { login, register, sendOtp, verifyOtp, user } = useAuth()
+  const { login, logout, register, sendOtp, verifyOtp, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -43,6 +47,43 @@ export default function LoginPage() {
   // Sub-tab toggles: 'login' vs 'create'
   const [studentMode, setStudentMode] = useState(location.state?.mode || 'login')
   const [teacherMode, setTeacherMode] = useState('login')
+
+  // Server IP / URL Configuration for Mobile APK & Network
+  const [showServerModal, setShowServerModal] = useState(false)
+  const [serverUrlInput, setServerUrlInput] = useState(getBaseURL())
+  const [testingServer, setTestingServer] = useState(false)
+
+  async function testAndSaveServerUrl(urlToSave) {
+    if (!urlToSave?.trim()) return
+    setTestingServer(true)
+    try {
+      let clean = urlToSave.trim().replace(/\/+$/, '')
+      if (!clean.endsWith('/api')) clean += '/api'
+      if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+        clean = `http://${clean}`
+      }
+      const res = await axios.get(`${clean}/health`, { timeout: 4000 })
+      if (res.data?.success) {
+        setCustomApiUrl(clean)
+        setServerUrlInput(clean)
+        toast.success(`Connected to server! (${clean})`)
+        setShowServerModal(false)
+      } else {
+        toast.error('Server responded but health check failed')
+      }
+    } catch (err) {
+      toast.error(`Cannot connect to ${urlToSave}: ${err.message}`)
+    } finally {
+      setTestingServer(false)
+    }
+  }
+
+  function handleResetDefaultServer() {
+    setCustomApiUrl(null)
+    setServerUrlInput(getBaseURL())
+    toast.success('Reset to default server IP')
+    setShowServerModal(false)
+  }
 
   // Live Courses / Branches from API
   const [courses, setCourses] = useState(DEFAULT_COURSES)
@@ -160,11 +201,20 @@ export default function LoginPage() {
     if (!validateLogin()) return
     setLoading(true)
     try {
-      const extra = activeRole === 'student'
-        ? { branch: selectedCourse.name, course_id: selectedCourse.id }
-        : {}
+      const extra = {
+        role: activeRole,
+        ...(activeRole === 'student' ? { branch: selectedCourse.name, course_id: selectedCourse.id } : {})
+      }
 
       const loggedUser = await login(loginForm.identifier.trim(), loginForm.password, extra)
+
+      // Double-check role matching on frontend
+      if (loggedUser.role !== activeRole) {
+        if (logout) await logout()
+        const actualLabel = loggedUser.role === 'teacher' ? 'Faculty' : loggedUser.role === 'admin' ? 'Admin' : 'Student'
+        toast.error(`Access Denied: This account is registered as a ${actualLabel}. Please switch to the ${actualLabel} login tab.`)
+        return
+      }
 
       toast.success(`Welcome back, ${loggedUser?.name || 'User'}!`)
 
@@ -421,20 +471,6 @@ export default function LoginPage() {
     }
   }
 
-  // Instant 1-Click Admin Login
-  async function quickAdminLogin() {
-    setLoading(true)
-    try {
-      const loggedUser = await login('admin@smdl.ac.in', 'admin@123')
-      toast.success(`Welcome back, ${loggedUser?.name || 'SMDL Admin'}!`)
-      navigate('/admin', { replace: true })
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Admin login failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   // Dynamic roll placeholder based on selected course
   const rollPlaceholder = selectedCourse?.code
     ? `${selectedCourse.code.replace('BSC-', '')}-2026-001`
@@ -599,13 +635,7 @@ export default function LoginPage() {
                   onClick={() => {
                     setActiveRole(key)
                     setErrors({})
-                    if (key === 'student') {
-                      setLoginForm({ identifier: '', password: '' })
-                    } else if (key === 'admin') {
-                      setLoginForm({ identifier: 'admin@smdl.ac.in', password: 'admin@123' })
-                    } else {
-                      setLoginForm({ identifier: '', password: '' })
-                    }
+                    setLoginForm({ identifier: '', password: '' })
                   }}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
                     activeRole === key
@@ -1296,23 +1326,79 @@ export default function LoginPage() {
                       <><LogIn size={18} /> Sign In to Admin Console</>
                     )}
                   </button>
-
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      id="quick-admin-login-btn"
-                      onClick={quickAdminLogin}
-                      disabled={loading}
-                      className="w-full py-2.5 px-4 rounded-xl text-xs font-medium text-brand-accent bg-brand-accent/10 border border-brand-accent/30 hover:bg-brand-accent/20 transition-all flex items-center justify-center gap-2"
-                    >
-                      <span>⚡ 1-Click Demo Admin Login (admin@smdl.ac.in)</span>
-                    </button>
-                  </div>
                 </form>
               )}
 
             </div>
           </>
+        )}
+
+        {/* Server IP Indicator & Config Button */}
+        <div className="mt-4 flex flex-col items-center justify-center text-xs text-brand-muted">
+          <button
+            type="button"
+            onClick={() => {
+              setServerUrlInput(getBaseURL())
+              setShowServerModal(true)
+            }}
+            className="inline-flex items-center gap-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-full px-3.5 py-1.5 transition-all text-slate-300"
+          >
+            <Wifi size={13} className="text-emerald-400 animate-pulse" />
+            <span>Server: <span className="font-mono text-emerald-400 font-semibold">{getBaseURL()}</span></span>
+            <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-primary-400 font-medium">Change</span>
+          </button>
+        </div>
+
+        {/* Server Settings Modal */}
+        {showServerModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+            <div className="card w-full max-w-md p-6 bg-slate-900 border-slate-700 shadow-2xl relative">
+              <div className="flex items-center gap-2 mb-4 text-white">
+                <Server size={20} className="text-primary-400" />
+                <h3 className="text-lg font-bold">Mobile Server Settings</h3>
+              </div>
+              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                Agar aap mobile APK ya alag Wi-Fi se connect kar rahe hain, to apna active Laptop/Server IP yahan enter karein.
+              </p>
+
+              <div className="mb-4">
+                <label className="label text-xs">Backend API URL</label>
+                <input
+                  type="text"
+                  value={serverUrlInput}
+                  onChange={(e) => setServerUrlInput(e.target.value)}
+                  placeholder="http://10.75.38.19:5000/api"
+                  className="input font-mono text-sm w-full"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">Default: http://10.75.38.19:5000/api</p>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowServerModal(false)}
+                  className="btn-secondary text-xs px-3 py-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetDefaultServer}
+                  className="btn-secondary text-xs px-3 py-2 text-amber-400 hover:text-amber-300"
+                >
+                  Reset Default
+                </button>
+                <button
+                  type="button"
+                  disabled={testingServer}
+                  onClick={() => testAndSaveServerUrl(serverUrlInput)}
+                  className="btn-primary text-xs px-4 py-2"
+                >
+                  {testingServer ? 'Connecting...' : 'Test & Save'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

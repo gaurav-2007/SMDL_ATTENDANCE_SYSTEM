@@ -8,6 +8,7 @@ const {
 
 const approveSchema = z.object({
   reason: z.string().max(500).optional(),
+  subject_ids: z.array(z.string().uuid()).optional(),
 });
 
 const rejectSchema = z.object({
@@ -17,7 +18,7 @@ const rejectSchema = z.object({
 const userSelect =
   'id, email, full_name, role, status, phone, created_at, updated_at';
 
-const mapRow = (user, profile) => ({
+const mapRow = (user, profile, subjects = []) => ({
   // User fields
   id: user.id,
   user_id: user.id,
@@ -36,9 +37,12 @@ const mapRow = (user, profile) => ({
   registered_at: profile?.registration_submitted_at || user.created_at,
   approved_at: profile?.approved_at || null,
   rejection_reason: profile?.rejection_reason || null,
+  assigned_subjects: subjects,
+  assigned_subject_ids: subjects.map((s) => s.id),
   // Nested profile (for backward compatibility)
   profile: profile
     ? {
+        id: profile.id,
         employee_id: profile.teacher_id,
         department: profile.department,
         designation: profile.designation,
@@ -46,6 +50,8 @@ const mapRow = (user, profile) => ({
         approved_at: profile.approved_at,
         approved_by: profile.approved_by,
         rejection_reason: profile.rejection_reason,
+        assigned_subjects: subjects,
+        assigned_subject_ids: subjects.map((s) => s.id),
       }
     : null,
 });
@@ -67,7 +73,7 @@ const listPendingTeachers = asyncHandler(async (req, res) => {
   if (ids.length > 0) {
     const { data: tp, error: tpErr } = await supabaseAdmin
       .from('teachers')
-      .select('user_id, teacher_id, department, designation, registration_submitted_at, approved_at, approved_by, rejection_reason')
+      .select('id, user_id, teacher_id, department, designation, registration_submitted_at, approved_at, approved_by, rejection_reason')
       .in('user_id', ids);
     if (tpErr) {
       res.status(500);
@@ -76,7 +82,26 @@ const listPendingTeachers = asyncHandler(async (req, res) => {
     (tp || []).forEach((p) => { profiles[p.user_id] = p; });
   }
 
-  const teachers = (users || []).map((u) => mapRow(u, profiles[u.id]));
+  // Fetch assigned subjects for all teachers
+  const teacherPkIds = Object.values(profiles).map((p) => p.id).filter(Boolean);
+  const teacherSubjectsMap = {};
+  if (teacherPkIds.length > 0) {
+    const { data: tsData } = await supabaseAdmin
+      .from('teacher_subjects')
+      .select('teacher_id, subject:subjects(id, name, code, division:divisions(id, name, division_name, course:courses(name, code)))')
+      .in('teacher_id', teacherPkIds);
+
+    (tsData || []).forEach((ts) => {
+      if (!teacherSubjectsMap[ts.teacher_id]) teacherSubjectsMap[ts.teacher_id] = [];
+      if (ts.subject) teacherSubjectsMap[ts.teacher_id].push(ts.subject);
+    });
+  }
+
+  const teachers = (users || []).map((u) => {
+    const prof = profiles[u.id];
+    const subjs = prof?.id ? (teacherSubjectsMap[prof.id] || []) : [];
+    return mapRow(u, prof, subjs);
+  });
   const pending = teachers.filter((t) => t.account_status === 'PENDING');
 
   res.json({
@@ -124,7 +149,7 @@ const approveTeacher = asyncHandler(async (req, res) => {
     throw new Error(updErr.message || 'Failed to update user status');
   }
 
-  const { error: tchErr } = await supabaseAdmin
+  const { data: updatedTeacher, error: tchErr } = await supabaseAdmin
     .from('teachers')
     .update({
       approved_at: now,
@@ -132,11 +157,29 @@ const approveTeacher = asyncHandler(async (req, res) => {
       rejection_reason: parsed.reason || null,
       updated_at: now,
     })
-    .eq('user_id', teacher_id);
+    .eq('user_id', teacher_id)
+    .select('id')
+    .maybeSingle();
 
   if (tchErr) {
     res.status(500);
     throw new Error(tchErr.message || 'Failed to update teacher profile');
+  }
+
+  // Assign subjects if selected during approval
+  if (Array.isArray(parsed.subject_ids) && updatedTeacher?.id) {
+    await supabaseAdmin
+      .from('teacher_subjects')
+      .delete()
+      .eq('teacher_id', updatedTeacher.id);
+
+    if (parsed.subject_ids.length > 0) {
+      const rows = parsed.subject_ids.map((subId) => ({
+        teacher_id: updatedTeacher.id,
+        subject_id: subId,
+      }));
+      await supabaseAdmin.from('teacher_subjects').insert(rows);
+    }
   }
 
   // Notify teacher of approval
@@ -875,12 +918,80 @@ const updateSystemConfig = asyncHandler(async (req, res) => {
   });
 });
 
+const assignTeacherSubjects = asyncHandler(async (req, res) => {
+  const { teacher_id } = req.params;
+  const { subject_ids } = req.body;
+
+  if (!Array.isArray(subject_ids)) {
+    res.status(400);
+    throw new Error('subject_ids must be an array of subject IDs');
+  }
+
+  // Find teacher record by user_id or primary key id
+  let { data: teacherRec } = await supabaseAdmin
+    .from('teachers')
+    .select('id, user_id, department')
+    .or(`id.eq.${teacher_id},user_id.eq.${teacher_id}`)
+    .maybeSingle();
+
+  if (!teacherRec) {
+    res.status(404);
+    throw new Error('Teacher record not found');
+  }
+
+  // Delete previous subject assignments
+  const { error: delErr } = await supabaseAdmin
+    .from('teacher_subjects')
+    .delete()
+    .eq('teacher_id', teacherRec.id);
+
+  if (delErr) {
+    res.status(500);
+    throw new Error(delErr.message);
+  }
+
+  // Insert new subject assignments
+  if (subject_ids.length > 0) {
+    const rows = subject_ids.map((subId) => ({
+      teacher_id: teacherRec.id,
+      subject_id: subId,
+    }));
+    const { error: insErr } = await supabaseAdmin
+      .from('teacher_subjects')
+      .insert(rows);
+
+    if (insErr) {
+      res.status(500);
+      throw new Error(insErr.message);
+    }
+  }
+
+  // Fetch updated subjects with division & course
+  const { data: updatedSubjs } = await supabaseAdmin
+    .from('teacher_subjects')
+    .select('subject:subjects(id, name, code, division:divisions(id, name, division_name, course:courses(name, code)))')
+    .eq('teacher_id', teacherRec.id);
+
+  const subjectsList = (updatedSubjs || []).map((x) => x.subject).filter(Boolean);
+
+  res.json({
+    success: true,
+    message: `Updated subject assignments (${subjectsList.length} subjects assigned).`,
+    data: {
+      teacher_id: teacherRec.id,
+      assigned_subjects: subjectsList,
+      assigned_subject_ids: subjectsList.map((s) => s.id),
+    },
+  });
+});
+
 module.exports = {
   listPendingTeachers,
   approveTeacher,
   rejectTeacher,
   suspendTeacher,
   disableTeacher,
+  assignTeacherSubjects,
   listStudents,
   updateStudentStatus,
   bulkImportStudents,

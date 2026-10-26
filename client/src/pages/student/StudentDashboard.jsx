@@ -219,13 +219,13 @@ function StudentOverview() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {todaySchedule.classes.map((cls) => {
-              const isOngoing = cls.status === 'ONGOING'
+              const isWindowOpen = !!cls.can_mark_attendance
               const isAttended = cls.is_attended || cls.attendance_status === 'PRESENT'
               return (
                 <div
                   key={cls.id || cls.timetable_id}
                   className={`p-4 rounded-xl border transition-all ${
-                    isOngoing
+                    isWindowOpen
                       ? 'border-green-500/60 bg-green-500/10 shadow-lg shadow-green-500/5 ring-1 ring-green-500/30'
                       : 'border-brand-border/70 bg-brand-dark/50 hover:border-brand-accent/40'
                   }`}
@@ -238,13 +238,13 @@ function StudentOverview() {
                       <span className="badge badge-active text-[10px] flex items-center gap-1">
                         <CheckCircle size={10} /> Present
                       </span>
-                    ) : isOngoing ? (
+                    ) : isWindowOpen ? (
                       <span className="badge bg-green-500/20 text-green-400 border border-green-500/40 text-[10px] animate-pulse font-bold">
                         ● LIVE NOW
                       </span>
                     ) : (
                       <span className="badge badge-pending text-[10px]">
-                        {cls.status || 'Upcoming'}
+                        {cls.status === 'COMPLETED' ? 'Closed' : (cls.status || 'Upcoming')}
                       </span>
                     )}
                   </div>
@@ -260,7 +260,7 @@ function StudentOverview() {
                     <span className="text-brand-muted flex items-center gap-1">
                       📍 {cls.room_number || 'Room 101'} {cls.is_lab ? '(Lab)' : ''}
                     </span>
-                    {isOngoing && !isAttended ? (
+                    {isWindowOpen && !isAttended ? (
                       <button
                         onClick={() => navigate('/student/mark', { state: { lectureId: cls.id } })}
                         className="btn-primary !py-1 !px-2.5 !text-xs !bg-green-600 hover:!bg-green-500"
@@ -270,7 +270,7 @@ function StudentOverview() {
                     ) : isAttended ? (
                       <span className="text-green-400 text-xs font-medium">✓ Attended</span>
                     ) : (
-                      <span className="text-brand-muted text-[11px]">Scheduled</span>
+                      <span className="text-brand-muted text-[11px]">{cls.status === 'COMPLETED' ? 'Window Closed' : 'Scheduled'}</span>
                     )}
                   </div>
                 </div>

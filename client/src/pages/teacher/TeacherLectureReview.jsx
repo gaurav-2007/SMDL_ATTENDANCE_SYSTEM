@@ -68,11 +68,16 @@ export default function TeacherLectureReview() {
   async function loadLectures() {
     try {
       setLoadingLectures(true)
-      const { data } = await api.get('/lectures/active?all=true')
+      const { data } = await api.get('/lectures/active')
       const list = data?.data?.lectures || []
       setLectures(list)
-      const targetId = location.state?.lectureId || selectedLecture || (list.length >= 1 ? list[0].id : '')
-      if (targetId) setSelectedLecture(targetId)
+      const requestedId = location.state?.lectureId
+      const targetId = (requestedId && list.some(l => l.id === requestedId))
+        ? requestedId
+        : (selectedLecture && list.some(l => l.id === selectedLecture))
+          ? selectedLecture
+          : (list.length >= 1 ? list[0].id : '')
+      setSelectedLecture(targetId)
     } catch (e) {
       toast.error(e?.response?.data?.message || 'Failed to load lectures')
     } finally { setLoadingLectures(false) }
@@ -80,11 +85,20 @@ export default function TeacherLectureReview() {
 
   async function loadFilters() {
     try {
-      const [sRes, dRes] = await Promise.allSettled([
+      const [sRes, dRes, meRes] = await Promise.allSettled([
         api.get('/academic/subjects'),
         api.get('/academic/divisions'),
+        api.get('/auth/me'),
       ])
-      if (sRes.status === 'fulfilled') setSubjects(sRes.value?.data?.data?.subjects || [])
+      let allSubs = sRes.status === 'fulfilled' ? (sRes.value?.data?.data?.subjects || []) : []
+      if (meRes.status === 'fulfilled') {
+        const assigned = meRes.value?.data?.data?.profile?.assigned_subjects || []
+        if (assigned.length > 0) {
+          const assignedIds = new Set(assigned.map(a => a.id))
+          allSubs = allSubs.filter(s => assignedIds.has(s.id))
+        }
+      }
+      setSubjects(allSubs)
       if (dRes.status === 'fulfilled') setDivisions(dRes.value?.data?.data?.divisions || [])
     } catch (e) { /* noop */ }
   }
@@ -211,7 +225,7 @@ export default function TeacherLectureReview() {
               <div className="input flex items-center gap-2"><Loader2 className="animate-spin w-4 h-4" /> Loading…</div>
             ) : lectures.length === 0 ? (
               <div className="input !py-6 text-center text-brand-muted text-sm">
-                No active lectures today. Click <span className="text-brand-accent font-semibold">Start New Lecture</span> above.
+                No active lectures for your assigned subjects today. Click <span className="text-brand-accent font-semibold">Start New Lecture</span> above.
               </div>
             ) : (
               <div className="relative">
@@ -536,19 +550,33 @@ export default function TeacherLectureReview() {
       <Modal open={showStartModal} onClose={() => setShowStartModal(false)} title="Start New Lecture">
         <div className="space-y-4">
           <div>
-            <label className="label">Subject</label>
-            <select
-              className="input"
-              value={startForm.subject_id}
-              onChange={e => setStartForm(s => ({ ...s, subject_id: e.target.value }))}
-            >
-              <option value="">— Choose subject —</option>
-              {subjects.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.code}) · {s.divisions?.name || ''} Div{s.divisions?.division_name || ''}
-                </option>
-              ))}
-            </select>
+            <label className="label">Assigned Subject</label>
+            {subjects.length === 0 ? (
+              <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-yellow-400 text-xs">
+                ⚠️ You have no assigned subjects yet. Please ask the Administrator to assign subjects to you in the Teachers Panel.
+              </div>
+            ) : (
+              <select
+                className="input"
+                value={startForm.subject_id}
+                onChange={e => {
+                  const subId = e.target.value
+                  const found = subjects.find(s => s.id === subId)
+                  setStartForm(s => ({
+                    ...s,
+                    subject_id: subId,
+                    division_id: found?.division_id || found?.division?.id || s.division_id,
+                  }))
+                }}
+              >
+                <option value="">— Choose assigned subject —</option>
+                {subjects.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.code}) · {s.divisions?.name || s.division?.name || ''} Div{s.divisions?.division_name || s.division?.division_name || ''}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className="label">Division / Class</label>

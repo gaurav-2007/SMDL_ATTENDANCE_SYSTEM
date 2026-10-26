@@ -7,6 +7,7 @@ const {
   rejectTeacher,
   suspendTeacher,
   disableTeacher,
+  assignTeacherSubjects,
   listStudents,
   updateStudentStatus,
   bulkImportStudents,
@@ -26,6 +27,8 @@ router.post('/teachers/:teacher_id/approve', approveTeacher);
 router.post('/teachers/:teacher_id/reject', rejectTeacher);
 router.post('/teachers/:teacher_id/suspend', suspendTeacher);
 router.post('/teachers/:teacher_id/disable', disableTeacher);
+router.put('/teachers/:teacher_id/subjects', assignTeacherSubjects);
+router.post('/teachers/:teacher_id/subjects', assignTeacherSubjects);
 
 router.get('/students', listStudents);
 router.patch('/students/:student_id/status', updateStudentStatus);

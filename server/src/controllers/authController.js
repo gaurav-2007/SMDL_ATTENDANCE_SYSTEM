@@ -432,24 +432,9 @@ const login = asyncHandler(async (req, res) => {
       .maybeSingle();
     user = userByEmail;
   } else {
-    // 2. Lookup as Student Roll Number (student_id)
-    const { data: studentMatch } = await supabaseAdmin
-      .from('students')
-      .select('user_id')
-      .ilike('student_id', target)
-      .maybeSingle();
-
-    if (studentMatch?.user_id) {
-      const { data: userByRoll } = await supabaseAdmin
-        .from('users')
-        .select(USER_SELECT)
-        .eq('id', studentMatch.user_id)
-        .maybeSingle();
-      user = userByRoll;
-    }
-
-    // 3. Lookup as Teacher Employee ID (teacher_id)
-    if (!user) {
+    // 2. Role-specific non-email identifier lookup
+    if (parsed.role === 'teacher') {
+      // Lookup as Teacher Employee ID (teacher_id)
       const { data: teacherMatch } = await supabaseAdmin
         .from('teachers')
         .select('user_id')
@@ -464,9 +449,58 @@ const login = asyncHandler(async (req, res) => {
           .maybeSingle();
         user = userByEmp;
       }
+    } else if (parsed.role === 'student') {
+      // Lookup as Student Roll Number (student_id)
+      const { data: studentMatch } = await supabaseAdmin
+        .from('students')
+        .select('user_id')
+        .ilike('student_id', target)
+        .maybeSingle();
+
+      if (studentMatch?.user_id) {
+        const { data: userByRoll } = await supabaseAdmin
+          .from('users')
+          .select(USER_SELECT)
+          .eq('id', studentMatch.user_id)
+          .maybeSingle();
+        user = userByRoll;
+      }
+    } else {
+      // General lookup when role is not specified
+      const { data: studentMatch } = await supabaseAdmin
+        .from('students')
+        .select('user_id')
+        .ilike('student_id', target)
+        .maybeSingle();
+
+      if (studentMatch?.user_id) {
+        const { data: userByRoll } = await supabaseAdmin
+          .from('users')
+          .select(USER_SELECT)
+          .eq('id', studentMatch.user_id)
+          .maybeSingle();
+        user = userByRoll;
+      }
+
+      if (!user) {
+        const { data: teacherMatch } = await supabaseAdmin
+          .from('teachers')
+          .select('user_id')
+          .ilike('teacher_id', target)
+          .maybeSingle();
+
+        if (teacherMatch?.user_id) {
+          const { data: userByEmp } = await supabaseAdmin
+            .from('users')
+            .select(USER_SELECT)
+            .eq('id', teacherMatch.user_id)
+            .maybeSingle();
+          user = userByEmp;
+        }
+      }
     }
 
-    // 4. Fallback search by email
+    // Fallback search by email
     if (!user) {
       const { data: userFallback } = await supabaseAdmin
         .from('users')
@@ -480,6 +514,14 @@ const login = asyncHandler(async (req, res) => {
   if (!user) {
     res.status(401);
     throw new Error('Invalid email, roll number, or password');
+  }
+
+  // Enforce role verification: Ensure the account belongs to the requested portal role
+  if (parsed.role && user.role !== parsed.role) {
+    res.status(401);
+    const actualRoleLabel = user.role === 'teacher' ? 'Faculty' : user.role === 'admin' ? 'Admin' : 'Student';
+    const requestedRoleLabel = parsed.role === 'teacher' ? 'Faculty' : parsed.role === 'admin' ? 'Admin' : 'Student';
+    throw new Error(`Access Denied: This account is registered as a ${actualRoleLabel}. Please switch to the ${actualRoleLabel} login tab.`);
   }
 
   const isMatch = await comparePassword(parsed.password, user.password_hash);

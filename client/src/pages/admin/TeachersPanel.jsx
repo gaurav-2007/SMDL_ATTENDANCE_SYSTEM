@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react'
-import { UserCheck, UserX, Clock, RefreshCw, Search, Filter, ShieldAlert, ShieldOff, AlertCircle } from 'lucide-react'
+import {
+  UserCheck, UserX, Clock, RefreshCw, Search, Filter,
+  ShieldAlert, ShieldOff, AlertCircle, BookOpen, CheckSquare, Square, Check, X
+} from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
 
 export default function TeachersPanel() {
   const [teachers, setTeachers] = useState([])
+  const [allSubjects, setAllSubjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('ALL') // ALL | PENDING | ACTIVE | SUSPENDED | REJECTED
   const [search, setSearch] = useState('')
   const [actingId, setActingId] = useState(null)
   const [actionModal, setActionModal] = useState(null) // { type: 'suspend' | 'disable' | 'reject', teacher: {} }
   const [modalReason, setModalReason] = useState('')
+
+  // Subject Assignment Modals
+  const [approveModal, setApproveModal] = useState(null) // { teacher: {}, selectedIds: [] }
+  const [subjectModal, setSubjectModal] = useState(null) // { teacher: {}, selectedIds: [] }
+  const [modalSubjSearch, setModalSubjSearch] = useState('')
+  const [savingSubjects, setSavingSubjects] = useState(false)
 
   async function fetchTeachers() {
     setLoading(true)
@@ -25,22 +35,75 @@ export default function TeachersPanel() {
     }
   }
 
-  useEffect(() => { fetchTeachers() }, [])
-
-  async function approve(teacherId) {
-    setActingId(teacherId)
+  async function fetchSubjects() {
     try {
-      await api.post(`/admin/teachers/${teacherId}/approve`)
-      toast.success('Teacher activated successfully! ✅')
+      const { data } = await api.get('/academic/subjects')
+      setAllSubjects(data.data?.subjects || [])
+    } catch {
+      // non-fatal
+    }
+  }
+
+  useEffect(() => {
+    fetchTeachers()
+    fetchSubjects()
+  }, [])
+
+  async function handleApproveSubmit(e) {
+    if (e) e.preventDefault()
+    if (!approveModal) return
+    const { teacher, selectedIds } = approveModal
+    setActingId(teacher.id)
+    try {
+      await api.post(`/admin/teachers/${teacher.id}/approve`, {
+        subject_ids: selectedIds,
+      })
+      toast.success(`Teacher ${teacher.name || teacher.full_name} activated with ${selectedIds.length} subjects! ✅`)
+      const assignedObjList = allSubjects.filter(s => selectedIds.includes(s.id))
       setTeachers(ts => ts.map(t =>
-        t.id === teacherId
-          ? { ...t, status: 'ACTIVE', account_status: 'ACTIVE' }
+        t.id === teacher.id
+          ? {
+              ...t,
+              status: 'ACTIVE',
+              account_status: 'ACTIVE',
+              assigned_subjects: assignedObjList,
+              assigned_subject_ids: selectedIds
+            }
           : t
       ))
+      setApproveModal(null)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Activation failed')
     } finally {
       setActingId(null)
+    }
+  }
+
+  async function handleSaveSubjects(e) {
+    if (e) e.preventDefault()
+    if (!subjectModal) return
+    const { teacher, selectedIds } = subjectModal
+    setSavingSubjects(true)
+    try {
+      const { data } = await api.put(`/admin/teachers/${teacher.id}/subjects`, {
+        subject_ids: selectedIds,
+      })
+      toast.success(data?.message || 'Subject assignments updated successfully! 📚')
+      const updatedSubjs = data?.data?.assigned_subjects || allSubjects.filter(s => selectedIds.includes(s.id))
+      setTeachers(ts => ts.map(t =>
+        t.id === teacher.id
+          ? {
+              ...t,
+              assigned_subjects: updatedSubjs,
+              assigned_subject_ids: selectedIds
+            }
+          : t
+      ))
+      setSubjectModal(null)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update subjects')
+    } finally {
+      setSavingSubjects(false)
     }
   }
 
@@ -165,6 +228,7 @@ export default function TeachersPanel() {
                   <th>Faculty / Email</th>
                   <th>Employee ID</th>
                   <th>Department</th>
+                  <th>Assigned Subjects</th>
                   <th>Account Status</th>
                   <th>Registered</th>
                   <th className="text-right">Access Actions</th>
@@ -176,6 +240,7 @@ export default function TeachersPanel() {
                   const empId = t.employee_id || t.profile?.employee_id || '—'
                   const dept = t.department || t.profile?.department || '—'
                   const regDate = t.registered_at || t.profile?.registration_submitted_at
+                  const assignedList = t.assigned_subjects || []
                   return (
                     <tr key={t.id || t.email}>
                       <td className="text-brand-muted">{i + 1}</td>
@@ -185,6 +250,23 @@ export default function TeachersPanel() {
                       </td>
                       <td className="font-mono text-sm">{empId}</td>
                       <td>{dept}</td>
+                      <td>
+                        {assignedList.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[220px]">
+                            {assignedList.map(s => (
+                              <span
+                                key={s.id}
+                                className="text-[11px] bg-brand-dark/80 text-brand-accent px-1.5 py-0.5 rounded border border-brand-accent/20"
+                                title={`${s.name} (${s.code || ''}) - ${s.division?.name || ''}`}
+                              >
+                                {s.code || s.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-brand-muted text-xs italic">No subjects assigned</span>
+                        )}
+                      </td>
                       <td>
                         {tStatus === 'ACTIVE' && <span className="badge-active">Active</span>}
                         {tStatus === 'PENDING' && <span className="badge-pending">Pending Approval</span>}
@@ -206,9 +288,13 @@ export default function TeachersPanel() {
                             <>
                               <button
                                 id={`approve-${t.id}`}
-                                onClick={() => approve(t.id)}
+                                onClick={() => {
+                                  setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                  setModalSubjSearch('')
+                                }}
                                 disabled={actingId === t.id}
                                 className="btn-success btn-sm"
+                                title="Approve and assign subjects"
                               >
                                 {actingId === t.id ? <div className="spinner w-3 h-3" /> : <UserCheck size={14} />}
                                 Approve
@@ -225,6 +311,17 @@ export default function TeachersPanel() {
                           )}
                           {tStatus === 'ACTIVE' && (
                             <>
+                              <button
+                                id={`subjects-${t.id}`}
+                                onClick={() => {
+                                  setSubjectModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                  setModalSubjSearch('')
+                                }}
+                                className="btn-secondary btn-sm !text-sky-400 !border-sky-500/30 hover:!bg-sky-500/10"
+                                title="Assign / update subjects"
+                              >
+                                <BookOpen size={14} /> Subjects
+                              </button>
                               <button
                                 id={`suspend-${t.id}`}
                                 onClick={() => { setActionModal({ type: 'suspend', teacher: t }); setModalReason('') }}
@@ -248,7 +345,10 @@ export default function TeachersPanel() {
                           {tStatus === 'SUSPENDED' && (
                             <button
                               id={`reapprove-${t.id}`}
-                              onClick={() => approve(t.id)}
+                              onClick={() => {
+                                setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                setModalSubjSearch('')
+                              }}
                               disabled={actingId === t.id}
                               className="btn-success btn-sm"
                             >
@@ -258,7 +358,10 @@ export default function TeachersPanel() {
                           {(tStatus === 'REJECTED' || tStatus === 'DISABLED') && (
                             <button
                               id={`reapprove-${t.id}`}
-                              onClick={() => approve(t.id)}
+                              onClick={() => {
+                                setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                setModalSubjSearch('')
+                              }}
                               disabled={actingId === t.id}
                               className="btn-secondary btn-sm"
                             >
@@ -276,7 +379,231 @@ export default function TeachersPanel() {
         )}
       </div>
 
-      {/* Action Dialog Modal */}
+      {/* APPROVE & ASSIGN SUBJECTS MODAL */}
+      {approveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="card w-full max-w-xl border-brand-border/80 bg-brand-surface shadow-2xl animate-scale-up max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-brand-border/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-green-500/15 text-green-400">
+                  <UserCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-base">Approve Faculty & Assign Subjects</h3>
+                  <p className="text-brand-muted text-xs">
+                    {approveModal.teacher.name || approveModal.teacher.full_name} ({approveModal.teacher.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setApproveModal(null)}
+                className="text-brand-muted hover:text-white p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-brand-muted text-xs mt-3 mb-2">
+              Select the subjects this faculty member is authorized to teach. The teacher will ONLY be able to conduct lectures and take attendance for these selected subjects.
+            </p>
+
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+              <input
+                type="text"
+                placeholder="Filter subjects by name or code..."
+                value={modalSubjSearch}
+                onChange={e => setModalSubjSearch(e.target.value)}
+                className="input input-sm pl-8 text-xs"
+              />
+            </div>
+
+            <div className="overflow-y-auto flex-1 border border-brand-border/50 rounded-xl p-2 space-y-1.5 bg-brand-dark/40 max-h-60">
+              {allSubjects
+                .filter(s => {
+                  const q = modalSubjSearch.toLowerCase()
+                  return !q || s.name?.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q)
+                })
+                .map(s => {
+                  const isChecked = approveModal.selectedIds.includes(s.id)
+                  const divLabel = s.divisions?.name || s.division?.name || ''
+                  const courseLabel = s.divisions?.courses?.code || s.division?.course?.code || ''
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                        isChecked
+                          ? 'bg-brand-accent/15 border-brand-accent/40 text-white'
+                          : 'bg-transparent border-transparent hover:bg-white/5 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setApproveModal(prev => ({ ...prev, selectedIds: [...prev.selectedIds, s.id] }))
+                            } else {
+                              setApproveModal(prev => ({ ...prev, selectedIds: prev.selectedIds.filter(id => id !== s.id) }))
+                            }
+                          }}
+                          className="checkbox checkbox-sm accent-brand-accent"
+                        />
+                        <div>
+                          <p className="text-xs font-semibold">{s.name}</p>
+                          <p className="text-[11px] text-brand-muted font-mono">{s.code} {divLabel ? `• ${divLabel}` : ''} {courseLabel ? `(${courseLabel})` : ''}</p>
+                        </div>
+                      </div>
+                      {isChecked && <Check size={14} className="text-brand-accent" />}
+                    </label>
+                  )
+                })}
+              {allSubjects.length === 0 && (
+                <p className="text-center text-xs text-brand-muted py-4">No subjects found in academic database.</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-brand-border/60 mt-3">
+              <span className="text-xs text-brand-accent font-medium">
+                {approveModal.selectedIds.length} subjects selected
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setApproveModal(null)}
+                  className="btn-secondary btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApproveSubmit}
+                  disabled={actingId === approveModal.teacher.id}
+                  className="btn-success btn-sm"
+                >
+                  {actingId === approveModal.teacher.id ? 'Activating...' : 'Approve & Assign'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MANAGE / EDIT SUBJECTS MODAL (FOR ACTIVE TEACHERS) */}
+      {subjectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="card w-full max-w-xl border-brand-border/80 bg-brand-surface shadow-2xl animate-scale-up max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-brand-border/60">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-sky-500/15 text-sky-400">
+                  <BookOpen size={20} />
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-base">Assign / Update Subjects</h3>
+                  <p className="text-brand-muted text-xs">
+                    Faculty: {subjectModal.teacher.name || subjectModal.teacher.full_name} ({subjectModal.teacher.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubjectModal(null)}
+                className="text-brand-muted hover:text-white p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-brand-muted text-xs mt-3 mb-2">
+              Update authorized subjects for this teacher. The teacher will only see lectures and take attendance for these assigned subjects.
+            </p>
+
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
+              <input
+                type="text"
+                placeholder="Filter subjects by name or code..."
+                value={modalSubjSearch}
+                onChange={e => setModalSubjSearch(e.target.value)}
+                className="input input-sm pl-8 text-xs"
+              />
+            </div>
+
+            <div className="overflow-y-auto flex-1 border border-brand-border/50 rounded-xl p-2 space-y-1.5 bg-brand-dark/40 max-h-60">
+              {allSubjects
+                .filter(s => {
+                  const q = modalSubjSearch.toLowerCase()
+                  return !q || s.name?.toLowerCase().includes(q) || s.code?.toLowerCase().includes(q)
+                })
+                .map(s => {
+                  const isChecked = subjectModal.selectedIds.includes(s.id)
+                  const divLabel = s.divisions?.name || s.division?.name || ''
+                  const courseLabel = s.divisions?.courses?.code || s.division?.course?.code || ''
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                        isChecked
+                          ? 'bg-sky-500/15 border-sky-500/40 text-white'
+                          : 'bg-transparent border-transparent hover:bg-white/5 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            if (e.target.checked) {
+                              setSubjectModal(prev => ({ ...prev, selectedIds: [...prev.selectedIds, s.id] }))
+                            } else {
+                              setSubjectModal(prev => ({ ...prev, selectedIds: prev.selectedIds.filter(id => id !== s.id) }))
+                            }
+                          }}
+                          className="checkbox checkbox-sm accent-sky-400"
+                        />
+                        <div>
+                          <p className="text-xs font-semibold">{s.name}</p>
+                          <p className="text-[11px] text-brand-muted font-mono">{s.code} {divLabel ? `• ${divLabel}` : ''} {courseLabel ? `(${courseLabel})` : ''}</p>
+                        </div>
+                      </div>
+                      {isChecked && <Check size={14} className="text-sky-400" />}
+                    </label>
+                  )
+                })}
+              {allSubjects.length === 0 && (
+                <p className="text-center text-xs text-brand-muted py-4">No subjects found in academic database.</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-4 border-t border-brand-border/60 mt-3">
+              <span className="text-xs text-sky-400 font-medium">
+                {subjectModal.selectedIds.length} subjects currently assigned
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSubjectModal(null)}
+                  className="btn-secondary btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSubjects}
+                  disabled={savingSubjects}
+                  className="btn-primary btn-sm"
+                >
+                  {savingSubjects ? 'Saving...' : 'Save Assignments'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Dialog Modal (Suspend / Disable / Reject) */}
       {actionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
           <div className="card w-full max-w-md border-brand-border/80 bg-brand-surface shadow-2xl animate-scale-up">

@@ -107,7 +107,7 @@ const markAttendance = asyncHandler(async (req, res) => {
 
   let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, lecture_date, division_id, topic, subject:subjects(name)')
+    .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
     .eq('id', resolvedLectureId)
     .maybeSingle();
 
@@ -124,7 +124,7 @@ const markAttendance = asyncHandler(async (req, res) => {
       const todayStr = new Date().toISOString().split('T')[0];
       const { data: existingLec } = await supabaseAdmin
         .from('lectures')
-        .select('id, lecture_date, division_id, topic, subject:subjects(name)')
+        .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
         .eq('division_id', slot.division_id)
         .eq('lecture_date', todayStr)
         .eq('start_time', slot.start_time)
@@ -146,7 +146,7 @@ const markAttendance = asyncHandler(async (req, res) => {
             status: 'ACTIVE',
             topic: slot.subject?.name || 'Class Lecture'
           })
-          .select('id, lecture_date, division_id, topic, subject:subjects(name)')
+          .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
           .single();
         lecture = newLec;
         resolvedLectureId = newLec?.id;
@@ -157,6 +157,34 @@ const markAttendance = asyncHandler(async (req, res) => {
   if (!lecture) {
     res.status(404);
     throw new Error('Lecture session or scheduled class slot not found');
+  }
+
+  // 2.1 Timing Window Verification (+1 hr after lecture end, max 2 hrs from start)
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const lectureDateStr = (lecture.lecture_date || '').toString().slice(0, 10);
+  if (lectureDateStr && lectureDateStr !== todayStr) {
+    res.status(400);
+    throw new Error('Attendance can only be marked on the day of the lecture.');
+  }
+
+  const [sh, sm] = (lecture.start_time || '00:00').split(':').map(Number);
+  const [eh, em] = (lecture.end_time || '23:59').split(':').map(Number);
+  const startMin = (sh || 0) * 60 + (sm || 0);
+  const endMin = (eh || 0) * 60 + (em || 0);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const expirationMin = Math.min(endMin + 60, startMin + 120);
+
+  if (nowMin < startMin) {
+    res.status(400);
+    throw new Error(`Attendance has not opened yet. This lecture starts at ${lecture.start_time?.slice(0, 5)}.`);
+  }
+
+  if (nowMin > expirationMin) {
+    const expH = String(Math.floor(expirationMin / 60)).padStart(2, '0');
+    const expM = String(expirationMin % 60).padStart(2, '0');
+    res.status(400);
+    throw new Error(`Attendance window is closed. Attendance could only be marked during the lecture or until ${expH}:${expM} (1 hr after lecture end, max 2 hrs from start).`);
   }
 
   // 3. Prevent duplicate attendance
@@ -367,13 +395,39 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
   // 1. Get lecture with division
   const { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, division_id, topic, lecture_date, subject:subjects(name, code)')
+    .select('id, division_id, subject_id, teacher_id, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
     .eq('id', lectureId)
     .single();
 
   if (lecErr || !lecture) {
     res.status(404);
     throw new Error('Lecture not found');
+  }
+
+  // Teacher authorization check: teacher can ONLY view roster of assigned subjects/lectures
+  if (req.user.role === 'teacher') {
+    const { data: teacherRec } = await supabaseAdmin
+      .from('teachers')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (teacherRec?.id) {
+      let isAuthorized = lecture.teacher_id === teacherRec.id;
+      if (!isAuthorized && lecture.subject_id) {
+        const { data: tsCheck } = await supabaseAdmin
+          .from('teacher_subjects')
+          .select('id')
+          .eq('teacher_id', teacherRec.id)
+          .eq('subject_id', lecture.subject_id)
+          .maybeSingle();
+        if (tsCheck) isAuthorized = true;
+      }
+      if (!isAuthorized) {
+        res.status(403);
+        throw new Error('Access Denied: You are not authorized to view or manage attendance for this subject.');
+      }
+    }
   }
 
   // 2. Get all students in this division
@@ -466,12 +520,37 @@ const overrideAttendance = asyncHandler(async (req, res) => {
     throw new Error('lecture_id, student_pk (or student_id), and status are required');
   }
 
-  // Fetch lecture info for notification metadata
+  // Fetch lecture info for authorization & notification metadata
   const { data: lecture } = await supabaseAdmin
     .from('lectures')
-    .select('id, lecture_date, subject_id, subject:subjects(name)')
+    .select('id, lecture_date, subject_id, teacher_id, subject:subjects(name)')
     .eq('id', lecture_id)
     .maybeSingle();
+
+  if (req.user.role === 'teacher' && lecture) {
+    const { data: teacherRec } = await supabaseAdmin
+      .from('teachers')
+      .select('id')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (teacherRec?.id) {
+      let isAllowed = lecture.teacher_id === teacherRec.id;
+      if (!isAllowed && lecture.subject_id) {
+        const { data: tsCheck } = await supabaseAdmin
+          .from('teacher_subjects')
+          .select('id')
+          .eq('teacher_id', teacherRec.id)
+          .eq('subject_id', lecture.subject_id)
+          .maybeSingle();
+        if (tsCheck) isAllowed = true;
+      }
+      if (!isAllowed) {
+        res.status(403);
+        throw new Error('Access Denied: You are not authorized to override attendance for this subject.');
+      }
+    }
+  }
 
   // 1. Check if an attendance record already exists
   const { data: existing } = await supabaseAdmin

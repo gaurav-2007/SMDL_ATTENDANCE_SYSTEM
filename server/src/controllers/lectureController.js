@@ -23,6 +23,41 @@ function calculateDynamicStatus(l) {
   return 'ONGOING';
 }
 
+// Student attendance window rule:
+// Attendance is open from start_time until:
+// min(end_time + 60 mins, start_time + 120 mins).
+// Max duration allowed is 2 hours from start time.
+function isLectureInAttendanceWindow(lecture, now = new Date()) {
+  if (!lecture) return false;
+  const todayStr = now.toISOString().split('T')[0];
+  const lectureDateStr = (lecture.lecture_date || '').toString().slice(0, 10);
+  if (lectureDateStr && lectureDateStr !== todayStr) {
+    return false;
+  }
+
+  const [sh, sm] = (lecture.start_time || '00:00').split(':').map(Number);
+  const [eh, em] = (lecture.end_time || '23:59').split(':').map(Number);
+  const startMin = (sh || 0) * 60 + (sm || 0);
+  const endMin = (eh || 0) * 60 + (em || 0);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  // 1 hour after lecture ends, capped at max 2 hours (120 mins) from lecture start
+  const expirationMin = Math.min(endMin + 60, startMin + 120);
+
+  return nowMin >= startMin && nowMin <= expirationMin;
+}
+
+function getWindowExpirationTime(startTimeStr, endTimeStr) {
+  const [sh, sm] = (startTimeStr || '00:00').split(':').map(Number);
+  const [eh, em] = (endTimeStr || '23:59').split(':').map(Number);
+  const startMin = (sh || 0) * 60 + (sm || 0);
+  const endMin = (eh || 0) * 60 + (em || 0);
+  const expirationMin = Math.min(endMin + 60, startMin + 120);
+  const h = String(Math.floor(expirationMin / 60)).padStart(2, '0');
+  const m = String(expirationMin % 60).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 async function attachTeacherNames(lectures) {
   const teacherUserIds = [...new Set((lectures || []).map((l) => (l.teachers || l.teacher)?.user_id).filter(Boolean))];
   const userMap = {};
@@ -84,6 +119,9 @@ const getActiveLectures = asyncHandler(async (req, res) => {
     .eq('lecture_date', todayStr)
     .order('start_time', { ascending: true });
 
+  let assignedSubjectIds = [];
+  let teacherRecord = null;
+
   if (req.user.role === 'student') {
     // Find student's division
     const { data: student } = await supabaseAdmin
@@ -95,24 +133,21 @@ const getActiveLectures = asyncHandler(async (req, res) => {
     if (student?.division_id) {
       query = query.eq('division_id', student.division_id);
     }
-  } else if (req.user.role === 'teacher' && req.query.all !== 'true') {
+  } else if (req.user.role === 'teacher') {
     const { data: teacher } = await supabaseAdmin
       .from('teachers')
       .select('id')
       .eq('user_id', req.user.id)
       .maybeSingle();
 
-    if (teacher?.id) {
-      // Check if teacher has direct lectures; if none, show all so teacher isn't blocked
-      const { data: countCheck } = await supabaseAdmin
-        .from('lectures')
-        .select('id', { count: 'exact', head: true })
-        .eq('lecture_date', todayStr)
-        .eq('teacher_id', teacher.id);
+    teacherRecord = teacher;
 
-      if (countCheck && countCheck.length > 0) {
-        query = query.eq('teacher_id', teacher.id);
-      }
+    if (teacher?.id) {
+      const { data: tsRows } = await supabaseAdmin
+        .from('teacher_subjects')
+        .select('subject_id')
+        .eq('teacher_id', teacher.id);
+      assignedSubjectIds = (tsRows || []).map((r) => r.subject_id);
     }
   }
 
@@ -122,7 +157,28 @@ const getActiveLectures = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
-  const mapped = await attachTeacherNames(lectures || []);
+  let mapped = await attachTeacherNames(lectures || []);
+
+  // Filter strictly for teacher: ONLY assigned subjects or direct lectures
+  if (req.user.role === 'teacher') {
+    mapped = mapped.filter((l) => {
+      const subId = l.subject?.id || l.subjects?.id;
+      const tchId = l.teacher?.id || l.teachers?.id;
+      return (teacherRecord?.id && tchId === teacherRecord.id) || (subId && assignedSubjectIds.includes(subId));
+    });
+  }
+
+  // Filter strictly for student: ONLY lectures currently within active attendance window
+  if (req.user.role === 'student') {
+    const now = new Date();
+    mapped = mapped
+      .filter((l) => isLectureInAttendanceWindow(l, now))
+      .map((l) => ({
+        ...l,
+        is_active_now: true,
+        window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
+      }));
+  }
 
   res.json({
     success: true,
@@ -144,8 +200,9 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
     console.error('Timetable sync error:', err.message);
   }
 
-  // Get current teacher record
+  // Get current teacher record & their assigned subjects
   let currentTeacher = null;
+  let teacherAssignedSubjIds = [];
   if (req.user.role === 'teacher') {
     const { data: tRec } = await supabaseAdmin
       .from('teachers')
@@ -153,6 +210,14 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
       .eq('user_id', req.user.id)
       .maybeSingle();
     currentTeacher = tRec;
+
+    if (tRec?.id) {
+      const { data: tsList } = await supabaseAdmin
+        .from('teacher_subjects')
+        .select('subject_id')
+        .eq('teacher_id', tRec.id);
+      teacherAssignedSubjIds = (tsList || []).map((r) => r.subject_id);
+    }
   }
 
   // Fetch all lectures for target date
@@ -179,14 +244,21 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
 
   const mapped = await attachTeacherNames(lectures || []);
 
-  // Filter for logged-in teacher
+  // Filter for logged-in teacher: strictly their assigned subjects & lectures
   const myLectures = currentTeacher
-    ? mapped.filter((l) => (l.teacher?.id === currentTeacher.id || l.teachers?.id === currentTeacher.id || l.teacher?.user_id === currentTeacher.user_id))
+    ? mapped.filter((l) => {
+        const subId = l.subject?.id || l.subjects?.id;
+        const tchId = l.teacher?.id || l.teachers?.id;
+        return (tchId === currentTeacher.id) || (subId && teacherAssignedSubjIds.includes(subId));
+      })
     : mapped;
 
+  // Accessible lectures for teacher must strictly be their assigned lectures
+  const accessibleLectures = req.user.role === 'teacher' ? myLectures : mapped;
+
   // Find ongoing and next upcoming
-  const ongoing = mapped.find((l) => l.status === 'ONGOING') || null;
-  const nextUpcoming = mapped.find((l) => l.status === 'UPCOMING') || null;
+  const ongoing = accessibleLectures.find((l) => l.status === 'ONGOING') || null;
+  const nextUpcoming = accessibleLectures.find((l) => l.status === 'UPCOMING') || null;
 
   res.json({
     success: true,
@@ -200,11 +272,11 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
         teacher_id: currentTeacher.teacher_id,
       } : null,
       my_lectures: myLectures,
-      all_lectures: mapped,
+      all_lectures: accessibleLectures,
       current_lecture: ongoing,
       next_lecture: nextUpcoming,
       summary: {
-        total_today: mapped.length,
+        total_today: accessibleLectures.length,
         my_total_today: myLectures.length,
         has_ongoing: !!ongoing,
       },
@@ -469,9 +541,11 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
         });
       }
 
+      const now = new Date();
       liveClasses = slots.map((s) => {
         const status = getSlotStatus(s.start_time, s.end_time, todayStr);
         const att = attendanceMap[s.id];
+        const canMark = isLectureInAttendanceWindow({ start_time: s.start_time, end_time: s.end_time, lecture_date: todayStr }, now);
         return {
           id: s.id,
           timetable_id: s.id,
@@ -486,6 +560,8 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
           is_attended: att?.status === 'PRESENT',
           attendance_status: att ? att.status : 'NOT_MARKED',
           marked_at: att?.marked_at || null,
+          can_mark_attendance: canMark,
+          window_expires_at: getWindowExpirationTime(s.start_time, s.end_time),
         };
       });
     }
@@ -526,9 +602,11 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
         });
       }
 
+      const now = new Date();
       liveClasses = lectures.map((l) => {
         const status = getSlotStatus(l.start_time, l.end_time, todayStr);
         const att = attMap[l.id];
+        const canMark = isLectureInAttendanceWindow({ start_time: l.start_time, end_time: l.end_time, lecture_date: todayStr }, now);
         return {
           id: l.id,
           timetable_id: l.id,
@@ -543,9 +621,16 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
           is_attended: att?.status === 'PRESENT',
           attendance_status: att ? att.status : 'NOT_MARKED',
           marked_at: att?.marked_at || null,
+          can_mark_attendance: canMark,
+          window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
         };
       });
     }
+  }
+
+  // Filter if active_only query param is present
+  if (req.query.active_only === 'true') {
+    liveClasses = liveClasses.filter((c) => c.can_mark_attendance);
   }
 
   res.json({
