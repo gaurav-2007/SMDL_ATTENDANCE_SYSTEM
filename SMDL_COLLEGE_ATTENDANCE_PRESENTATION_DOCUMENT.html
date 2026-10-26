@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMDL College Smart Attendance System - Project Presentation & Proposal</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+    :root {
+      --primary: #1e3a8a;
+      --primary-light: #3b82f6;
+      --primary-dark: #0f172a;
+      --accent: #059669;
+      --accent-light: #10b981;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --bg-light: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-light);
+      color: var(--text-main);
+      line-height: 1.65;
+      padding: 24px;
+    }
+
+    .document-container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+      border-radius: 12px;
+      padding: 48px 56px;
+    }
+
+    /* Print Controls */
+    .action-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 14px 24px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+
+    .action-bar span {
+      font-weight: 500;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .print-btn {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s ease;
+    }
+
+    .print-btn:hover {
+      background: #1d4ed8;
+    }
+
+    /* Header Banner */
+    .header-banner {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 28px;
+      margin-bottom: 36px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .institution-tag {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--primary-light);
+      margin-bottom: 6px;
+    }
+
+    .doc-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--primary-dark);
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .doc-subtitle {
+      font-size: 15px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .doc-badge {
+      display: inline-block;
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    /* Section Styling */
+    h2.section-header {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary);
+      border-left: 5px solid var(--primary);
+      padding-left: 14px;
+      margin: 36px 0 18px 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3.sub-header {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin: 20px 0 10px 0;
+    }
+
+    p {
+      color: #334155;
+      font-size: 14.5px;
+      margin-bottom: 14px;
+    }
+
+    /* Cards & Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin: 18px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .feature-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      position: relative;
+    }
+
+    .feature-card.primary {
+      border-top: 4px solid var(--primary-light);
+    }
+
+    .feature-card.teacher {
+      border-top: 4px solid #0284c7;
+    }
+
+    .feature-card.student {
+      border-top: 4px solid var(--accent);
+    }
+
+    .feature-card h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--primary-dark);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .feature-card ul {
+      padding-left: 18px;
+      font-size: 13.5px;
+      color: #334155;
+    }
+
+    .feature-card ul li {
+      margin-bottom: 6px;
+    }
+
+    /* Callout Boxes */
+    .callout {
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 14px;
+    }
+
+    .callout-problem {
+      background: #fef2f2;
+      border-left: 4px solid var(--danger);
+      color: #991b1b;
+    }
+
+    .callout-solution {
+      background: #f0fdf4;
+      border-left: 4px solid var(--accent);
+      color: #166534;
+    }
+
+    .callout-info {
+      background: #eff6ff;
+      border-left: 4px solid var(--primary-light);
+      color: #1e40af;
+    }
+
+    /* Comparison Table */
+    table.custom-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 22px 0;
+      font-size: 13.5px;
+    }
+
+    table.custom-table th {
+      background: #f1f5f9;
+      color: #1e293b;
+      font-weight: 700;
+      text-align: left;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+    }
+
+    table.custom-table td {
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      color: #334155;
+    }
+
+    table.custom-table tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    .tag-green {
+      background: #dcfce7;
+      color: #15803d;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 12px;
+      display: inline-block;
+    }
+
+    .tag-red {
+      background: #fee2e2;
+      color: #b91c1c;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 12px;
+      display: inline-block;
+    }
+
+    /* Architecture diagram box */
+    .arch-flow {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 20px;
+      border-radius: 8px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+
+    .speech-box {
+      background: #faf5ff;
+      border: 1px solid #e9d5ff;
+      border-left: 4px solid #9333ea;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin: 18px 0;
+      font-style: normal;
+    }
+
+    .speech-box strong {
+      color: #6b21a8;
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    /* Print-specific optimizations */
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .action-bar {
+        display: none !important;
+      }
+      .document-container {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        max-width: 100%;
+      }
+      .page-break {
+        page-break-after: always;
+        break-after: page;
+      }
+      h2.section-header {
+        margin-top: 24px;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="document-container">
+
+    <!-- Interactive Top Bar for Quick PDF Export -->
+    <div class="action-bar">
+      <span>📄 Official College Presentation & Defense Proposal • Ready to Print / Export</span>
+      <button class="print-btn" onclick="window.print()">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"></path></svg>
+        Save as PDF / Print Document
+      </button>
+    </div>
+
+    <!-- Header Section -->
+    <div class="header-banner">
+      <div>
+        <div class="institution-tag">SMDL College of Commerce & Science, Kalamboli</div>
+        <h1 class="doc-title">Smart Attendance & Communication System</h1>
+        <div class="doc-subtitle">Institutional Proposal, Technological Architecture & Feature Specification</div>
+      </div>
+      <div>
+        <span class="doc-badge">v1.0.0 Production Ready</span>
+      </div>
+    </div>
+
+    <!-- SECTION 1: THE NEED -->
+    <h2 class="section-header">1. Executive Summary: Why Does SMDL College Need This App? (Kyu Chahiye?)</h2>
+    
+    <div class="callout callout-problem">
+      <strong>🔴 Aaj Ki Sabse Badi Chunautiyaan (Current Pain Points):</strong>
+      <ul style="margin-top: 8px; padding-left: 20px;">
+        <li><strong>Time Waste in Every Lecture:</strong> Ek 45-50 minute ke lecture me 10-12 minute sirf Roll Numbers bolne me barbaad hote hain. Din bhar me lagbhag 10 ghante ki teaching time waste hoti hai.</li>
+        <li><strong>Proxy / Fake Attendance Epidemic:</strong> 80-100 bacchon ke class me absent bacchon ke dost aasaani se "Yes Sir/Madam" bolkar proxy laga dete hain.</li>
+        <li><strong>End-of-Semester 75% Defaulter Calculation:</strong> Semester ke end me teachers ko 4-5 din lagakar manual registers se tick count karke calculator se 75% nikalna padta hai jisme human errors hote hain aur students ladte hain.</li>
+        <li><strong>Register Gumne Ya Kharab Hone Ka Risk:</strong> Paper register phat sakte hain ya paani girne se damage ho sakte hain; koi permanent digital record nahi hota.</li>
+        <li><strong>Scattered Communication:</strong> Class cancellation ya internal exam ke notices WhatsApp groups par aate hain jahan important notice chat me dab jaate hain.</li>
+      </ul>
+    </div>
+
+    <div class="callout callout-solution">
+      <strong>🟢 The Solution: Ek Digital, Paperless Aur Tamper-Proof Attendance System</strong>
+      <p style="margin-top: 6px; margin-bottom: 0;">
+        Hamara system <strong>Triple-Verification (Login + GPS Geofence + Live Front Camera Selfie)</strong> ke through attendance leta hai. Student sirf tabhi mark kar sakta hai jab wo actually college campus (100 meter boundary) me physical roop se upasthit ho. Ye system college ka samay bachata hai, proxy ko 0% par lata hai, aur University/NAAC inspection ke liye instant digital records tayyar karta hai.
+      </p>
+    </div>
+
+    <!-- ARCHITECTURE FLOW -->
+    <div class="arch-flow">
+[STUDENT INSIDE SMDL CAMPUS (100m)] ──▶ [GPS Verification (Haversine)] ──▶ [Live Selfie Camera]
+                                                                                │
+                                                                                ▼
+[ADMIN: 1-Click 75% Defaulter Export] ◀── [TEACHER CONSOLE: Review Photo / Override / Mark No Phone]
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- 3 MAIN PARTS -->
+    <h2 class="section-header">2. Detailed System Breakdown: Divided into 3 Core Roles</h2>
+    <p>System ko 3 transparent aur secure roles me baanta gaya hai taaki pure college ka workflow seamless aur disciplined rahe:</p>
+
+    <!-- PART 1: ADMIN -->
+    <div style="margin-top: 24px;">
+      <h3 style="color: #1e3a8a; font-size: 18px; font-weight: 800; border-bottom: 2px solid #bfdbfe; padding-bottom: 6px;">
+        PART 1: 🏛️ Admin Features (Puri College Ka Central Control Tower)
+      </h3>
+      <p style="margin-top: 8px;">College Principal, IT Coordinators aur Administrative Officers ke liye banaya gaya supreme dashboard jahan se pura academic structure control hota hai:</p>
+
+      <div class="grid-2">
+        <div class="feature-card primary">
+          <h4>1. Complete Academic Setup</h4>
+          <ul>
+            <li><strong>Course Management:</strong> B.Com, B.Sc Computer Science, B.M.S, B.A.F jaise naye courses banayein aur manage karein.</li>
+            <li><strong>Division & Class Allocation:</strong> Har course ke under Divisions (Div A, Div B) aur Academic Years (FY, SY, TY) define karein.</li>
+            <li><strong>Subject Mapping:</strong> Course-wise subjects map karein (e.g. Financial Accounting, DSA, Business Maths).</li>
+            <li><strong>Weekly Timetable Scheduler:</strong> Har division ke liye weekly lecture slots assign karein (Kaunse din, kitne baje, kaunsa teacher lega).</li>
+          </ul>
+        </div>
+
+        <div class="feature-card primary">
+          <h4>2. Strict Teacher Gatekeeping & Approvals</h4>
+          <ul>
+            <li><strong>No Direct Entry:</strong> Koi bhi teacher account banate hi system me enter nahi ho sakta.</li>
+            <li><strong>Pending Approval Queue:</strong> Nayi registration <code>PENDING</code> state me aati hai.</li>
+            <li><strong>Verification & Authorization:</strong> Admin teacher ki ID, department aur designation verify karke hi <strong>Approve</strong> ya <strong>Reject</strong> karta hai.</li>
+            <li><strong>Account Suspension:</strong> Agar koi teacher leave par ho ya college chod de, admin 1-click me unka account disable kar sakta hai.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card primary">
+          <h4>3. Dynamic GPS Geofence Manager</h4>
+          <ul>
+            <li><strong>Configurable Campus Boundary:</strong> Admin screen se directly college ke GPS Coordinates (Latitude: <code>19.02479</code>, Longitude: <code>73.10159</code>) set kar sakte hain.</li>
+            <li><strong>Custom Radius:</strong> Attendance ka boundary radius (jaise 100 meters ya 150 meters) instantly bina server restart kiye update ho jata hai.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card primary">
+          <h4>4. Defaulter List Generator (<75%) & Export</h4>
+          <ul>
+            <li><strong>Single-Click 75% Rule Calculation:</strong> Months ke register calculate karne ki zaroorat nahi. Ek click me pure college ki defaulter list generate hoti hai.</li>
+            <li><strong>Excel / CSV Export:</strong> Instant CSV download karein notice board par lagane aur parents ko send karne ke liye.</li>
+            <li><strong>Bulk Student Import:</strong> 500+ students ki entry CSV file upload karke kuch seconds me onboard karein.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card primary" style="grid-column: span 2;">
+          <h4>5. Immutable Audit Trail & College Broadcasts</h4>
+          <ul>
+            <li><strong>Audit Logs:</strong> Kisi bhi teacher ne attendance me koi badlav kiya ho (Present se Absent ya vice-versa), system uska record date, time, teacher ka naam aur mandatory reason ke sath save karta hai.</li>
+            <li><strong>Official Broadcasts:</strong> Pure college ya specific department ke liye urgent notice, circulars aur holiday schedules send karein.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- PART 2: TEACHER -->
+    <div style="margin-top: 24px;">
+      <h3 style="color: #0284c7; font-size: 18px; font-weight: 800; border-bottom: 2px solid #bae6fd; padding-bottom: 6px;">
+        PART 2: 👨‍🏫 Teacher Features (Classroom Automation & Complete Control)
+      </h3>
+      <p style="margin-top: 8px;">Professors ka time bachane aur lecture discipline maintain karne ke liye specialized features:</p>
+
+      <div class="grid-2">
+        <div class="feature-card teacher">
+          <h4>1. Today's Lectures & Live Status</h4>
+          <ul>
+            <li><strong>Personalized Daily Schedule:</strong> Teacher ko login karte hi aaj ke assigned lectures dikhte hain.</li>
+            <li><strong>Dynamic Lecture Badges:</strong> Lecture status automatic update hota hai — 🟡 <em>UPCOMING</em>, 🟢 <em>ONGOING</em>, ⚪ <em>COMPLETED</em>.</li>
+            <li><strong>Zero Roll-Call Hassle:</strong> Teacher ko ek ek roll number pukarne ki zaroorat nahi rehti.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card teacher">
+          <h4>2. Live Attendance Roster & Photo Verification</h4>
+          <ul>
+            <li><strong>Real-Time Student Roster:</strong> Screen par dikhta hai kaunsa student present mark hua hai.</li>
+            <li><strong>Live Selfie Inspection:</strong> Har student ki li gayi live photo aur unka campus se exact distance (e.g., <em>14 meters away</em>) dikhta hai. Teacher photo par tap karke verify kar sakte hain.</li>
+            <li><strong>Cheating Prevention:</strong> Agar koi student window se photo lekar bhaag gaya ho, teacher use turant dekh sakte hain.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card teacher">
+          <h4>3. Teacher Override with Mandatory Reason</h4>
+          <ul>
+            <li><strong>Absolute Control:</strong> Final authority teacher ke paas hoti hai.</li>
+            <li><strong>Present ➔ Absent:</strong> Agar student ne class bunk ki, teacher use Absent mark kar sakte hain (Reason mandatory hota hai, e.g. "Left after 5 minutes").</li>
+            <li><strong>Absent ➔ Present:</strong> Agar koi student genuine late aaya, teacher use Present kar sakte hain.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card teacher">
+          <h4>4. "Mark No Phone" (Smart Equity Mode)</h4>
+          <ul>
+            <li><strong>Special Inclusion Button:</strong> Jin students ke paas smartphone nahi hai ya battery dead ho gayi ho, teacher unhe list me dekh kar <strong>"Mark No Phone"</strong> daba sakte hain.</li>
+            <li><strong>Zero Discrimination:</strong> Har student ko barabar mauka milta hai aur koi bacha phone na hone ki wajah se nuksan me nahi rehta.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card teacher" style="grid-column: span 2;">
+          <h4>5. Class Announcements & Study Material Sharing</h4>
+          <ul>
+            <li>Teacher apni assigned division ko direct PDF notes, assignment questions, lab manuals aur lecture cancel hone ke official notices bhej sakte hain.</li>
+            <li>Personal phone numbers WhatsApp groups me share karne ki zaroorat nahi padti.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- PART 3: STUDENT -->
+    <div style="margin-top: 24px;">
+      <h3 style="color: #059669; font-size: 18px; font-weight: 800; border-bottom: 2px solid #a7f3d0; padding-bottom: 6px;">
+        PART 3: 🎓 Student Features (Easy Check-In & 100% Transparency)
+      </h3>
+      <p style="margin-top: 8px;">Students ke liye ek modern, fast aur user-friendly portal jahan se wo bina confusion ke apni padhai aur attendance track kar sakte hain:</p>
+
+      <div class="grid-2">
+        <div class="feature-card student">
+          <h4>1. 10-Second Quick Check-In</h4>
+          <ul>
+            <li><strong>Simple 3-Step Process:</strong>
+              <ol style="padding-left: 16px; margin-top: 4px;">
+                <li>Classroom me baithkar App open karein.</li>
+                <li>Ongoing lecture par <em>"Mark Attendance"</em> tap karein.</li>
+                <li>Live camera selfie click karein ➔ Submit!</li>
+              </ol>
+            </li>
+            <li><strong>Anti-Proxy Protection:</strong> Gallery se puraani photo select karne ka option disabled hai.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card student">
+          <h4>2. Live Attendance Percentage & Warnings</h4>
+          <ul>
+            <li><strong>Overall Percentage Tracker:</strong> Student ko real-time me dikhta hai ki unki total attendance kitni hai (e.g. <code>82%</code>).</li>
+            <li><strong>Subject-Wise Breakdown:</strong> Har subject ka alag percentage (Maths: 71%, Accounts: 89%).</li>
+            <li><strong>75% Defaulter Alert Badge:</strong> Agar kisi subject me 75% se kam attendance ho, to dashboard par red warning badge dikhta hai taaki student samay rehte recover kar sake.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card student">
+          <h4>3. Complete Calendar History</h4>
+          <ul>
+            <li>Student apne pure mahine ka attendance log dekh sakta hai — kaunse din kaunse lecture me Present the aur kisme Absent.</li>
+            <li>Semester ke aakhir me "Sir meri attendance miss ho gayi thi" jaisa koi doubt ya dispute nahi rehta.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card student">
+          <h4>4. Digital Notice Board & Notes Download</h4>
+          <ul>
+            <li>College circulars, exam time-tables aur teachers dwara upload kiye gaye study notes aur PDFs ko 1-tap me download kar sakte hain.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- SPECIAL HIGHLIGHT: STUDENTS WITHOUT SMARTPHONE -->
+    <h2 class="section-header">3. Special Highlight: Agar Kisi Student Ke Paas Smartphone Na Ho Toh?</h2>
+    <div class="callout callout-info">
+      <p style="margin-bottom: 8px;"><strong>Humaari Inclusion Guarantee:</strong></p>
+      <p style="margin-bottom: 6px;">College presentation me ye sawal sabse pehle poocha ja sakta hai: <em>"Kya har student ke paas smartphone hona zaroori hai?"</em></p>
+      <p style="margin-bottom: 0;">
+        <strong>Jawab: Bilkul Nahi!</strong> Is system me kisi bhi garib ya smartphone na rakhne wale student ke sath anyaay nahi hota. Teacher ke portal me ek dedicated <strong>"Mark No Phone"</strong> button diya gaya hai. Jab student class me physical maujood hota hai, teacher use visually dekh kar ek click me present mark kar dete hain. Aur student apni attendance college computer lab ya dost ke phone se web login karke bhi check kar sakta hai.
+      </p>
+    </div>
+
+    <!-- COMPARISON TABLE -->
+    <h2 class="section-header">4. Head-to-Head Comparison: Purana System vs SMDL Smart System</h2>
+    <table class="custom-table">
+      <thead>
+        <tr>
+          <th>Paimana / Parameter</th>
+          <th>Purana Paper Register System</th>
+          <th>SMDL Smart Attendance System</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Lecture Time</strong></td>
+          <td><span class="tag-red">10-12 min lost</span> per lecture</td>
+          <td><span class="tag-green">0 min lost</span> (Instant digital check-in)</td>
+        </tr>
+        <tr>
+          <td><strong>Proxy / Fake Attendance</strong></td>
+          <td><span class="tag-red">Aam baat hai</span> (Dost bol dete hain)</td>
+          <td><span class="tag-green">Impossible</span> (100m GPS + Live Camera Selfie)</td>
+        </tr>
+        <tr>
+          <td><strong>75% Defaulter List</strong></td>
+          <td><span class="tag-red">3-5 din lagte hain</span> manual counting me</td>
+          <td><span class="tag-green">Instant (1-Click CSV/Excel)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Data Security</strong></td>
+          <td><span class="tag-red">Kharab / Gumne ka darr</span></td>
+          <td><span class="tag-green">100% Secure Encrypted Cloud Database</span></td>
+        </tr>
+        <tr>
+          <td><strong>Student Awareness</strong></td>
+          <td><span class="tag-red">Semester end tak pata nahi chalta</span></td>
+          <td><span class="tag-green">Live daily percentage mobile screen par</span></td>
+        </tr>
+        <tr>
+          <td><strong>NAAC Accreditation</strong></td>
+          <td><span class="tag-red">Messy paper proofs</span></td>
+          <td><span class="tag-green">Verified digital audit trail (High Scores)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Paper Cost</strong></td>
+          <td><span class="tag-red">Hazaaron rupaye registers par</span></td>
+          <td><span class="tag-green">100% Paperless & Eco-Friendly</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- PRESENTATION DEFENSE SCRIPT -->
+    <h2 class="section-header">5. Presentation Script & Tough Questions (Presentation Me Kaise Bolna Hai)</h2>
+
+    <div class="speech-box">
+      <strong>🎤 College Principal & HODs Ke Samne Opening Pitch:</strong>
+      "Respected Principal Sir, Vice-Principal Madam, and respected Faculty Members:<br><br>
+      Har semester hamare college me hazaaron lecture-hours sirf paper registers me roll numbers pukarne me waste hote hain. Semester ke end me professors ko 4-5 din lagakar calculator se 75% defaulters nikalne padte hain, aur proxy attendance ki problem hum sab jaante hain.<br><br>
+      Is problem ko permanently khatam karne ke liye humne develop kiya hai <strong>SMDL College Smart Attendance System</strong>. Ye system kisi hardware ya biometric machine ke kharche ke bina, student ke mobile se attendance leta hai — par tabhi jab wo college campus ke 100 meter ke andar ho aur classroom me live selfie le. Teacher ke paas pura control hai, aur jin bacchon ke paas phone nahi hai unke liye <strong>'Mark No Phone'</strong> ka single-click feature hai. Ye hamare SMDL College ko Mumbai University aur NAAC me top rank dilane ke liye ek modern aur zaroori kadam hai."
+    </div>
+
+    <h3 class="sub-header">❓ Expected Questions from Teachers & Convincing Answers:</h3>
+
+    <div style="margin-bottom: 14px;">
+      <p style="font-weight: 700; color: #1e3a8a; margin-bottom: 4px;">Q1: "Agar koi student bahar se fake GPS (Location Spoofer) use kare toh?"</p>
+      <p style="color: #334155;"><strong>Answer:</strong> "System me double-layer security hai. GPS verify hone ke baad student ko classroom me live front-camera selfie lena padta hai (Gallery se photo upload block hai). Agar koi bahar se location fake bhi karega, to wo classroom ki live selfie nahi de payega. Aur teacher ke dashboard par har student ka photo aur exact distance saaf dikhta hai, jise teacher turant reject kar sakte hain."</p>
+    </div>
+
+    <div style="margin-bottom: 14px;">
+      <p style="font-weight: 700; color: #1e3a8a; margin-bottom: 4px;">Q2: "Kya college ko koi server khareedna padega ya internet ka bada kharcha hoga?"</p>
+      <p style="color: #334155;"><strong>Answer:</strong> "Nahi sir! Ye system modern Cloud architecture par bana hai. College ko zero hardware investment chahiye. Attendance submit karne me sirf 50KB data lagta hai jo 2G ya weak Wi-Fi par bhi 2 second me chalta hai."</p>
+    </div>
+
+    <div style="margin-bottom: 14px;">
+      <p style="font-weight: 700; color: #1e3a8a; margin-bottom: 4px;">Q3: "Agar kisi teacher ko technical cheezein chalana nahi aati ho toh?"</p>
+      <p style="color: #334155;"><strong>Answer:</strong> "Teacher interface ko bilkul WhatsApp ki tarah intuitive aur simple banaya gaya hai. Teacher ko bas apna lecture select karna hai, bacchon ki list aur unke photos samne aa jate hain. Koi training ya technical knowledge ki zaroorat nahi hai."</p>
+    </div>
+
+    <!-- CONCLUSION / PILOT PROPOSAL -->
+    <div style="background: #f1f5f9; border-radius: 8px; padding: 20px; margin-top: 30px; border-left: 5px solid var(--primary-light);">
+      <h4 style="font-size: 16px; font-weight: 800; color: var(--primary-dark); margin-bottom: 6px;">🚀 Management Ko Dene Wala Final Action Step:</h4>
+      <p style="margin-bottom: 0; font-size: 14px; color: #334155;">
+        <em>"Sir, hum aapse request karte hain ki poore college me implement karne se pehle humein sirf <strong>ek department (e.g., Computer Science ya Commerce) me 2-week ka pilot test</strong> chalane ki anumati dein. 2 hafte me teachers aur students ka feedback dekh kar aap isko poore college me formal roop se adopt kar sakte hain."</em>
+      </p>
+    </div>
+
+  </div>
+
+</body>
+</html>
