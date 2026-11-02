@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Academic Design Tokens (CSS Variables) ─── */
+:root {
+  --bg: 247 248 250;      /* #F7F8FA */
+  --surface: 255 255 255;  /* #FFFFFF */
+  --line: 229 231 235;     /* #E5E7EB */
+  --ink: 17 24 39;         /* #111827 */
+  --muted: 107 114 128;    /* #6B7280 */
+  --brand: 79 70 229;      /* #4F46E5 Indigo */
+  --present: 22 163 74;    /* #16A34A Emerald */
+  --grace: 217 119 6;      /* #D97706 Amber */
+  --absent: 220 38 38;     /* #DC2626 Rose */
+}
+
+.dark {
+  --bg: 14 17 22;          /* #0E1116 */
+  --surface: 22 27 34;     /* #161B22 */
+  --line: 38 44 54;        /* #262C36 */
+  --ink: 241 245 249;      /* #F1F5F9 */
+  --muted: 148 163 184;    /* #94A3B8 */
+  --brand: 129 140 248;    /* #818CF8 Indigo */
+  --present: 74 222 128;   /* #4ADE80 */
+  --grace: 251 191 36;     /* #FBBF24 */
+  --absent: 248 113 113;   /* #F87171 */
+}
+
 /* ─── Global Reset & Base ─── */
 @layer base {
 
@@ -16,8 +41,18 @@
   }
 
   body {
-    @apply bg-brand-dark text-white font-sans antialiased;
+    background-color: rgb(var(--bg));
+    color: rgb(var(--ink));
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Support mobile notch and bottom home indicator */
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
   ::-webkit-scrollbar {
@@ -26,15 +61,16 @@
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-brand-dark;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-brand-border rounded-full;
+    background-color: rgb(var(--line));
+    border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-brand-muted;
+    background-color: rgb(var(--muted) / 0.4);
   }
 }
 

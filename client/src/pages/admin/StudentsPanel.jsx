@@ -1,19 +1,16 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Users, Search, UserCheck, UserX, Clock, Plus, X,
   ChevronDown, GraduationCap, Phone, BookOpen, Filter,
   RefreshCw, Eye, CheckCircle, XCircle, Upload, ArrowRightLeft,
-  FileSpreadsheet, Loader2, Download
+  FileSpreadsheet, Loader2, Download, Mail, Calendar, ShieldAlert
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
-
-const STATUS_BADGE = {
-  ACTIVE:   'badge badge-active',
-  PENDING:  'badge badge-warning',
-  REJECTED: 'badge badge-danger',
-  INACTIVE: 'badge badge-muted',
-}
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Input, Select, Modal, StatCard, Skeleton, EmptyState
+} from '../../components/ui'
 
 export default function StudentsPanel() {
   const [students, setStudents] = useState([])
@@ -58,7 +55,6 @@ export default function StudentsPanel() {
     fetchAcademicData()
   }, [fetchStudents, fetchAcademicData])
 
-
   async function updateStatus(studentId, status) {
     setActionLoading(true)
     try {
@@ -90,76 +86,100 @@ export default function StudentsPanel() {
     rejected: students.filter(s => s.users?.status === 'REJECTED').length,
   }
 
+  function renderStatusBadge(status) {
+    switch (status) {
+      case 'ACTIVE':
+        return <Badge variant="present" dot>Active</Badge>
+      case 'PENDING':
+        return <Badge variant="grace" pulseDot>Pending</Badge>
+      case 'REJECTED':
+        return <Badge variant="absent">Rejected</Badge>
+      case 'INACTIVE':
+        return <Badge variant="neutral">Inactive</Badge>
+      default:
+        return <Badge variant="neutral">{status || 'Unknown'}</Badge>
+    }
+  }
+
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="space-y-6 animate-fade-in pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="page-title">Students Management</h2>
-          <p className="page-subtitle">Manage student accounts, bulk imports & division transfers</p>
+          <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
+            Student Roster & Cohort Management
+          </h1>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Manage student enrollments, bulk CSV class onboarding, and batch transfers
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <Button
             onClick={() => setShowBulkModal(true)}
-            className="btn btn-primary btn-sm flex items-center gap-1.5 shadow-md"
+            variant="primary"
+            size="sm"
+            className="gap-1.5"
           >
             <Upload size={14} /> Bulk CSV Import
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={fetchStudents}
-            className="btn btn-ghost btn-sm flex items-center gap-2"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
           >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {[
-          { label: 'Total', value: stats.total,    color: 'text-blue-400',   bg: 'bg-blue-500/10',   Icon: Users },
-          { label: 'Active', value: stats.active,  color: 'text-green-400',  bg: 'bg-green-500/10',  Icon: UserCheck },
-          { label: 'Pending', value: stats.pending, color: 'text-yellow-400', bg: 'bg-yellow-500/10', Icon: Clock },
-          { label: 'Rejected', value: stats.rejected, color: 'text-red-400',  bg: 'bg-red-500/10',   Icon: UserX },
-        ].map(({ label, value, color, bg, Icon }) => (
-          <div key={label} className="stat-card">
-            <div className={`stat-icon ${bg} ${color}`}><Icon size={20} /></div>
-            <div>
-              <p className={`text-2xl font-bold ${color}`}>{loading ? '—' : value}</p>
-              <p className="text-brand-muted text-xs">{label}</p>
-            </div>
-          </div>
-        ))}
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard
+          label="Total Enrolled"
+          value={loading ? '—' : stats.total}
+          icon={Users}
+        />
+        <StatCard
+          label="Active Accounts"
+          value={loading ? '—' : stats.active}
+          icon={UserCheck}
+        />
+        <StatCard
+          label="Pending Verifications"
+          value={loading ? '—' : stats.pending}
+          icon={Clock}
+        />
+        <StatCard
+          label="Rejected / Blocked"
+          value={loading ? '—' : stats.rejected}
+          icon={UserX}
+        />
       </div>
 
-      {/* Filters */}
-      <div className="card mb-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
-            <input
+      {/* Filters & Search */}
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex-1">
+            <Input
               id="student-search"
               type="text"
-              placeholder="Search by name, email, roll no..."
+              placeholder="Search by student name, roll number, email..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="form-input pl-9 py-2 text-sm w-full"
+              icon={Search}
             />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white">
-                <X size={14} />
-              </button>
-            )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
             <select
               id="status-filter"
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="form-input py-2 text-sm"
+              className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
             >
-              <option value="ALL">All Status</option>
+              <option value="ALL">All Account Statuses</option>
               <option value="ACTIVE">Active</option>
               <option value="PENDING">Pending</option>
               <option value="REJECTED">Rejected</option>
@@ -170,7 +190,7 @@ export default function StudentsPanel() {
               id="course-filter"
               value={courseFilter}
               onChange={e => setCourseFilter(e.target.value)}
-              className="form-input py-2 text-sm"
+              className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer max-w-[200px]"
             >
               <option value="ALL">All Courses</option>
               {courses.map(c => (
@@ -179,98 +199,185 @@ export default function StudentsPanel() {
             </select>
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* Table */}
-      <div className="card overflow-hidden p-0">
+      {/* Roster Container */}
+      <Card className="overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-4 border-white/10 border-t-brand-accent rounded-full animate-spin" />
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <GraduationCap size={40} className="mx-auto text-brand-muted mb-3" />
-            <p className="text-white font-semibold">No students found</p>
-            <p className="text-brand-muted text-sm mt-1">Try changing your search or filters</p>
-          </div>
+          <EmptyState
+            icon={GraduationCap}
+            title="No students found"
+            description={search ? `No student profiles match "${search}". Try refining your search query.` : 'No student accounts found in the selected cohort.'}
+            action={
+              search ? (
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Clear Search
+                </Button>
+              ) : null
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Student</th>
-                  <th>Roll No</th>
-                  <th>Course</th>
-                  <th>Division</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(s => (
-                  <tr key={s.id}>
-                    <td>
+          <div>
+            {/* Desktop Table View */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
+                    <th className="py-3 px-4">Student</th>
+                    <th className="py-3 px-4">Roll Number</th>
+                    <th className="py-3 px-4">Course Program</th>
+                    <th className="py-3 px-4">Division</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {filtered.map(s => {
+                    const initial = (s.full_name || 'S').charAt(0).toUpperCase()
+                    return (
+                      <tr key={s.id} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-brand/10 text-brand font-semibold text-xs flex items-center justify-center shrink-0">
+                              {initial}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-ink leading-tight truncate">
+                                {s.full_name}
+                              </p>
+                              <p className="text-xs text-muted truncate mt-0.5">{s.users?.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-mono text-xs font-semibold bg-bg border border-line text-ink px-2 py-0.5 rounded shadow-2xs">
+                            {s.roll_number || '—'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5">
+                            <BookOpen size={14} className="text-brand shrink-0" />
+                            <span className="text-xs font-medium text-ink truncate max-w-[200px]">
+                              {s.courses?.name || '—'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="text-xs font-medium text-ink bg-bg px-2 py-0.5 rounded border border-line">
+                            {s.divisions?.name || '—'}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {renderStatusBadge(s.users?.status)}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              id={`view-student-${s.id}`}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelected(s)}
+                              className="gap-1 text-xs"
+                            >
+                              <Eye size={13} /> View
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setTransferTargetStudent(s)}
+                              className="gap-1 text-xs text-brand hover:bg-brand/10"
+                              title="Transfer Division"
+                            >
+                              <ArrowRightLeft size={13} /> Transfer
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile / Tablet Responsive Cards */}
+            <div className="lg:hidden divide-y divide-line">
+              {filtered.map(s => {
+                const initial = (s.full_name || 'S').charAt(0).toUpperCase()
+                return (
+                  <div key={s.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-brand flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {s.full_name?.charAt(0)?.toUpperCase() || 'S'}
+                        <div className="w-10 h-10 rounded-full bg-brand/10 text-brand font-semibold text-sm flex items-center justify-center shrink-0">
+                          {initial}
                         </div>
                         <div>
-                          <p className="text-white font-medium text-sm">{s.full_name}</p>
-                          <p className="text-brand-muted text-xs">{s.users?.email}</p>
+                          <p className="font-semibold text-ink text-sm">
+                            {s.full_name}
+                          </p>
+                          <p className="text-xs text-muted truncate max-w-[190px]">{s.users?.email}</p>
                         </div>
                       </div>
-                    </td>
-                    <td>
-                      <span className="font-mono text-brand-muted text-xs bg-white/5 px-2 py-0.5 rounded">
-                        {s.roll_number || '—'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1.5">
-                        <BookOpen size={13} className="text-brand-accent" />
-                        <span className="text-sm text-brand-text">{s.courses?.name || '—'}</span>
+                      <div>
+                        {renderStatusBadge(s.users?.status)}
                       </div>
-                    </td>
-                    <td>
-                      <span className="text-sm text-brand-text">{s.divisions?.name || '—'}</span>
-                    </td>
-                    <td>
-                      <span className={STATUS_BADGE[s.users?.status] || 'badge badge-muted'}>
-                        {s.users?.status || 'UNKNOWN'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setSelected(s)}
-                          className="btn btn-ghost btn-sm"
-                          id={`view-student-${s.id}`}
-                        >
-                          <Eye size={14} /> View
-                        </button>
-                        <button
-                          onClick={() => setTransferTargetStudent(s)}
-                          className="btn btn-ghost btn-sm text-xs !text-indigo-400 hover:!bg-indigo-500/10 flex items-center gap-1"
-                          title="Transfer Division"
-                        >
-                          <ArrowRightLeft size={13} /> Transfer
-                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-bg/50 p-2.5 rounded-lg border border-line">
+                      <div>
+                        <span className="text-muted block text-[11px]">Roll Number</span>
+                        <span className="font-mono font-semibold text-ink">{s.roll_number || '—'}</span>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div>
+                        <span className="text-muted block text-[11px]">Division</span>
+                        <span className="font-medium text-ink">{s.divisions?.name || '—'}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted block text-[11px]">Course Program</span>
+                        <span className="font-medium text-ink truncate block">{s.courses?.name || '—'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-line/60">
+                      <Button
+                        id={`view-student-mobile-${s.id}`}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelected(s)}
+                        className="flex-1 text-xs"
+                      >
+                        <Eye size={13} /> View Details
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setTransferTargetStudent(s)}
+                        className="flex-1 text-xs text-brand hover:bg-brand/10"
+                      >
+                        <ArrowRightLeft size={13} /> Transfer
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
-      </div>
 
-      {/* Total count */}
-      {!loading && (
-        <p className="text-brand-muted text-xs mt-3 text-right">
-          Showing {filtered.length} of {students.length} students
-        </p>
-      )}
+        {!loading && filtered.length > 0 && (
+          <div className="p-3 bg-bg/40 border-t border-line text-right">
+            <span className="text-xs text-muted">
+              Displaying {filtered.length} of {students.length} students
+            </span>
+          </div>
+        )}
+      </Card>
 
       {/* Detail Modal */}
       {selected && (
@@ -308,80 +415,93 @@ export default function StudentsPanel() {
 }
 
 function StudentDetailModal({ student: s, loading, onClose, onUpdateStatus, onOpenTransfer }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="card w-full max-w-md relative">
-        <button onClick={onClose} className="absolute top-4 right-4 btn-icon btn-ghost">
-          <X size={16} />
-        </button>
+  const initial = (s.full_name || 'S').charAt(0).toUpperCase()
 
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-14 h-14 rounded-xl bg-gradient-brand flex items-center justify-center text-white text-xl font-bold">
-            {s.full_name?.charAt(0)?.toUpperCase()}
+  return (
+    <Modal
+      isOpen={Boolean(s)}
+      onClose={onClose}
+      title="Student Profile"
+      description="Account verification and cohort status"
+      maxWidth="max-w-md"
+    >
+      <div className="space-y-5">
+        <div className="flex items-center gap-3.5 p-3 rounded-xl bg-bg border border-line">
+          <div className="w-12 h-12 rounded-xl bg-brand/10 text-brand flex items-center justify-center text-lg font-bold shrink-0">
+            {initial}
           </div>
-          <div>
-            <h3 className="text-white font-bold text-lg">{s.full_name}</h3>
-            <p className="text-brand-muted text-sm">{s.users?.email}</p>
-            <span className={`${STATUS_BADGE[s.users?.status]} mt-1 inline-block`}>
-              {s.users?.status}
-            </span>
+          <div className="min-w-0">
+            <h3 className="font-bold text-ink text-base leading-tight truncate">{s.full_name}</h3>
+            <p className="text-xs text-muted truncate mt-0.5">{s.users?.email}</p>
+            <div className="mt-1.5">
+              {s.users?.status === 'ACTIVE' && <Badge variant="present" dot>Active</Badge>}
+              {s.users?.status === 'PENDING' && <Badge variant="grace" pulseDot>Pending</Badge>}
+              {s.users?.status === 'REJECTED' && <Badge variant="absent">Rejected</Badge>}
+              {s.users?.status === 'INACTIVE' && <Badge variant="neutral">Inactive</Badge>}
+            </div>
           </div>
         </div>
 
-        <div className="space-y-3 mb-6">
-          <DetailRow label="Roll Number" value={s.roll_number || '—'} />
+        <div className="divide-y divide-line border border-line rounded-lg overflow-hidden text-xs">
+          <DetailRow label="Roll Number" value={s.roll_number || '—'} mono />
           <DetailRow label="Course" value={s.courses?.name || '—'} />
           <DetailRow label="Division" value={s.divisions?.name || '—'} />
           <DetailRow label="Phone" value={s.phone || '—'} />
-          <DetailRow label="Joined" value={s.users?.created_at ? new Date(s.users.created_at).toLocaleDateString('en-IN') : '—'} />
+          <DetailRow
+            label="Registration Date"
+            value={s.users?.created_at ? new Date(s.users.created_at).toLocaleDateString('en-IN') : '—'}
+          />
         </div>
 
-        <div className="space-y-2">
-          <button
+        <div className="space-y-2 pt-2 border-t border-line">
+          <Button
             onClick={() => onOpenTransfer(s)}
-            className="btn btn-secondary w-full flex items-center justify-center gap-2 text-xs"
+            variant="outline"
+            className="w-full text-xs gap-1.5 text-brand border-brand/30 hover:bg-brand/10"
           >
-            <ArrowRightLeft size={14} className="text-indigo-400" />
-            Transfer Division / Batch
-          </button>
+            <ArrowRightLeft size={14} /> Transfer Division / Cohort
+          </Button>
 
           <div className="flex gap-2">
             {s.users?.status !== 'ACTIVE' && (
-              <button
+              <Button
                 id={`approve-student-${s.id}`}
+                variant="primary"
                 onClick={() => onUpdateStatus(s.id, 'ACTIVE')}
                 disabled={loading}
-                className="btn btn-success flex-1 flex items-center justify-center gap-2"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white gap-1 text-xs"
               >
-                <CheckCircle size={15} />
+                <CheckCircle size={14} />
                 {loading ? 'Processing...' : 'Approve'}
-              </button>
+              </Button>
             )}
             {s.users?.status !== 'REJECTED' && (
-              <button
+              <Button
                 id={`reject-student-${s.id}`}
+                variant="danger"
                 onClick={() => onUpdateStatus(s.id, 'REJECTED')}
                 disabled={loading}
-                className="btn btn-danger flex-1 flex items-center justify-center gap-2"
+                className="flex-1 gap-1 text-xs"
               >
-                <XCircle size={15} />
+                <XCircle size={14} />
                 {loading ? 'Processing...' : 'Reject'}
-              </button>
+              </Button>
             )}
             {s.users?.status !== 'INACTIVE' && (
-              <button
+              <Button
                 id={`deactivate-student-${s.id}`}
+                variant="ghost"
                 onClick={() => onUpdateStatus(s.id, 'INACTIVE')}
                 disabled={loading}
-                className="btn btn-ghost flex items-center gap-2"
+                className="text-xs text-muted hover:text-ink"
               >
                 Deactivate
-              </button>
+              </Button>
             )}
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -460,59 +580,51 @@ CS-105, Vikram Nishad, vikram.nishad@student.smdl.ac.in, 9876543214`)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-      <div className="card w-full max-w-xl relative bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-6 max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white">
-          <X size={18} />
-        </button>
-
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-xl bg-brand-accent/15 text-brand-accent">
-            <Upload size={22} />
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Bulk Student Import (CSV)"
+      description="Onboard entire division batches with roll numbers and login accounts"
+      maxWidth="max-w-xl"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Target Course:</label>
+            <select
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={selectedCourse}
+              onChange={e => setSelectedCourse(e.target.value)}
+            >
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+              ))}
+            </select>
           </div>
-          <div>
-            <h3 className="text-white font-bold text-lg">Bulk Student Import (CSV)</h3>
-            <p className="text-brand-muted text-xs">Import entire division batches with roll numbers & accounts</p>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Target Division:</label>
+            <select
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={selectedDivision}
+              onChange={e => setSelectedDivision(e.target.value)}
+            >
+              {courseDivisions.map(d => (
+                <option key={d.id} value={d.id}>{d.name} Div {d.division_name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="form-group">
-              <label className="form-label">Target Course:</label>
-              <select
-                className="form-input text-xs"
-                value={selectedCourse}
-                onChange={e => setSelectedCourse(e.target.value)}
-              >
-                {courses.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Target Division:</label>
-              <select
-                className="form-input text-xs"
-                value={selectedDivision}
-                onChange={e => setSelectedDivision(e.target.value)}
-              >
-                {courseDivisions.map(d => (
-                  <option key={d.id} value={d.id}>{d.name} Div {d.division_name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
+        <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
-            <label className="form-label mb-0">CSV Data (Roll, Name, Email, Phone):</label>
+            <label className="font-semibold text-ink">CSV Data (Roll, Name, Email, Phone):</label>
             <div className="flex items-center gap-2">
-              <label className="text-brand-accent hover:underline cursor-pointer flex items-center gap-1">
+              <label className="text-brand hover:underline cursor-pointer flex items-center gap-1 font-medium">
                 <FileSpreadsheet size={13} /> Upload .CSV
                 <input type="file" accept=".csv,.txt" onChange={handleFileUpload} className="hidden" />
               </label>
-              <span className="text-slate-600">|</span>
-              <button type="button" onClick={loadSampleCSV} className="text-slate-400 hover:text-white">
+              <span className="text-muted">|</span>
+              <button type="button" onClick={loadSampleCSV} className="text-muted hover:text-ink cursor-pointer">
                 Load Sample
               </button>
             </div>
@@ -522,46 +634,48 @@ CS-105, Vikram Nishad, vikram.nishad@student.smdl.ac.in, 9876543214`)
             rows={5}
             value={csvText}
             onChange={e => setCsvText(e.target.value)}
-            className="form-input font-mono text-xs resize-none"
+            className="w-full font-mono text-xs p-3 rounded-lg border border-line bg-bg text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none resize-none"
             placeholder="Roll Number, Full Name, Email, Phone&#10;101, Aakash Sharma, aakash@student.smdl.ac.in, 9876543210&#10;102, Sneha Patil, sneha@student.smdl.ac.in, 9876543211"
           />
+        </div>
 
-          {parsedRows.length > 0 && (
-            <div className="border border-slate-800 rounded-xl p-3 bg-slate-950/60">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-300">Parsed Preview ({parsedRows.length} students)</span>
-                <span className="badge badge-active text-[10px]">Valid Format</span>
-              </div>
-              <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-slate-800/40">
-                {parsedRows.slice(0, 5).map((r, i) => (
-                  <div key={i} className="flex items-center justify-between text-[11px] pt-1 text-slate-400">
-                    <span className="font-mono text-white font-medium">{r.roll_number} - {r.full_name}</span>
-                    <span className="truncate max-w-[150px]">{r.email}</span>
-                  </div>
-                ))}
-                {parsedRows.length > 5 && (
-                  <p className="text-[10px] text-slate-500 pt-1 text-center">... and {parsedRows.length - 5} more</p>
-                )}
-              </div>
+        {parsedRows.length > 0 && (
+          <div className="border border-line rounded-lg p-3 bg-bg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-ink">Parsed Preview ({parsedRows.length} students)</span>
+              <Badge variant="present" size="sm">Valid Format</Badge>
             </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={importing || parsedRows.length === 0}
-              className="btn btn-primary btn-sm flex items-center gap-1.5"
-            >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              Import {parsedRows.length} Students
-            </button>
+            <div className="max-h-36 overflow-y-auto space-y-1 divide-y divide-line">
+              {parsedRows.slice(0, 5).map((r, i) => (
+                <div key={i} className="flex items-center justify-between text-xs pt-1 text-muted">
+                  <span className="font-mono text-ink font-semibold">{r.roll_number} - {r.full_name}</span>
+                  <span className="truncate max-w-[150px]">{r.email}</span>
+                </div>
+              ))}
+              {parsedRows.length > 5 && (
+                <p className="text-[11px] text-muted pt-1 text-center font-medium">... and {parsedRows.length - 5} more</p>
+              )}
+            </div>
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={importing || parsedRows.length === 0}
+            className="gap-1.5"
+          >
+            {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            Import {parsedRows.length} Students
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
@@ -590,85 +704,76 @@ function TransferDivisionModal({ student, courses, divisions, onClose, onSuccess
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-      <div className="card w-full max-w-md relative bg-slate-900 border border-slate-800 shadow-2xl rounded-2xl p-6">
-        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white">
-          <X size={18} />
-        </button>
-
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-xl bg-indigo-500/15 text-indigo-400">
-            <ArrowRightLeft size={22} />
-          </div>
-          <div>
-            <h3 className="text-white font-bold text-lg">Transfer Student Division</h3>
-            <p className="text-brand-muted text-xs">{student.full_name} ({student.roll_number || 'No roll'})</p>
-          </div>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Transfer Student Division"
+      description={`${student.full_name} (${student.roll_number || 'No roll number'})`}
+      maxWidth="max-w-md"
+    >
+      <form onSubmit={handleTransfer} className="space-y-4">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Current Division:</label>
+          <input
+            type="text"
+            readOnly
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-bg text-muted cursor-not-allowed font-medium"
+            value={student.divisions?.name || 'Not assigned'}
+          />
         </div>
 
-        <form onSubmit={handleTransfer} className="space-y-4">
-          <div className="form-group">
-            <label className="form-label">Current Division:</label>
-            <input
-              type="text"
-              readOnly
-              className="form-input text-xs bg-slate-950/60 text-slate-400 cursor-not-allowed"
-              value={student.divisions?.name || 'Not assigned'}
-            />
-          </div>
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Select New Division / Batch:</label>
+          <select
+            required
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+            value={targetDivision}
+            onChange={e => setTargetDivision(e.target.value)}
+          >
+            {divisions.map(d => (
+              <option key={d.id} value={d.id}>
+                {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} Div {d.division_name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-          <div className="form-group">
-            <label className="form-label">Select New Division / Batch:</label>
-            <select
-              required
-              className="form-input text-xs"
-              value={targetDivision}
-              onChange={e => setTargetDivision(e.target.value)}
-            >
-              {divisions.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} Div {d.division_name}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Transfer Reason (Audit Note):</label>
+          <input
+            type="text"
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+            placeholder="e.g. Batch change request, Year promotion, etc."
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+          />
+        </div>
 
-          <div className="form-group">
-            <label className="form-label">Transfer Reason (Audit Note):</label>
-            <input
-              type="text"
-              className="form-input text-xs"
-              placeholder="e.g. Batch change request, Year promotion, etc."
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-            />
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-            <button type="button" onClick={onClose} className="btn btn-secondary btn-sm">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={transferring}
-              className="btn bg-indigo-600 hover:bg-indigo-500 text-white btn-sm flex items-center gap-1.5"
-            >
-              {transferring ? <Loader2 size={14} className="animate-spin" /> : <ArrowRightLeft size={14} />}
-              Confirm Transfer
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={transferring}
+            className="gap-1.5"
+          >
+            {transferring ? <Loader2 size={14} className="animate-spin" /> : <ArrowRightLeft size={14} />}
+            Confirm Transfer
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
-function DetailRow({ label, value }) {
+function DetailRow({ label, value, mono = false }) {
   return (
-    <div className="flex justify-between items-center py-2 border-b border-brand-border/50">
-      <span className="text-brand-muted text-sm">{label}</span>
-      <span className="text-white text-sm font-medium">{value}</span>
+    <div className="flex justify-between items-center py-2.5 px-3 bg-surface">
+      <span className="text-muted">{label}</span>
+      <span className={`text-ink font-medium ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   )
 }
-

@@ -7,12 +7,17 @@ import {
   ClipboardList, UserCheck, FileText, MessageSquare,
   ClipboardCheck, BookOpen, AlertTriangle, TrendingUp,
   CalendarDays, ChevronRight, Loader2, Bell, Megaphone, Clock, RefreshCw,
-  Download, Image as ImageIcon, CheckCircle, XCircle
+  Download, Image as ImageIcon, CheckCircle, XCircle, ArrowRight, Sparkles, MapPin
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { openAttachment } from '../../utils/attachmentHelper'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, ProgressRing, StatCard as UIStatCard,
+  Skeleton, EmptyState
+} from '../../components/ui'
 
-// Lazy-load heavy components to reduce initial bundle size
+// Lazy-load heavy mark attendance component to reduce initial bundle
 const StudentMarkAttendance = lazy(() => import('./StudentMarkAttendance'))
 
 // Module-level cache — avoids duplicate API calls across sub-components
@@ -57,28 +62,45 @@ function useMyStats() {
   return { data, loading, subjectCount }
 }
 
-// memo prevents re-renders when parent state changes unrelated to this card
-const StatCard = memo(function StatCard({ label, value, subline, Icon, color, safeFlag, navigateTo, onClick }) {
+// Reusable Metric Card matching academic design tokens
+const MetricCard = memo(function MetricCard({ label, value, subline, Icon, variant = 'neutral', safeFlag, navigateTo, onClick }) {
   const navigate = useNavigate()
   const handleClick = onClick || (navigateTo ? () => navigate(navigateTo) : undefined)
-  const cursorClass = handleClick ? 'cursor-pointer hover:border-brand-accent group' : ''
+  const cursorClass = handleClick ? 'cursor-pointer hover:border-brand/40 group' : ''
+
   return (
-    <div className={`card flex items-center gap-4 ${cursorClass} transition-colors`} onClick={handleClick}>
-      <div className={`stat-icon ${color}`}><Icon size={22} /></div>
+    <Card hoverable={!!handleClick} onClick={handleClick} className={`p-4 sm:p-5 flex items-center gap-4 ${cursorClass}`}>
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+        variant === 'present'
+          ? 'bg-present/10 text-present border-present/20'
+          : variant === 'absent'
+          ? 'bg-absent/10 text-absent border-absent/20'
+          : variant === 'grace'
+          ? 'bg-grace/10 text-grace border-grace/20'
+          : variant === 'brand'
+          ? 'bg-brand/10 text-brand border-brand/20'
+          : 'bg-bg text-muted border-line'
+      }`}>
+        <Icon className="w-5 h-5" />
+      </div>
+
       <div className="flex-1 min-w-0">
-        <p className="text-brand-muted text-xs">{label}</p>
-        <div className="flex items-baseline gap-2">
-          <p className="text-white text-2xl font-bold">{value}</p>
+        <p className="text-xs font-medium text-muted truncate">{label}</p>
+        <div className="flex items-baseline gap-2 mt-0.5">
+          <p className="text-xl sm:text-2xl font-bold font-display text-ink tabular-nums">{value}</p>
           {safeFlag != null && (
-            <span className={`badge text-[10px] ${safeFlag ? 'badge-active' : 'badge-rejected'}`}>
-              {safeFlag ? '✓ Safe' : '⚠️ Below 75%'}
-            </span>
+            <Badge variant={safeFlag ? 'present' : 'absent'} size="sm">
+              {safeFlag ? 'Safe' : '< 75%'}
+            </Badge>
           )}
         </div>
-        {subline && <p className="text-brand-muted text-[11px] mt-0.5">{subline}</p>}
+        {subline && <p className="text-[11px] text-muted mt-0.5 truncate">{subline}</p>}
       </div>
-      {navigateTo && <ChevronRight size={18} className="text-brand-muted group-hover:text-brand-accent transition-colors" />}
-    </div>
+
+      {navigateTo && (
+        <ChevronRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0" />
+      )}
+    </Card>
   )
 })
 
@@ -112,232 +134,352 @@ function StudentOverview() {
     fetchTodaySchedule()
   }, [])
 
+  // Find active lecture if attendance window is currently open
+  const activeLecture = todaySchedule.classes.find(cls => !!cls.can_mark_attendance && !cls.is_attended && cls.attendance_status !== 'PRESENT')
+
   const quickActions = [
-    { label: 'Mark Present Now',   Icon: UserCheck,     color: 'bg-green-500/20 text-green-400',   to: '/student/mark',       desc: 'GPS + Selfie check-in' },
-    { label: 'My Attendance',      Icon: ClipboardList, color: 'bg-blue-500/20 text-blue-400',     to: '/student/attendance', desc: 'History & percentage' },
-    { label: 'Reports & Analytics',Icon: FileText,      color: 'bg-purple-500/20 text-purple-400', to: '/student/reports',    desc: 'Subject-wise metrics' },
-    { label: 'Announcements',      Icon: MessageSquare, color: 'bg-orange-500/20 text-orange-400', to: '/student/announce',   desc: 'College notices' },
+    { label: 'Mark Present Now',    Icon: UserCheck,     variant: 'present', to: '/student/mark',       desc: 'GPS + Selfie check-in' },
+    { label: 'My Attendance',       Icon: ClipboardList, variant: 'brand',   to: '/student/attendance', desc: 'History & percentage' },
+    { label: 'Reports & Analytics', Icon: FileText,      variant: 'grace',   to: '/student/reports',    desc: 'Subject-wise breakdown' },
+    { label: 'Announcements',       Icon: MessageSquare, variant: 'neutral', to: '/student/announce',   desc: 'Official college notices' },
   ]
 
+  const overallPct = stats.percentage ?? 0
+  const isSafe = overallPct >= 75
+
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <h2 className="page-title">Welcome, {user?.name?.split(' ')[0] || 'Student'} 👋</h2>
-        <p className="page-subtitle">
-          Roll No: {info.roll_number || user?.roll_number || '—'} · {info.course || user?.class || ''} {info.division || user?.division || ''}
-        </p>
+    <div className="space-y-6 animate-fade-in">
+      {/* ── HEADER / GREETING ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-line">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight flex items-center gap-2">
+            <span>Welcome, {user?.name?.split(' ')[0] || 'Student'}</span>
+            <span className="text-lg">👋</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Roll No: <span className="font-semibold text-ink">{info.roll_number || user?.roll_number || '—'}</span> · {info.course || user?.class || ''} {info.division || user?.division ? `(${info.division || user?.division})` : ''}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Badge variant={isSafe ? 'present' : 'absent'} size="md">
+            {isSafe ? 'Status: Safe (≥75%)' : 'Status: Defaulter (<75%)'}
+          </Badge>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Attendance %"
-          value={statsLoading ? '—' : `${stats.percentage ?? 0}%`}
-          subline={`${stats.attended ?? 0} of ${stats.total_lectures ?? 0} lectures`}
-          Icon={TrendingUp}
-          color={(stats.percentage ?? 0) >= 75 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}
-          safeFlag={stats.is_safe}
-          navigateTo="/student/attendance"
-        />
-        <StatCard
+      {/* ── LIVE LECTURE NOW HERO CARD (Only visible when attendance window is active) ── */}
+      {activeLecture && (
+        <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border-2 border-emerald-500/50 rounded-xl p-4 sm:p-5 shadow-sm transition-all duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Badge variant="live" pulseDot size="sm">
+                  LIVE LECTURE OPEN
+                </Badge>
+                <span className="text-xs font-mono font-semibold text-emerald-800 dark:text-emerald-300">
+                  {activeLecture.start_time?.slice(0, 5)} - {activeLecture.end_time?.slice(0, 5)}
+                </span>
+              </div>
+
+              <h3 className="text-base sm:text-lg font-bold font-display text-ink leading-tight">
+                {activeLecture.subject_name}
+              </h3>
+
+              <p className="text-xs text-muted flex items-center gap-2 flex-wrap">
+                <span>{activeLecture.teacher_name || 'Faculty'}</span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-muted" />
+                  Room {activeLecture.room_number || '101'} {activeLecture.is_lab ? '(Lab)' : ''}
+                </span>
+              </p>
+            </div>
+
+            <Button
+              variant="success"
+              size="lg"
+              onClick={() => navigate('/student/mark', { state: { lectureId: activeLecture.id } })}
+              className="shrink-0 shadow-md font-semibold"
+            >
+              <UserCheck className="w-5 h-5 mr-1" />
+              <span>Mark Attendance Now</span>
+              <ArrowRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── ATTENDANCE OVERVIEW & METRICS ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Visual Progress Gauge Card */}
+        <Card className="p-5 flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Overall Attendance</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold font-display text-ink tabular-nums">
+                {statsLoading ? '—' : `${overallPct}%`}
+              </span>
+              <Badge variant={isSafe ? 'present' : 'absent'} size="sm">
+                {isSafe ? 'Eligible for Exams' : 'Low Attendance'}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted pt-1">
+              {stats.attended ?? 0} attended of {stats.total_lectures ?? 0} total sessions
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <ProgressRing
+              percentage={overallPct}
+              size={86}
+              strokeWidth={7}
+            />
+          </div>
+        </Card>
+
+        {/* 2 Stat Cards */}
+        <MetricCard
           label="Lectures Attended"
           value={statsLoading ? '—' : `${stats.attended ?? 0}/${stats.total_lectures ?? 0}`}
-          subline="This semester"
+          subline="Current Semester"
           Icon={ClipboardCheck}
-          color="bg-blue-500/20 text-blue-400"
+          variant="brand"
           navigateTo="/student/attendance"
         />
-        <StatCard
-          label="Subjects"
+
+        <MetricCard
+          label="Enrolled Subjects"
           value={subjectCount || '—'}
-          subline="Enrolled subjects"
+          subline="Active Course Curriculum"
           Icon={BookOpen}
-          color="bg-purple-500/20 text-purple-400"
-        />
-        <StatCard
-          label="Announcements"
-          value="0"
-          subline="Unread notices"
-          Icon={MessageSquare}
-          color="bg-orange-500/20 text-orange-400"
-          navigateTo="/student/announce"
+          variant="neutral"
+          navigateTo="/student/reports"
         />
       </div>
 
-      {(stats.percentage ?? 0) < 75 && !statsLoading && (
-        <div className="card !p-4 !bg-red-500/10 !border-red-500/30 flex items-start gap-3 mb-6">
-          <AlertTriangle size={22} className="text-red-400 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="text-red-400 font-semibold">⚠️ Attendance Below 75% Threshold</p>
-            <p className="text-brand-muted text-sm mt-1">
-              Your current attendance is {stats.percentage}%. Minimum 75% is required to appear for examinations.
-              Attend all upcoming lectures to improve.
+      {/* ── CRITICAL ATTENDANCE ALERT (If below 75%) ── */}
+      {overallPct < 75 && !statsLoading && (
+        <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-absent shrink-0 mt-0.5" />
+          <div className="text-xs sm:text-sm">
+            <p className="font-semibold text-absent">Attendance Below 75% Examination Threshold</p>
+            <p className="text-muted mt-0.5 leading-relaxed">
+              Your overall attendance is currently <strong className="text-ink">{overallPct}%</strong>. A minimum of 75% is strictly required as per college guidelines to appear for term-end semester exams. Please attend upcoming lectures to maintain compliance.
             </p>
           </div>
         </div>
       )}
 
-      {/* Today's Live Schedule Card */}
-      <div className="card mb-6">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      {/* ── TODAY'S CLASS SCHEDULE ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div className="flex items-center gap-2">
-            <Clock size={18} className="text-brand-accent" />
-            <h3 className="text-white font-semibold">
-              Today's Class Schedule {todaySchedule.dayName ? `(${todaySchedule.dayName})` : ''}
-            </h3>
+            <Clock className="w-4 h-4 text-brand" />
+            <CardTitle className="text-base">
+              Today's Classes {todaySchedule.dayName ? `(${todaySchedule.dayName})` : ''}
+            </CardTitle>
             {todaySchedule.classes.length > 0 && (
-              <span className="badge badge-active text-xs">
+              <Badge variant="neutral" size="sm">
                 {todaySchedule.classes.length} {todaySchedule.classes.length === 1 ? 'Lecture' : 'Lectures'}
-              </span>
+              </Badge>
             )}
             {todaySchedule.isHoliday && (
-              <span className="badge badge-pending text-xs">Weekly Off</span>
+              <Badge variant="grace" size="sm">Weekly Off</Badge>
             )}
           </div>
-          <button
+
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={fetchTodaySchedule}
-            className="btn-ghost btn-sm text-xs flex items-center gap-1.5"
-            title="Refresh schedule"
+            className="text-xs h-8"
           >
-            <RefreshCw size={13} className={todaySchedule.loading ? 'animate-spin' : ''} />
+            <RefreshCw className={`w-3.5 h-3.5 ${todaySchedule.loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
-          </button>
-        </div>
+          </Button>
+        </CardHeader>
 
-        {todaySchedule.loading ? (
-          <div className="text-center py-8 text-brand-muted">
-            <Loader2 className="animate-spin w-7 h-7 mx-auto mb-2 text-brand-accent" />
-            <p className="text-xs">Fetching today's live classes…</p>
-          </div>
-        ) : todaySchedule.classes.length === 0 ? (
-          <div className="text-center py-8 border border-dashed border-brand-border/60 rounded-xl bg-brand-dark/40">
-            <Clock size={32} className="mx-auto text-brand-muted mb-2 opacity-60" />
-            <p className="text-white text-sm font-medium">No Lectures Scheduled Today</p>
-            <p className="text-brand-muted text-xs mt-1">
-              {todaySchedule.isHoliday ? 'Sunday is a weekly off.' : 'Check back later or view your weekly timetable.'}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {todaySchedule.classes.map((cls) => {
-              const isWindowOpen = !!cls.can_mark_attendance
-              const isAttended = cls.is_attended || cls.attendance_status === 'PRESENT'
-              return (
-                <div
-                  key={cls.id || cls.timetable_id}
-                  className={`p-4 rounded-xl border transition-all ${
-                    isWindowOpen
-                      ? 'border-green-500/60 bg-green-500/10 shadow-lg shadow-green-500/5 ring-1 ring-green-500/30'
-                      : 'border-brand-border/70 bg-brand-dark/50 hover:border-brand-accent/40'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="text-xs font-mono font-bold text-brand-accent bg-brand-accent/15 px-2 py-0.5 rounded">
-                      {cls.start_time?.slice(0, 5)} - {cls.end_time?.slice(0, 5)}
-                    </span>
-                    {isAttended ? (
-                      <span className="badge badge-active text-[10px] flex items-center gap-1">
-                        <CheckCircle size={10} /> Present
-                      </span>
-                    ) : isWindowOpen ? (
-                      <span className="badge bg-green-500/20 text-green-400 border border-green-500/40 text-[10px] animate-pulse font-bold">
-                        ● LIVE NOW
-                      </span>
-                    ) : (
-                      <span className="badge badge-pending text-[10px]">
-                        {cls.status === 'COMPLETED' ? 'Closed' : (cls.status || 'Upcoming')}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-white font-semibold text-sm line-clamp-1">
-                    {cls.subject_name}
-                  </p>
-                  <p className="text-brand-muted text-xs mt-0.5">
-                    {cls.subject_code ? `${cls.subject_code} · ` : ''}{cls.teacher_name || 'Assigned Faculty'}
-                  </p>
-
-                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-brand-border/40 text-xs">
-                    <span className="text-brand-muted flex items-center gap-1">
-                      📍 {cls.room_number || 'Room 101'} {cls.is_lab ? '(Lab)' : ''}
-                    </span>
-                    {isWindowOpen && !isAttended ? (
-                      <button
-                        onClick={() => navigate('/student/mark', { state: { lectureId: cls.id } })}
-                        className="btn-primary !py-1 !px-2.5 !text-xs !bg-green-600 hover:!bg-green-500"
-                      >
-                        Check-In →
-                      </button>
-                    ) : isAttended ? (
-                      <span className="text-green-400 text-xs font-medium">✓ Attended</span>
-                    ) : (
-                      <span className="text-brand-muted text-[11px]">{cls.status === 'COMPLETED' ? 'Window Closed' : 'Scheduled'}</span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {quickActions.map(({ label, Icon, color, to, desc }) => (
-          <div
-            key={label}
-            onClick={() => navigate(to)}
-            className="card hover:border-brand-accent transition-colors cursor-pointer group flex items-start gap-4"
-          >
-            <div className={`stat-icon ${color} w-12 h-12 flex-shrink-0`}><Icon size={22} /></div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold group-hover:text-brand-accent transition-colors">{label}</p>
-              <p className="text-brand-muted text-xs mt-1">{desc}</p>
+        <CardContent>
+          {todaySchedule.loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Skeleton className="h-28 w-full rounded-xl" />
+              <Skeleton className="h-28 w-full rounded-xl" />
+              <Skeleton className="h-28 w-full rounded-xl" />
             </div>
-            <ChevronRight size={18} className="text-brand-muted group-hover:text-brand-accent transition-colors mt-2" />
-          </div>
+          ) : todaySchedule.classes.length === 0 ? (
+            <EmptyState
+              icon={Clock}
+              title="No Lectures Scheduled Today"
+              description={todaySchedule.isHoliday ? 'Sunday is a weekly off.' : 'No active sessions scheduled for your division today.'}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {todaySchedule.classes.map((cls) => {
+                const isWindowOpen = !!cls.can_mark_attendance
+                const isAttended = cls.is_attended || cls.attendance_status === 'PRESENT'
+                return (
+                  <div
+                    key={cls.id || cls.timetable_id}
+                    className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 ${
+                      isWindowOpen
+                        ? 'border-present/50 bg-present/5 shadow-xs'
+                        : 'border-line bg-surface hover:bg-bg/50'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="text-xs font-mono font-semibold text-muted bg-bg border border-line px-2 py-0.5 rounded">
+                          {cls.start_time?.slice(0, 5)} - {cls.end_time?.slice(0, 5)}
+                        </span>
+                        {isAttended ? (
+                          <Badge variant="present" size="sm">
+                            <CheckCircle className="w-3 h-3 mr-0.5" /> Present
+                          </Badge>
+                        ) : isWindowOpen ? (
+                          <Badge variant="live" pulseDot size="sm">
+                            LIVE
+                          </Badge>
+                        ) : (
+                          <Badge variant="neutral" size="sm">
+                            {cls.status === 'COMPLETED' ? 'Closed' : (cls.status || 'Upcoming')}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <p className="text-sm font-semibold text-ink leading-snug line-clamp-1">
+                        {cls.subject_name}
+                      </p>
+                      <p className="text-xs text-muted mt-0.5 truncate">
+                        {cls.subject_code ? `${cls.subject_code} · ` : ''}{cls.teacher_name || 'Assigned Faculty'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2.5 border-t border-line text-xs">
+                      <span className="text-muted flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-muted" />
+                        Room {cls.room_number || '101'} {cls.is_lab ? '(Lab)' : ''}
+                      </span>
+                      {isWindowOpen && !isAttended ? (
+                        <Button
+                          variant="success"
+                          size="sm"
+                          onClick={() => navigate('/student/mark', { state: { lectureId: cls.id } })}
+                          className="h-7 text-xs px-2.5"
+                        >
+                          Check-In →
+                        </Button>
+                      ) : isAttended ? (
+                        <span className="text-present font-medium text-xs">✓ Recorded</span>
+                      ) : (
+                        <span className="text-muted text-[11px]">{cls.status === 'COMPLETED' ? 'Session Over' : 'Scheduled'}</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── QUICK NAVIGATION ACTIONS ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {quickActions.map(({ label, Icon, variant, to, desc }) => (
+          <Card
+            key={label}
+            hoverable
+            onClick={() => navigate(to)}
+            className="p-4 flex items-start gap-3.5 cursor-pointer group"
+          >
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${
+              variant === 'present'
+                ? 'bg-present/10 text-present border-present/20'
+                : variant === 'brand'
+                ? 'bg-brand/10 text-brand border-brand/20'
+                : variant === 'grace'
+                ? 'bg-grace/10 text-grace border-grace/20'
+                : 'bg-bg text-muted border-line'
+            }`}>
+              <Icon className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-ink group-hover:text-brand transition-colors truncate">
+                {label}
+              </p>
+              <p className="text-xs text-muted mt-0.5 truncate">{desc}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0 mt-1" />
+          </Card>
         ))}
       </div>
 
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold flex items-center gap-2">
-            <CalendarDays size={18} className="text-brand-accent" /> Recent Attendance
-          </h3>
-          <button
+      {/* ── RECENT ATTENDANCE HISTORY LIST ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-brand" />
+            <CardTitle className="text-base">Recent Attendance History</CardTitle>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => navigate('/student/attendance')}
-            className="btn-ghost btn-sm text-xs"
+            className="text-xs h-8"
           >
-            View all <ChevronRight size={14} />
-          </button>
-        </div>
-        {statsLoading ? (
-          <div className="text-center py-10 text-brand-muted"><Loader2 className="animate-spin w-8 h-8 mx-auto mb-2" /> Loading history…</div>
-        ) : (data?.history?.length ?? 0) === 0 ? (
-          <div className="text-center py-10">
-            <CalendarDays size={36} className="mx-auto text-brand-muted mb-3" />
-            <p className="text-white font-semibold">No lectures held yet</p>
-            <p className="text-brand-muted text-sm mt-1">Lectures will appear here once your teacher starts them.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-brand-border/60 max-h-80 overflow-y-auto">
-            {(data.history || []).slice(0, 6).map(h => (
-              <div key={h.lecture_id} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  h.status === 'PRESENT' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'
-                }`}>
-                  {h.status === 'PRESENT' ? <ClipboardCheck size={18} /> : <AlertTriangle size={18} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm truncate">{h.subject} — {h.topic || 'Regular lecture'}</p>
-                  <p className="text-brand-muted text-xs">
-                    {h.date ? new Date(h.date).toLocaleDateString() : '—'} · {h.time || '—'} · {h.subject_code || ''}
-                  </p>
-                </div>
-                <span className={`badge ${h.status === 'PRESENT' ? 'badge-active' : 'badge-rejected'}`}>{h.status}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5 ml-1" />
+          </Button>
+        </CardHeader>
+
+        <CardContent>
+          {statsLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-12 w-full rounded-lg" />
+              <Skeleton className="h-12 w-full rounded-lg" />
+              <Skeleton className="h-12 w-full rounded-lg" />
+            </div>
+          ) : (data?.history?.length ?? 0) === 0 ? (
+            <EmptyState
+              icon={CalendarDays}
+              title="No Lectures Recorded Yet"
+              description="Your attendance entries will appear here as soon as lectures are conducted."
+            />
+          ) : (
+            <div className="divide-y divide-line">
+              {(data.history || []).slice(0, 5).map(h => {
+                const isPresent = h.status === 'PRESENT'
+                return (
+                  <div key={h.lecture_id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
+                        isPresent
+                          ? 'bg-present/10 text-present border-present/20'
+                          : 'bg-absent/10 text-absent border-absent/20'
+                      }`}>
+                        {isPresent ? <ClipboardCheck className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ink truncate">
+                          {h.subject} <span className="text-muted font-normal text-xs">— {h.topic || 'Regular session'}</span>
+                        </p>
+                        <p className="text-xs text-muted mt-0.5 truncate">
+                          {h.date ? new Date(h.date).toLocaleDateString() : '—'} · {h.time || '—'} {h.subject_code ? `· ${h.subject_code}` : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    <Badge variant={isPresent ? 'present' : 'absent'} size="sm" className="shrink-0">
+                      {isPresent ? 'Present' : 'Absent'}
+                    </Badge>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -347,63 +489,96 @@ function MyAttendanceHistory() {
   const stats = data?.stats || {}
   const history = data?.history || []
 
+  const total = stats.total_lectures ?? 0
+  const attended = stats.attended ?? 0
+  const absent = total - attended
+
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
-        <h2 className="page-title">My Attendance</h2>
-        <p className="page-subtitle">Full history and percentage breakdown</p>
+    <div className="space-y-6 animate-fade-in">
+      <div className="pb-2 border-b border-line">
+        <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">My Attendance History</h2>
+        <p className="text-xs sm:text-sm text-muted mt-0.5">Complete record of your lecture attendance and attendance %</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Overall %" value={`${stats.percentage ?? 0}%`} Icon={TrendingUp}
-          color={(stats.percentage ?? 0) >= 75 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}
-          safeFlag={stats.is_safe} />
-        <StatCard label="Total Lectures" value={stats.total_lectures ?? 0} Icon={CalendarDays} color="bg-blue-500/20 text-blue-400" />
-        <StatCard label="Present" value={stats.attended ?? 0} Icon={ClipboardCheck} color="bg-green-500/20 text-green-400" />
-        <StatCard label="Absent" value={(stats.total_lectures ?? 0) - (stats.attended ?? 0)} Icon={AlertTriangle} color="bg-red-500/20 text-red-400" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <MetricCard
+          label="Overall %"
+          value={`${stats.percentage ?? 0}%`}
+          Icon={TrendingUp}
+          variant={(stats.percentage ?? 0) >= 75 ? 'present' : 'absent'}
+          safeFlag={stats.is_safe}
+        />
+        <MetricCard label="Total Lectures" value={total} Icon={CalendarDays} variant="brand" />
+        <MetricCard label="Present" value={attended} Icon={ClipboardCheck} variant="present" />
+        <MetricCard label="Absent" value={absent} Icon={AlertTriangle} variant="absent" />
       </div>
 
-      <div className="card">
-        <h3 className="text-white font-semibold mb-4">Attendance History</h3>
-        {loading ? (
-          <div className="text-center py-16 text-brand-muted"><Loader2 className="animate-spin w-8 h-8 mx-auto mb-2" /> Loading…</div>
-        ) : history.length === 0 ? (
-          <div className="text-center py-16">
-            <CalendarDays size={40} className="mx-auto text-brand-muted mb-3" />
-            <p className="text-white font-semibold">No lectures yet</p>
-            <p className="text-brand-muted text-sm mt-1">Check back after your teacher starts a lecture session.</p>
-          </div>
-        ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Time</th>
-                  <th>Subject</th>
-                  <th>Code</th>
-                  <th>Topic</th>
-                  <th className="text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map(h => (
-                  <tr key={h.lecture_id}>
-                    <td>{h.date ? new Date(h.date).toLocaleDateString() : '—'}</td>
-                    <td>{h.time || '—'}</td>
-                    <td className="font-medium text-white">{h.subject}</td>
-                    <td className="text-brand-muted">{h.subject_code || '—'}</td>
-                    <td className="max-w-xs truncate" title={h.topic || ''}>{h.topic || '—'}</td>
-                    <td className="text-right">
-                      <span className={`badge ${h.status === 'PRESENT' ? 'badge-active' : 'badge-rejected'}`}>{h.status}</span>
-                    </td>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Session Records</CardTitle>
+          <CardDescription>All marked lectures in chronological sequence</CardDescription>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 space-y-3">
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+            </div>
+          ) : history.length === 0 ? (
+            <div className="p-8">
+              <EmptyState
+                icon={CalendarDays}
+                title="No Attendance Records"
+                description="Records will display here once your teachers start conducting lectures."
+              />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-line bg-bg/50 text-muted font-semibold text-xs">
+                    <th className="py-3 px-4">Date & Time</th>
+                    <th className="py-3 px-4">Subject</th>
+                    <th className="py-3 px-4 hidden sm:table-cell">Code</th>
+                    <th className="py-3 px-4 hidden md:table-cell">Topic</th>
+                    <th className="py-3 px-4 text-right">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {history.map(h => {
+                    const isPresent = h.status === 'PRESENT'
+                    return (
+                      <tr key={h.lecture_id} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3 px-4">
+                          <p className="font-medium text-ink">{h.date ? new Date(h.date).toLocaleDateString() : '—'}</p>
+                          <p className="text-xs text-muted">{h.time || '—'}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="font-semibold text-ink">{h.subject}</p>
+                          <p className="text-xs text-muted sm:hidden">{h.subject_code}</p>
+                        </td>
+                        <td className="py-3 px-4 text-muted font-mono hidden sm:table-cell">
+                          {h.subject_code || '—'}
+                        </td>
+                        <td className="py-3 px-4 text-muted max-w-xs truncate hidden md:table-cell" title={h.topic || ''}>
+                          {h.topic || '—'}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <Badge variant={isPresent ? 'present' : 'absent'} size="sm">
+                            {isPresent ? 'Present' : 'Absent'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -451,75 +626,83 @@ function StudentSubjectReports() {
   })
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-line">
         <div>
-          <h2 className="page-title">Subject-Wise Attendance Reports</h2>
-          <p className="page-subtitle">Track your attendance threshold (Minimum 75% required by college)</p>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">Subject-Wise Reports</h2>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">Track individual subject thresholds (Minimum 75% required)</p>
         </div>
-        <button onClick={loadData} className="btn btn-ghost btn-sm flex items-center gap-2">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <Button variant="outline" size="sm" onClick={loadData} className="h-8 self-start sm:self-auto">
+          <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="animate-spin w-8 h-8 text-brand-accent" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-44 w-full rounded-xl" />
         </div>
       ) : subjects.length === 0 ? (
-        <div className="card text-center py-16">
-          <BookOpen size={40} className="mx-auto text-brand-muted mb-3" />
-          <p className="text-white font-semibold">No subject lectures recorded yet</p>
-          <p className="text-brand-muted text-sm mt-1">
-            Once lectures are conducted and attendance is marked, subject analytics will appear here.
-          </p>
-        </div>
+        <Card className="p-8">
+          <EmptyState
+            icon={BookOpen}
+            title="No Subject Lectures Recorded"
+            description="Once lectures are conducted and attendance is taken, your subject analytics will appear here."
+          />
+        </Card>
       ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {subjects.map((sub) => {
-              const isSafe = sub.pct >= 75
-              return (
-                <div
-                  key={sub.subject}
-                  className="card flex flex-col justify-between hover:border-brand-accent/40 transition-colors"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <h4 className="text-white font-semibold text-base leading-tight">{sub.subject}</h4>
-                      {sub.code && <span className="badge badge-info text-[10px] font-mono">{sub.code}</span>}
-                    </div>
-                    <div className="flex items-baseline gap-2 mb-3">
-                      <span className="text-2xl font-bold text-white">{sub.pct}%</span>
-                      <span className={`badge text-[10px] ${isSafe ? 'badge-active' : 'badge-rejected'}`}>
-                        {isSafe ? '✓ Safe' : '⚠️ Defaulter (<75%)'}
-                      </span>
-                    </div>
-                    <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-3">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isSafe ? 'bg-emerald-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${Math.min(100, sub.pct)}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-xs text-brand-muted">
-                      <span>Attended: <strong className="text-white">{sub.attended}</strong></span>
-                      <span>Total Lectures: <strong className="text-white">{sub.total}</strong></span>
-                    </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {subjects.map((sub) => {
+            const isSafe = sub.pct >= 75
+            return (
+              <Card
+                key={sub.subject}
+                className="p-5 flex flex-col justify-between hover:border-line/80 transition-colors"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="text-sm sm:text-base font-semibold font-display text-ink leading-tight">
+                      {sub.subject}
+                    </h4>
+                    {sub.code && <Badge variant="neutral" size="sm">{sub.code}</Badge>}
                   </div>
-                  {!isSafe && sub.needed > 0 && (
-                    <div className="mt-4 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-300 flex items-start gap-1.5">
-                      <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-                      <span>
-                        Attend next <strong>{sub.needed}</strong> consecutive lectures to reach 75% safe attendance.
-                      </span>
-                    </div>
-                  )}
+
+                  <div className="flex items-baseline gap-2 mb-3">
+                    <span className="text-2xl font-bold font-display text-ink tabular-nums">{sub.pct}%</span>
+                    <Badge variant={isSafe ? 'present' : 'absent'} size="sm">
+                      {isSafe ? 'Safe' : 'Low (<75%)'}
+                    </Badge>
+                  </div>
+
+                  {/* Clean thin progress bar */}
+                  <div className="h-2 bg-bg border border-line rounded-full overflow-hidden mb-3">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isSafe ? 'bg-present' : 'bg-absent'
+                      }`}
+                      style={{ width: `${Math.min(100, sub.pct)}%` }}
+                    />
+                  </div>
+
+                  <div className="flex justify-between text-xs text-muted">
+                    <span>Attended: <strong className="text-ink">{sub.attended}</strong></span>
+                    <span>Total Sessions: <strong className="text-ink">{sub.total}</strong></span>
+                  </div>
                 </div>
-              )
-            })}
-          </div>
+
+                {!isSafe && sub.needed > 0 && (
+                  <div className="mt-4 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-xs text-absent flex items-start gap-1.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Attend next <strong>{sub.needed}</strong> consecutive lectures to reach safe 75%.
+                    </span>
+                  </div>
+                )}
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>
@@ -547,57 +730,62 @@ function StudentAnnouncements() {
   }, [])
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-line">
         <div>
-          <h2 className="page-title">College Notices & Announcements</h2>
-          <p className="page-subtitle">Official announcements from college administration and faculty</p>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">College Notices</h2>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">Official circulars and announcements from college administration and faculty</p>
         </div>
-        <button onClick={fetchAnnouncements} className="btn btn-ghost btn-sm flex items-center gap-2">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        <Button variant="outline" size="sm" onClick={fetchAnnouncements} className="h-8 self-start sm:self-auto">
+          <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
           Refresh
-        </button>
+        </Button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="animate-spin w-8 h-8 text-brand-accent" />
+        <div className="space-y-3">
+          <Skeleton className="h-28 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
         </div>
       ) : announcements.length === 0 ? (
-        <div className="card text-center py-16">
-          <Megaphone size={40} className="mx-auto text-brand-muted mb-3" />
-          <p className="text-white font-semibold">No announcements currently</p>
-          <p className="text-brand-muted text-sm mt-1">Check back later for exam dates, timetables, and college notices.</p>
-        </div>
+        <Card className="p-8">
+          <EmptyState
+            icon={Megaphone}
+            title="No Notices Currently"
+            description="Official announcements, schedules, and circulars will be published here."
+          />
+        </Card>
       ) : (
         <div className="space-y-3">
           {announcements.map((a) => (
-            <div key={a.id} className="card hover:border-brand-accent/40 transition-colors">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-brand-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Bell size={18} className="text-brand-accent" />
+            <Card key={a.id} className="p-4 sm:p-5">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="w-9 h-9 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0 mt-0.5">
+                  <Bell className="w-4 h-4" />
                 </div>
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h4 className="text-white font-semibold text-base">{a.title}</h4>
-                    <span className="badge badge-info text-xs">{a.target_type}</span>
+                    <h4 className="text-sm sm:text-base font-semibold font-display text-ink">{a.title}</h4>
+                    {a.target_type && <Badge variant="neutral" size="sm">{a.target_type}</Badge>}
                   </div>
-                  <p className="text-brand-muted text-sm whitespace-pre-line leading-relaxed">{a.content}</p>
 
-                  {/* Document & Image Attachments */}
+                  <p className="text-xs sm:text-sm text-muted whitespace-pre-line leading-relaxed">{a.content}</p>
+
+                  {/* Attachment Downloads */}
                   {a.attachments && a.attachments.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {a.attachments.map((att, i) => (
                         <div
                           key={i}
-                          className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl max-w-sm hover:border-brand-accent/40 transition-colors"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-bg border border-line rounded-lg text-xs"
                         >
                           {att.file_type === 'IMAGE' ? (
-                            <ImageIcon size={16} className="text-emerald-400 flex-shrink-0" />
+                            <ImageIcon className="w-4 h-4 text-present shrink-0" />
                           ) : (
-                            <FileText size={16} className="text-blue-400 flex-shrink-0" />
+                            <FileText className="w-4 h-4 text-brand shrink-0" />
                           )}
-                          <span className="text-xs text-white font-medium truncate flex-1" title={att.file_name}>
+                          <span className="font-medium text-ink truncate max-w-[160px]" title={att.file_name}>
                             {att.file_name}
                           </span>
                           <a
@@ -609,10 +797,10 @@ function StudentAnnouncements() {
                               e.preventDefault()
                               openAttachment(att.file_url)
                             }}
-                            className="btn btn-secondary !py-1 !px-2.5 text-[11px] flex items-center gap-1 text-brand-accent hover:text-white"
+                            className="inline-flex items-center gap-1 text-brand font-semibold hover:underline ml-1 cursor-pointer"
                             title="Download document / image"
                           >
-                            <Download size={12} />
+                            <Download className="w-3 h-3" />
                             <span>Download</span>
                           </a>
                         </div>
@@ -620,9 +808,9 @@ function StudentAnnouncements() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 mt-3 text-xs text-brand-muted">
+                  <div className="flex items-center gap-3 mt-3 text-xs text-muted">
                     <span className="flex items-center gap-1">
-                      <Clock size={12} />
+                      <Clock className="w-3.5 h-3.5" />
                       {new Date(a.created_at).toLocaleString('en-IN')}
                     </span>
                     {a.sent_by_user?.name && (
@@ -631,7 +819,7 @@ function StudentAnnouncements() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
@@ -641,7 +829,7 @@ function StudentAnnouncements() {
 
 const SubPageLoader = () => (
   <div className="flex justify-center items-center py-24">
-    <Loader2 className="animate-spin w-8 h-8 text-brand-accent" />
+    <Loader2 className="animate-spin w-8 h-8 text-brand" />
   </div>
 )
 

@@ -2,10 +2,15 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   BarChart2, Download, Filter, Calendar, Users,
   BookOpen, TrendingUp, TrendingDown, AlertTriangle,
-  CheckCircle, Clock, RefreshCw, Printer, FileSpreadsheet
+  CheckCircle, Clock, RefreshCw, Printer, FileSpreadsheet,
+  ShieldAlert, ArrowRight, UserCheck
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, StatCard, Skeleton, EmptyState
+} from '../../components/ui'
 
 export default function ReportsPanel() {
   const [tab, setTab]           = useState('OVERVIEW') // 'OVERVIEW' | 'AUDIT_LOGS'
@@ -43,7 +48,6 @@ export default function ReportsPanel() {
   }, [period])
 
   useEffect(() => { fetchStats() }, [fetchStats])
-
 
   function exportToCSV() {
     if (!stats) return toast.error('No report data available to export')
@@ -129,7 +133,7 @@ export default function ReportsPanel() {
         <div class="header">
           <div class="title">SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE</div>
           <div class="subtitle">Kalamboli, Navi Mumbai, Maharashtra · Smart Attendance & Academic System</div>
-          <div style="font-size:14px;font-weight:bold;margin-top:8px;color:#2563eb;">OFFICIAL ATTENDANCE DEFAULTER REGISTER (< 75%)</div>
+          <div style="font-size:14px;font-weight:bold;margin-top:8px;color:#2563eb;">OFFICIAL ATTENDANCE DEFAULTER REGISTER (&lt; 75%)</div>
         </div>
 
         <div class="meta-grid">
@@ -178,312 +182,357 @@ export default function ReportsPanel() {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-6 animate-fade-in pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="page-title">Reports & Analytics</h2>
-          <p className="page-subtitle">College-wide attendance overview and official defaulter registers</p>
+          <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
+            Institutional Reports & Analytics
+          </h1>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            College-wide attendance registers, examination eligibility thresholds, and audit trails
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             id="period-filter"
             value={period}
             onChange={e => setPeriod(e.target.value)}
-            className="form-input py-2 text-sm"
+            className="px-3 py-1.5 text-xs rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
           >
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
           </select>
-          <button onClick={fetchStats} className="btn btn-ghost btn-sm" title="Refresh metrics">
+          <Button onClick={fetchStats} variant="outline" size="sm" className="gap-1.5" title="Refresh metrics">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={exportToCSV}
-            className="btn btn-secondary flex items-center gap-1.5 text-xs !py-2"
-            title="Download formatted CSV spreadsheet for Microsoft Excel"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs"
+            title="Download CSV spreadsheet"
           >
-            <FileSpreadsheet size={15} className="text-emerald-400" />
+            <FileSpreadsheet size={14} className="text-emerald-600" />
             <span>Export CSV</span>
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={printOfficialPDF}
-            className="btn btn-primary flex items-center gap-1.5 text-xs !py-2"
-            title="Generate and print official college attendance register sheet"
+            variant="primary"
+            size="sm"
+            className="gap-1.5 text-xs"
+            title="Print official register"
           >
-            <Printer size={15} />
+            <Printer size={14} />
             <span>Print Register</span>
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* Sub-Tabs */}
-      <div className="flex gap-2 mb-5">
+      {/* Navigation Sub-Tabs */}
+      <div className="flex gap-1.5 p-1 bg-bg border border-line rounded-lg w-fit">
         <button
           onClick={() => setTab('OVERVIEW')}
-          className={`btn btn-sm ${tab === 'OVERVIEW' ? 'btn-primary' : 'btn-secondary'}`}
+          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            tab === 'OVERVIEW'
+              ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+              : 'text-muted hover:text-ink hover:bg-surface/50'
+          }`}
         >
-          <BarChart2 size={14} /> Analytics & Defaulters
+          <BarChart2 size={13} /> Analytics & Defaulters
         </button>
         <button
           onClick={() => setTab('AUDIT_LOGS')}
-          className={`btn btn-sm ${tab === 'AUDIT_LOGS' ? 'btn-primary' : 'btn-secondary'}`}
+          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            tab === 'AUDIT_LOGS'
+              ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+              : 'text-muted hover:text-ink hover:bg-surface/50'
+          }`}
         >
-          <Clock size={14} /> Teacher Overrides Audit Log ({auditLogs.length})
+          <Clock size={13} /> Faculty Overrides Audit Log
+          <span className="text-[11px] bg-brand/10 text-brand px-1.5 py-0.2 rounded-full font-semibold">
+            {auditLogs.length}
+          </span>
         </button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-24">
-          <div className="w-10 h-10 border-4 border-white/10 border-t-brand-accent rounded-full animate-spin" />
+        <div className="p-8 space-y-4">
+          <Skeleton className="h-28 w-full" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+          </div>
         </div>
       ) : tab === 'OVERVIEW' ? (
-        <>
-          {/* Live Today Attendance Oversight Strip (Step 7 / Fix #4) */}
+        <div className="space-y-6">
+          {/* Live Today Attendance Oversight Banner */}
           {liveSummary && (
-            <div className="card !p-4 mb-6 bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border border-indigo-900/40 shadow-lg">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+            <Card className="p-4 sm:p-5 border-brand/20 bg-gradient-to-r from-brand-50/50 via-surface to-surface dark:from-brand-950/20 dark:via-surface dark:to-surface">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <h3 className="text-white font-bold text-sm tracking-wide">
-                    Live Attendance Today ({liveSummary.date ? new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'short', day: 'numeric' }) : 'Today'})
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                  </span>
+                  <h3 className="font-semibold text-ink text-sm sm:text-base">
+                    Live Today Attendance Oversight ({liveSummary.date ? new Date().toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Today'})
                   </h3>
                 </div>
-                <span className="badge badge-info text-xs">
-                  {liveSummary.today_lectures_count} Scheduled Lectures Today
-                </span>
+                <Badge variant="live">
+                  {liveSummary.today_lectures_count} Active / Scheduled Lectures
+                </Badge>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                  <span className="text-slate-400 text-xs block mb-0.5">Total Enrolled Students</span>
-                  <span className="text-xl font-bold text-white">{liveSummary.total_students}</span>
+                <div className="bg-surface p-3.5 rounded-xl border border-line shadow-2xs">
+                  <span className="text-muted text-xs block mb-1">Enrolled Students</span>
+                  <span className="text-xl sm:text-2xl font-bold font-mono text-ink">{liveSummary.total_students}</span>
                 </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                  <span className="text-emerald-400 text-xs block mb-0.5">Students Present</span>
-                  <span className="text-xl font-bold text-emerald-400">{liveSummary.present_count}</span>
+                <div className="bg-surface p-3.5 rounded-xl border border-line shadow-2xs">
+                  <span className="text-green-700 dark:text-green-400 text-xs font-medium block mb-1">Present Today</span>
+                  <span className="text-xl sm:text-2xl font-bold font-mono text-green-700 dark:text-green-400">{liveSummary.present_count}</span>
                 </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                  <span className="text-red-400 text-xs block mb-0.5">Students Absent</span>
-                  <span className="text-xl font-bold text-red-400">{liveSummary.absent_count}</span>
+                <div className="bg-surface p-3.5 rounded-xl border border-line shadow-2xs">
+                  <span className="text-red-700 dark:text-red-400 text-xs font-medium block mb-1">Absent Today</span>
+                  <span className="text-xl sm:text-2xl font-bold font-mono text-red-700 dark:text-red-400">{liveSummary.absent_count}</span>
                 </div>
-                <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                  <span className="text-brand-accent text-xs block mb-0.5">Today's Attendance Rate</span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xl font-bold text-brand-accent">{liveSummary.attendance_percentage}%</span>
-                    <span className="text-[11px] text-slate-500">({liveSummary.total_marked} marked)</span>
+                <div className="bg-surface p-3.5 rounded-xl border border-line shadow-2xs">
+                  <span className="text-brand text-xs font-medium block mb-1">Attendance Rate</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl sm:text-2xl font-bold font-mono text-brand">{liveSummary.attendance_percentage}%</span>
+                    <span className="text-[11px] text-muted font-medium">({liveSummary.total_marked} marked)</span>
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
-          {/* KPI Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <KpiCard
-              label="Total Teachers"
-              value={stats?.total_teachers}
-              sub={`${stats?.active_teachers} active`}
-              Icon={Users}
-              color="text-blue-400"
-              bg="bg-blue-500/10"
+          {/* KPI Metrics */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <StatCard
+              label="Total Faculty"
+              value={stats?.total_teachers ?? '—'}
+              sub={`${stats?.active_teachers || 0} active accounts`}
+              icon={Users}
             />
-            <KpiCard
+            <StatCard
               label="Total Students"
-              value={stats?.total_students}
-              sub={`${stats?.active_students} active`}
-              Icon={Users}
-              color="text-purple-400"
-              bg="bg-purple-500/10"
+              value={stats?.total_students ?? '—'}
+              sub={`${stats?.active_students || 0} verified accounts`}
+              icon={Users}
             />
-            <KpiCard
-              label="Lectures Held"
-              value={stats?.completed_lectures ?? stats?.total_lectures}
-              sub="completed lectures"
-              Icon={BookOpen}
-              color="text-green-400"
-              bg="bg-green-500/10"
+            <StatCard
+              label="Lectures Conducted"
+              value={stats?.completed_lectures ?? stats?.total_lectures ?? '—'}
+              sub="Completed sessions"
+              icon={BookOpen}
             />
-            <KpiCard
-              label="Avg Attendance"
+            <StatCard
+              label="Average Turnout"
               value={stats?.avg_attendance != null ? `${stats.avg_attendance.toFixed(1)}%` : 'N/A'}
-              sub="across all lectures"
-              Icon={BarChart2}
-              color="text-brand-accent"
-              bg="bg-brand-accent/10"
+              sub="Across all lectures"
+              icon={BarChart2}
             />
           </div>
 
-          {/* Attendance Health */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-            <div className="card">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <AlertTriangle size={17} className="text-yellow-400" />
-                Low Attendance Alert
-                <span className="ml-auto badge badge-warning">&lt; 75%</span>
-              </h3>
+          {/* Defaulter Alert & System Overview Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Defaulters Card */}
+            <Card className="p-4 sm:p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={18} className="text-amber-500" />
+                  <h3 className="font-semibold text-ink text-sm sm:text-base">
+                    Examination Defaulters Alert
+                  </h3>
+                </div>
+                <Badge variant="absent">&lt; 75% Requirement</Badge>
+              </div>
+
               {lowAtt.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle size={32} className="mx-auto text-green-400 mb-2" />
-                  <p className="text-green-400 font-medium">All students above 75%</p>
-                  <p className="text-brand-muted text-sm mt-1">No alerts right now 🎉</p>
+                <div className="text-center py-10 bg-bg/50 rounded-xl border border-line">
+                  <CheckCircle size={32} className="mx-auto text-green-600 mb-2" />
+                  <p className="text-ink font-semibold text-sm">All students above 75% threshold</p>
+                  <p className="text-muted text-xs mt-0.5">No attendance deficits detected for this period.</p>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-60 overflow-y-auto">
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {lowAtt.map(s => (
-                    <div key={s.student_id} className="flex items-center gap-3 p-2 rounded-lg bg-red-500/5 border border-red-500/20">
-                      <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center text-red-400 text-xs font-bold">
-                        {s.name?.charAt(0)}
+                    <div
+                      key={s.student_id}
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-red-50/50 border border-red-200 dark:bg-red-950/20 dark:border-red-900/40"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-red-100 text-red-700 font-semibold text-xs flex items-center justify-center shrink-0">
+                          {s.name?.charAt(0) || 'S'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-ink text-xs truncate">{s.name}</p>
+                          <p className="text-[11px] text-muted truncate">{s.division} · {s.course}</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-medium truncate">{s.name}</p>
-                        <p className="text-brand-muted text-xs">{s.division} · {s.course}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-red-400 font-bold text-sm">{s.percentage?.toFixed(1)}%</p>
-                        <p className="text-brand-muted text-xs">{s.attended}/{s.total}</p>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-bold font-mono text-red-600 dark:text-red-400">
+                          {s.percentage?.toFixed(1)}%
+                        </p>
+                        <p className="text-[11px] text-muted font-mono">{s.attended} / {s.total} attended</p>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
 
-            <div className="card">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <TrendingUp size={17} className="text-green-400" />
-                System Overview
-              </h3>
-              <div className="space-y-4">
+            {/* System Performance Progress Bars */}
+            <Card className="p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <TrendingUp size={18} className="text-brand" />
+                <h3 className="font-semibold text-ink text-sm sm:text-base">
+                  System Health & Onboarding Progress
+                </h3>
+              </div>
+
+              <div className="space-y-4 pt-1">
                 <ProgressBar
-                  label="Teacher Activation"
+                  label="Teacher Onboarding & Activation"
                   value={stats?.total_teachers ? (stats.active_teachers / stats.total_teachers * 100) : 0}
-                  color="bg-blue-500"
-                  textColor="text-blue-400"
+                  color="bg-brand"
                 />
                 <ProgressBar
-                  label="Student Activation"
+                  label="Student Enrollment & Activation"
                   value={stats?.total_students ? (stats.active_students / stats.total_students * 100) : 0}
-                  color="bg-purple-500"
-                  textColor="text-purple-400"
+                  color="bg-indigo-600"
                 />
                 <ProgressBar
-                  label="Lecture Completion"
+                  label="Lecture Completion Rate"
                   value={stats?.total_lectures ? ((stats.completed_lectures ?? 0) / stats.total_lectures * 100) : 0}
-                  color="bg-green-500"
-                  textColor="text-green-400"
+                  color="bg-green-600"
                 />
                 {stats?.avg_attendance != null && (
                   <ProgressBar
-                    label="Avg Attendance Rate"
+                    label="Overall Institutional Attendance Rate"
                     value={stats.avg_attendance}
-                    color="bg-brand-accent"
-                    textColor="text-brand-accent"
+                    color="bg-emerald-600"
                   />
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Summary info */}
-          <div className="card">
-            <div className="flex items-center gap-2 mb-3">
-              <Clock size={16} className="text-brand-muted" />
-              <p className="text-brand-muted text-sm">Last updated: {new Date().toLocaleTimeString('en-IN')}</p>
-            </div>
-            <p className="text-brand-muted text-xs leading-relaxed">
-              Attendance analytics reflect verified lectures and student check-ins.
-              Use the Export CSV and Print Register buttons above to generate official examination eligibility rosters.
-            </p>
-          </div>
-        </>
-      ) : (
-        /* ══════════════════════════════════════════════════════════════════
-           TAB 2: TEACHER OVERRIDES AUDIT LOG (Immutable)
-        ══════════════════════════════════════════════════════════════════ */
-        <div className="card !p-0 overflow-hidden border border-slate-800">
-          <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-            <div>
-              <h3 className="text-white font-bold text-sm">Attendance Override Audit Log</h3>
-              <p className="text-slate-400 text-xs">Immutable security record of all manual status overrides made by faculty or admins</p>
-            </div>
-            <span className="badge badge-info text-xs">{auditLogs.length} Records</span>
-          </div>
-
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Changed By (Faculty / Admin)</th>
-                  <th>Status Transition</th>
-                  <th>Audit Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-800/40">
-                    <td className="text-slate-400 text-xs font-mono">
-                      {log.created_at || log.changed_at ? new Date(log.created_at || log.changed_at).toLocaleString('en-IN') : '—'}
-                    </td>
-                    <td>
-                      <p className="text-white font-medium text-xs">
-                        {log.user?.full_name || 'Faculty Member'}
-                      </p>
-                      <p className="text-slate-500 text-[11px]">{log.user?.email || ''}</p>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <span className="badge badge-danger text-[10px]">{log.old_status || log.previous_status || 'ABSENT'}</span>
-                        <span className="text-slate-500">➔</span>
-                        <span className="badge badge-active text-[10px]">{log.new_status || 'PRESENT'}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="text-slate-300 text-xs italic">
-                        "{log.reason || 'Manual override'}"
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {auditLogs.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="text-center py-16 text-slate-400 text-xs">
-                      No attendance overrides recorded yet. All attendance records are verified.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            </Card>
           </div>
         </div>
+      ) : (
+        /* Teacher Overrides Audit Trail Tab */
+        <Card className="overflow-hidden">
+          <div className="p-4 border-b border-line bg-bg/50 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-ink text-sm">Manual Status Override Ledger</h3>
+              <p className="text-xs text-muted mt-0.5">Immutable audit trail of all manual status overrides performed by teachers or administrators</p>
+            </div>
+            <Badge variant="brand">{auditLogs.length} Entries</Badge>
+          </div>
+
+          {auditLogs.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle}
+              title="No manual overrides logged"
+              description="All attendance sessions were verified purely through automated geofenced selfie check-ins."
+            />
+          ) : (
+            <div>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-line bg-bg/30 text-xs font-semibold text-muted uppercase tracking-wider">
+                      <th className="py-3 px-4">Audit Timestamp</th>
+                      <th className="py-3 px-4">Authorized User</th>
+                      <th className="py-3 px-4">Transition</th>
+                      <th className="py-3 px-4">Reason / Justification</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3 px-4 text-xs font-mono text-muted">
+                          {log.created_at || log.changed_at ? new Date(log.created_at || log.changed_at).toLocaleString('en-IN') : '—'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="font-semibold text-ink text-xs leading-tight">
+                            {log.user?.full_name || 'Faculty Member'}
+                          </p>
+                          <p className="text-[11px] text-muted truncate">{log.user?.email || ''}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5 text-xs font-mono">
+                            <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[11px] font-semibold">
+                              {log.old_status || log.previous_status || 'ABSENT'}
+                            </span>
+                            <ArrowRight size={12} className="text-muted" />
+                            <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[11px] font-semibold">
+                              {log.new_status || 'PRESENT'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-xs text-ink italic">
+                            "{log.reason || 'Manual override'}"
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-line">
+                {auditLogs.map((log) => (
+                  <div key={log.id} className="p-3.5 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-ink text-xs">{log.user?.full_name || 'Faculty Member'}</p>
+                        <p className="text-[11px] text-muted">{log.user?.email || ''}</p>
+                      </div>
+                      <span className="text-[11px] font-mono text-muted">
+                        {log.created_at || log.changed_at ? new Date(log.created_at || log.changed_at).toLocaleDateString('en-IN') : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-xs font-mono bg-bg/50 p-2 rounded border border-line">
+                      <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[10px] font-semibold">
+                        {log.old_status || log.previous_status || 'ABSENT'}
+                      </span>
+                      <ArrowRight size={11} className="text-muted" />
+                      <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 text-[10px] font-semibold">
+                        {log.new_status || 'PRESENT'}
+                      </span>
+                      <span className="text-muted text-[11px] ml-auto truncate italic">
+                        "{log.reason || 'Manual override'}"
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
       )}
     </div>
   )
 }
 
-function KpiCard({ label, value, sub, Icon, color, bg }) {
-  return (
-    <div className="stat-card flex-col items-start gap-3">
-      <div className={`stat-icon ${bg} ${color}`}><Icon size={20} /></div>
-      <div>
-        <p className={`text-2xl font-bold ${color}`}>{value ?? '—'}</p>
-        <p className="text-white text-sm font-medium mt-0.5">{label}</p>
-        <p className="text-brand-muted text-xs mt-0.5">{sub}</p>
-      </div>
-    </div>
-  )
-}
-
-function ProgressBar({ label, value, color, textColor }) {
+function ProgressBar({ label, value, color }) {
   const pct = Math.min(100, Math.max(0, value || 0))
   return (
-    <div>
-      <div className="flex justify-between mb-1">
-        <span className="text-brand-muted text-xs">{label}</span>
-        <span className={`text-xs font-semibold ${textColor}`}>{pct.toFixed(0)}%</span>
+    <div className="space-y-1">
+      <div className="flex justify-between items-center text-xs">
+        <span className="text-muted">{label}</span>
+        <span className="font-mono font-semibold text-ink">{pct.toFixed(0)}%</span>
       </div>
-      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+      <div className="h-2 bg-bg rounded-full overflow-hidden border border-line/60">
         <div
           className={`h-full ${color} rounded-full transition-all duration-700`}
           style={{ width: `${pct}%` }}

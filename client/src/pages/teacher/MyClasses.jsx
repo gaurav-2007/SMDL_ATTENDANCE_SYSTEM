@@ -9,6 +9,10 @@ import {
 import api from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, StatCard, Skeleton, EmptyState
+} from '../../components/ui'
 
 const DAY_KEYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -114,94 +118,100 @@ export default function MyClasses() {
   const currentOngoing = todayLectures.find((l) => l.status === 'ONGOING')
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Top Banner & Header */}
-      <div className="card bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-white/10 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-brand-accent/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+      <Card className="p-5 sm:p-6 border-line bg-surface shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="badge badge-info text-xs tracking-wider uppercase font-mono">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <Badge variant="brand" size="sm">
                 SMDL College • Department of Computer Science
-              </span>
-              <span className="badge badge-active text-xs">
+              </Badge>
+              <Badge variant="neutral" size="sm">
                 NEP 2026-27
-              </span>
+              </Badge>
             </div>
-            <h2 className="text-2xl lg:text-3xl font-bold text-white tracking-tight flex items-center gap-2">
-              <span>My Classes & Lecture Planner</span>
-              <Sparkles size={22} className="text-amber-400 animate-pulse" />
-            </h2>
-            <p className="text-brand-muted text-sm mt-1 flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight flex items-center gap-2">
+              <span>Classroom Schedule & Lecture Planner</span>
+              <Sparkles size={20} className="text-amber-500 shrink-0" />
+            </h1>
+            <p className="text-xs sm:text-sm text-muted mt-1 flex items-center gap-2">
               <span>F.Y.BSc (Computer Science) - Semester I</span>
               <span>•</span>
-              <span className="text-white font-medium">{user?.name || 'Faculty Member'}</span>
+              <span className="text-ink font-semibold">{user?.name || 'Faculty Member'}</span>
             </p>
           </div>
 
           {/* Real-time Clock Card */}
-          <div className="flex items-center gap-3">
-            <div className="glass px-4 py-2.5 rounded-xl border border-white/10 text-right">
-              <p className="text-xs text-brand-muted font-medium flex items-center justify-end gap-1.5">
-                <Clock size={13} className="text-brand-accent" />
-                <span>Indian Standard Time</span>
+          <div className="flex items-center gap-2.5">
+            <div className="px-3.5 py-2 rounded-xl border border-line bg-bg text-right shadow-2xs">
+              <p className="text-[11px] text-muted font-medium flex items-center justify-end gap-1">
+                <Clock size={12} className="text-brand shrink-0" />
+                <span>IST Clock</span>
               </p>
-              <p className="text-xl font-mono font-bold text-white tracking-wider mt-0.5">
+              <p className="text-lg font-mono font-bold text-ink tracking-tight mt-0.5">
                 {currentTimeStr || '--:--:--'}
               </p>
             </div>
-            <button
+            <Button
               onClick={loadData}
               disabled={loading}
-              className="btn btn-secondary !p-2.5 rounded-xl"
+              variant="outline"
+              size="sm"
+              className="p-2.5"
               title="Refresh schedule"
             >
-              <RefreshCw size={18} className={loading ? 'animate-spin text-brand-accent' : ''} />
-            </button>
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+            </Button>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-5 border-t border-white/10">
-          <div className="flex items-center gap-1.5 p-1 bg-black/40 rounded-xl border border-white/5">
+        {/* Tab Navigation & Scope Filter */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-6 pt-5 border-t border-line">
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-bg rounded-lg border border-line">
             <button
               onClick={() => setActiveTab('today')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+              type="button"
+              className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'today'
-                  ? 'bg-brand-accent text-slate-950 shadow-md font-bold'
-                  : 'text-brand-muted hover:text-white'
+                  ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                  : 'text-muted hover:text-ink hover:bg-surface/50'
               }`}
             >
-              <Calendar size={15} />
+              <Calendar size={14} />
               <span>Today's Schedule</span>
               {currentOngoing && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
               )}
             </button>
 
             <button
               onClick={() => setActiveTab('timetable')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+              type="button"
+              className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'timetable'
-                  ? 'bg-brand-accent text-slate-950 shadow-md font-bold'
-                  : 'text-brand-muted hover:text-white'
+                  ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                  : 'text-muted hover:text-ink hover:bg-surface/50'
               }`}
             >
-              <Table size={15} />
+              <Table size={14} />
               <span>Weekly Timetable Matrix</span>
             </button>
 
             <button
               onClick={() => setActiveTab('subjects')}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all flex items-center gap-2 ${
+              type="button"
+              className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeTab === 'subjects'
-                  ? 'bg-brand-accent text-slate-950 shadow-md font-bold'
-                  : 'text-brand-muted hover:text-white'
+                  ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                  : 'text-muted hover:text-ink hover:bg-surface/50'
               }`}
             >
-              <Layers size={15} />
+              <Layers size={14} />
               <span>Curriculum & Subjects</span>
-              <span className="badge badge-info text-[10px] !py-0 !px-1.5">{subjects.length}</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-brand/10 text-brand font-semibold">
+                {subjects.length}
+              </span>
             </button>
           </div>
 
@@ -209,10 +219,11 @@ export default function MyClasses() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setFilterMyOnly(!filterMyOnly)}
-              className={`btn btn-sm text-xs flex items-center gap-1.5 rounded-lg border ${
+              type="button"
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border cursor-pointer ${
                 filterMyOnly
-                  ? 'border-brand-accent/50 bg-brand-accent/10 text-brand-accent'
-                  : 'border-white/10 bg-white/5 text-brand-muted hover:text-white'
+                  ? 'border-brand/30 bg-brand/10 text-brand font-semibold'
+                  : 'border-line bg-surface text-muted hover:text-ink'
               }`}
             >
               <Filter size={13} />
@@ -220,63 +231,40 @@ export default function MyClasses() {
             </button>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Quick Metrics Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="stat-card">
-          <div className="stat-icon bg-blue-500/20 text-blue-400">
-            <Calendar size={20} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-white">
-              {todayActualDay === 'Sunday' ? 'Off' : `${todayData?.my_lectures?.length || 0} Lectures`}
-            </p>
-            <p className="text-brand-muted text-xs mt-0.5">Today's Load ({todayActualDay})</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className={`stat-icon ${currentOngoing ? 'bg-rose-500/20 text-rose-400 animate-pulse' : 'bg-emerald-500/20 text-emerald-400'}`}>
-            <Flame size={20} />
-          </div>
-          <div>
-            <p className="text-lg font-bold text-white truncate max-w-[150px]">
-              {currentOngoing ? currentOngoing.subject?.code || 'In Session' : 'No Active Slot'}
-            </p>
-            <p className="text-brand-muted text-xs mt-0.5">
-              {currentOngoing ? 'Session In Progress' : 'Current Status'}
-            </p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon bg-purple-500/20 text-purple-400">
-            <Award size={20} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-white">NEP Sem-I</p>
-            <p className="text-brand-muted text-xs mt-0.5">FY.BSc Computer Science</p>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-icon bg-amber-500/20 text-amber-400">
-            <Clock size={20} />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-white">08:00 - 13:30</p>
-            <p className="text-brand-muted text-xs mt-0.5">College Operating Hours</p>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard
+          label={`Today's Load (${todayActualDay})`}
+          value={todayActualDay === 'Sunday' ? 'Off' : `${todayData?.my_lectures?.length || 0} Lectures`}
+          icon={Calendar}
+        />
+        <StatCard
+          label={currentOngoing ? 'Session In Progress' : 'Current Session Status'}
+          value={currentOngoing ? (currentOngoing.subject?.code || 'Live Session') : 'No Active Slot'}
+          icon={Flame}
+        />
+        <StatCard
+          label="Cohort Degree Program"
+          value="NEP Sem-I"
+          sub="FY.BSc Computer Science"
+          icon={Award}
+        />
+        <StatCard
+          label="College Operating Hours"
+          value="08:00 – 13:30"
+          sub="Regular timetable window"
+          icon={Clock}
+        />
       </div>
 
       {loading ? (
-        <div className="card flex flex-col items-center justify-center py-24">
-          <Loader2 className="animate-spin w-10 h-10 text-brand-accent mb-3" />
-          <p className="text-white font-medium">Synchronizing SMDL Timetable Engine...</p>
-          <p className="text-brand-muted text-xs mt-1">Fetching live session statuses and faculty assignments</p>
-        </div>
+        <Card className="p-8 space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </Card>
       ) : (
         <>
           {/* ============================================================== */}
@@ -285,126 +273,126 @@ export default function MyClasses() {
           {activeTab === 'today' && (
             <div className="space-y-6">
               {/* Day Selector Chips */}
-              <div className="card p-3 flex flex-wrap items-center justify-between gap-3 bg-slate-900/60">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-brand-muted font-medium ml-1">Select Day:</span>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {DAY_KEYS.filter((d) => d !== 'Sunday').map((day) => {
-                      const isToday = day === todayActualDay
-                      const isSelected = day === selectedDay
-                      return (
-                        <button
-                          key={day}
-                          onClick={() => setSelectedDay(day)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-brand-accent text-slate-950 font-bold shadow'
-                              : isToday
-                              ? 'bg-brand-accent/20 text-brand-accent border border-brand-accent/40'
-                              : 'bg-white/5 text-brand-muted hover:text-white hover:bg-white/10'
-                          }`}
-                        >
-                          <span>{day.slice(0, 3)}</span>
-                          {isToday && (
-                            <span className="text-[10px] px-1 py-0.2 rounded bg-brand-accent/30 text-brand-accent uppercase font-mono">
-                              Today
-                            </span>
-                          )}
-                        </button>
-                      )
-                    })}
+              <Card className="p-3 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted font-semibold">Select Day:</span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {DAY_KEYS.filter((d) => d !== 'Sunday').map((day) => {
+                        const isToday = day === todayActualDay
+                        const isSelected = day === selectedDay
+                        return (
+                          <button
+                            key={day}
+                            onClick={() => setSelectedDay(day)}
+                            type="button"
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 cursor-pointer border ${
+                              isSelected
+                                ? 'bg-brand text-white border-brand font-semibold shadow-2xs'
+                                : isToday
+                                ? 'bg-brand/10 text-brand border-brand/30 font-semibold'
+                                : 'bg-surface text-muted border-line hover:text-ink hover:bg-bg'
+                            }`}
+                          >
+                            <span>{day.slice(0, 3)}</span>
+                            {isToday && (
+                              <span className="text-[10px] px-1 py-0.2 rounded bg-brand/20 text-brand uppercase font-mono font-bold">
+                                Today
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                </div>
 
-                {!isViewingToday && (
-                  <button
-                    onClick={() => setSelectedDay(todayActualDay)}
-                    className="text-xs text-brand-accent hover:underline flex items-center gap-1"
-                  >
-                    <span>Back to Today ({todayActualDay})</span>
-                  </button>
-                )}
-              </div>
+                  {!isViewingToday && (
+                    <button
+                      onClick={() => setSelectedDay(todayActualDay)}
+                      type="button"
+                      className="text-xs text-brand hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                    >
+                      <span>Back to Today ({todayActualDay})</span>
+                    </button>
+                  )}
+                </div>
+              </Card>
 
               {/* Ongoing Lecture Spotlight Banner */}
               {isViewingToday && currentOngoing && (
-                <div className="card border-2 border-rose-500/50 bg-gradient-to-r from-rose-950/40 via-slate-900 to-rose-950/30 relative overflow-hidden p-6 animate-pulse-subtle">
+                <Card className="p-5 sm:p-6 border-emerald-300 bg-emerald-50/40 dark:bg-emerald-950/20 dark:border-emerald-800 shadow-sm">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2.5">
-                        <span className="relative flex h-3 w-3">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-                        </span>
-                        <span className="badge badge-error text-xs font-bold uppercase tracking-wider">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <Badge variant="live" pulseDot>
                           LIVE LECTURE IN PROGRESS NOW
-                        </span>
-                        <span className="text-brand-muted text-xs font-mono">
-                          {currentOngoing.start_time?.slice(0, 5)} - {currentOngoing.end_time?.slice(0, 5)}
+                        </Badge>
+                        <span className="text-muted text-xs font-mono font-medium">
+                          {currentOngoing.start_time?.slice(0, 5)} – {currentOngoing.end_time?.slice(0, 5)}
                         </span>
                       </div>
-                      <h3 className="text-2xl font-bold text-white">
+                      <h2 className="text-xl sm:text-2xl font-bold font-display text-ink">
                         {currentOngoing.subject?.code}: {currentOngoing.subject?.name}
-                      </h3>
-                      <p className="text-brand-muted text-sm flex items-center gap-3">
-                        <span className="flex items-center gap-1 text-white">
-                          <GraduationCap size={15} className="text-brand-accent" />
+                      </h2>
+                      <p className="text-xs sm:text-sm text-muted flex items-center gap-2.5">
+                        <span className="flex items-center gap-1 text-ink font-medium">
+                          <GraduationCap size={15} className="text-brand" />
                           <span>F.Y.BSc CS (NEP)</span>
                         </span>
                         <span>•</span>
-                        <span>Faculty: <strong className="text-white">{currentOngoing.teacher?.full_name}</strong></span>
+                        <span>Faculty: <strong className="text-ink">{currentOngoing.teacher?.full_name}</strong></span>
                       </p>
                     </div>
 
-                    <button
+                    <Button
                       onClick={() => navigate('/teacher/attendance', { state: { lectureId: currentOngoing.id } })}
-                      className="btn-primary !py-3 !px-6 text-sm font-bold flex items-center justify-center gap-2 shadow-xl shadow-brand-accent/20"
+                      variant="primary"
+                      size="lg"
+                      className="gap-2 font-semibold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       <Play size={16} className="fill-current" />
                       <span>Take Attendance & Live Roster</span>
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Card>
               )}
 
               {/* Lecture Timeline List */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                    <Clock size={18} className="text-brand-accent" />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-ink text-base sm:text-lg flex items-center gap-2">
+                    <Clock size={18} className="text-brand shrink-0" />
                     <span>
                       {selectedDay} Schedule{' '}
                       {isViewingToday ? `(Today • ${todayData?.date || ''})` : `(Timetable Preview)`}
                     </span>
                   </h3>
-                  <span className="text-xs text-brand-muted">
+                  <span className="text-xs text-muted font-mono">
                     {effectiveDayLectures.length} {effectiveDayLectures.length === 1 ? 'Class' : 'Classes'} Scheduled
                   </span>
                 </div>
 
                 {selectedDay === 'Sunday' ? (
-                  <div className="card text-center py-16">
-                    <Calendar size={48} className="mx-auto text-brand-muted mb-3 opacity-50" />
-                    <h4 className="text-white font-semibold text-lg">Sunday — Weekly Off / Holiday</h4>
-                    <p className="text-brand-muted text-sm mt-1 max-w-md mx-auto">
-                      No academic lectures are scheduled on Sunday as per SMDL College academic calendar.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={Calendar}
+                    title="Sunday — Weekly Off / Holiday"
+                    description="No academic lectures are scheduled on Sunday as per the college calendar."
+                  />
                 ) : effectiveDayLectures.length === 0 ? (
-                  <div className="card text-center py-16">
-                    <BookOpen size={48} className="mx-auto text-brand-muted mb-3 opacity-50" />
-                    <h4 className="text-white font-semibold text-lg">No Classes Scheduled For You on {selectedDay}</h4>
-                    <p className="text-brand-muted text-sm mt-1 max-w-md mx-auto">
-                      You do not have any teaching slots assigned on this day, or switch the filter to{' '}
-                      <button
+                  <EmptyState
+                    icon={BookOpen}
+                    title={`No Classes Scheduled For You on ${selectedDay}`}
+                    description="You do not have any teaching slots assigned on this day, or switch the filter to 'All CS Classes' to view the full department schedule."
+                    action={
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => setFilterMyOnly(false)}
-                        className="text-brand-accent underline ml-1 font-semibold"
                       >
-                        "All CS Classes"
-                      </button>{' '}
-                      to view full department schedule.
-                    </p>
-                  </div>
+                        View All CS Classes
+                      </Button>
+                    }
+                  />
                 ) : (
                   <div className="space-y-3">
                     {effectiveDayLectures.map((lec, idx) => {
@@ -414,25 +402,23 @@ export default function MyClasses() {
                       const isPractical = lec.subject?.code?.includes('(P)') || lec.topic?.toLowerCase().includes('lab')
 
                       return (
-                        <div
+                        <Card
                           key={lec.id || idx}
-                          className={`card transition-all p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                            isOngoing
-                              ? 'border-brand-accent bg-brand-accent/5 shadow-lg shadow-brand-accent/10'
-                              : 'hover:border-white/20'
+                          className={`p-4 sm:p-5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                            isOngoing ? 'border-brand bg-brand-50/20 dark:bg-brand-950/10 shadow-xs' : ''
                           }`}
                         >
                           <div className="flex items-start gap-4">
                             {/* Time Badge */}
-                            <div className="flex-shrink-0 text-center px-3 py-2 rounded-xl bg-black/40 border border-white/10 min-w-[100px]">
-                              <p className="text-xs font-mono font-bold text-white">
+                            <div className="shrink-0 text-center px-3 py-2 rounded-xl bg-bg border border-line min-w-[95px]">
+                              <p className="text-xs font-mono font-bold text-ink">
                                 {lec.start_time?.slice(0, 5)}
                               </p>
-                              <p className="text-[10px] text-brand-muted font-mono">
+                              <p className="text-[10px] text-muted font-mono">
                                 to {lec.end_time?.slice(0, 5)}
                               </p>
-                              <span className={`inline-block mt-1 text-[9px] uppercase px-1.5 py-0.5 rounded font-mono font-bold ${
-                                isPractical ? 'bg-purple-500/20 text-purple-300' : 'bg-blue-500/20 text-blue-300'
+                              <span className={`inline-block mt-1 text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-semibold ${
+                                isPractical ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
                               }`}>
                                 {isPractical ? 'Lab (P)' : 'Theory'}
                               </span>
@@ -441,47 +427,46 @@ export default function MyClasses() {
                             {/* Details */}
                             <div>
                               <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <span className="badge badge-info text-xs font-mono font-bold">
+                                <Badge variant="brand" size="sm">
                                   {lec.subject?.code || 'CS-SUBJ'}
-                                </span>
+                                </Badge>
                                 {isOngoing && (
-                                  <span className="badge badge-error text-[10px] flex items-center gap-1 font-bold animate-pulse">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                                  <Badge variant="live" pulseDot>
                                     ONGOING NOW
-                                  </span>
+                                  </Badge>
                                 )}
                                 {isUpcoming && (
-                                  <span className="badge badge-warning text-[10px] flex items-center gap-1">
-                                    <Clock size={11} /> UPCOMING
-                                  </span>
+                                  <Badge variant="grace">
+                                    UPCOMING
+                                  </Badge>
                                 )}
                                 {isCompleted && (
-                                  <span className="badge badge-neutral text-[10px] flex items-center gap-1 opacity-70">
-                                    <CheckCircle2 size={11} /> COMPLETED
-                                  </span>
+                                  <Badge variant="neutral">
+                                    COMPLETED
+                                  </Badge>
                                 )}
                               </div>
 
-                              <h4 className="text-white font-bold text-base md:text-lg">
+                              <h4 className="font-semibold text-ink text-base">
                                 {lec.subject?.name || lec.topic || 'Subject'}
                               </h4>
 
-                              <p className="text-brand-muted text-xs mt-1 flex flex-wrap items-center gap-2">
-                                <span className="flex items-center gap-1">
-                                  <GraduationCap size={13} className="text-brand-accent" />
+                              <p className="text-muted text-xs mt-1 flex flex-wrap items-center gap-2">
+                                <span className="flex items-center gap-1 font-medium text-ink">
+                                  <GraduationCap size={13} className="text-brand shrink-0" />
                                   <span>F.Y.BSc (Computer Science) Div A</span>
                                 </span>
                                 <span>•</span>
                                 <span>
-                                  Teacher: <strong className="text-slate-200">{lec.teacher?.full_name || 'Assigned Faculty'}</strong>
+                                  Teacher: <strong className="text-ink">{lec.teacher?.full_name || 'Assigned Faculty'}</strong>
                                 </span>
                               </p>
                             </div>
                           </div>
 
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-white/5 justify-end">
-                            <button
+                          <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-line justify-end">
+                            <Button
                               onClick={() => {
                                 if (lec.is_simulated) {
                                   toast('Preview mode: lecture session will be active on ' + selectedDay, { icon: 'ℹ️' })
@@ -489,25 +474,25 @@ export default function MyClasses() {
                                 }
                                 navigate('/teacher/attendance', { state: { lectureId: lec.id } })
                               }}
-                              className={`btn-sm text-xs flex items-center gap-1.5 rounded-lg font-semibold px-4 py-2 ${
-                                isOngoing
-                                  ? 'btn-primary'
-                                  : 'btn-secondary text-brand-muted hover:text-white'
-                              }`}
+                              variant={isOngoing ? 'primary' : 'outline'}
+                              size="sm"
+                              className="gap-1.5 text-xs font-semibold"
                             >
                               <Play size={13} />
                               <span>{isOngoing ? 'Live Roster' : 'Open Attendance'}</span>
-                            </button>
+                            </Button>
 
-                            <button
+                            <Button
                               onClick={() => navigate('/teacher/announce')}
-                              className="btn btn-ghost btn-sm text-xs text-brand-muted hover:text-white p-2"
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted hover:text-ink p-2"
                               title="Send class announcement"
                             >
                               <Bell size={14} />
-                            </button>
+                            </Button>
                           </div>
-                        </div>
+                        </Card>
                       )
                     })}
                   </div>
@@ -517,39 +502,39 @@ export default function MyClasses() {
           )}
 
           {/* ============================================================== */}
-          {/* TAB 2: WEEKLY TIMETABLE MATRIX (OFFICIAL SMDL NOTICE BOARD) */}
+          {/* TAB 2: WEEKLY TIMETABLE MATRIX */}
           {/* ============================================================== */}
           {activeTab === 'timetable' && (
-            <div className="space-y-6">
-              <div className="card bg-slate-900/60 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="space-y-4">
+              <Card className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-white font-bold text-base flex items-center gap-2">
-                    <Table size={18} className="text-brand-accent" />
+                  <h3 className="font-semibold text-ink text-base flex items-center gap-2">
+                    <Table size={18} className="text-brand shrink-0" />
                     <span>Official College Timetable Matrix (2026-27)</span>
                   </h3>
-                  <p className="text-brand-muted text-xs mt-0.5">
+                  <p className="text-muted text-xs mt-0.5">
                     SES's S. M. Dadasaheb Limaye College, Kalamboli — Department of Computer Science
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3 text-xs">
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-brand-accent/30 border border-brand-accent" />
-                    <span className="text-brand-muted">Your Lectures</span>
+                    <span className="w-3 h-3 rounded bg-brand/20 border border-brand" />
+                    <span className="text-muted">Your Lectures</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-white/5 border border-white/10" />
-                    <span className="text-brand-muted">Other Faculty</span>
+                    <span className="w-3 h-3 rounded bg-bg border border-line" />
+                    <span className="text-muted">Other Faculty</span>
                   </div>
                 </div>
-              </div>
+              </Card>
 
               {/* Interactive Matrix Table */}
-              <div className="card overflow-x-auto p-0 border border-white/10">
+              <Card className="overflow-x-auto p-0">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="bg-slate-950/80 border-b border-white/10">
-                      <th className="p-3.5 font-bold text-brand-muted uppercase tracking-wider text-[11px] w-28 sticky left-0 bg-slate-950 z-10">
+                    <tr className="bg-bg/60 border-b border-line">
+                      <th className="p-3.5 font-bold text-muted uppercase tracking-wider text-[11px] w-28 sticky left-0 bg-surface z-10">
                         TIME
                       </th>
                       {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'].map((day) => {
@@ -559,13 +544,13 @@ export default function MyClasses() {
                             key={day}
                             className={`p-3.5 font-bold uppercase tracking-wider text-[11px] text-center min-w-[140px] ${
                               isDayToday
-                                ? 'bg-brand-accent/15 text-brand-accent border-b-2 border-brand-accent'
-                                : 'text-slate-300'
+                                ? 'bg-brand/10 text-brand border-b-2 border-brand font-bold'
+                                : 'text-ink'
                             }`}
                           >
                             <span>{day}</span>
                             {isDayToday && (
-                              <span className="block text-[9px] font-normal tracking-normal text-brand-accent/80 font-mono">
+                              <span className="block text-[9px] font-normal tracking-normal text-brand font-mono">
                                 (Today)
                               </span>
                             )}
@@ -575,29 +560,29 @@ export default function MyClasses() {
                     </tr>
                   </thead>
 
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-line">
                     {timetableMatrix?.time_slots?.map((slot) => {
                       if (slot.is_recess) {
                         return (
-                          <tr key="recess" className="bg-amber-500/5 text-center">
-                            <td className="p-3 font-mono text-[11px] font-semibold text-amber-300/80 sticky left-0 bg-slate-950/90 z-10 border-y border-amber-500/20">
+                          <tr key="recess" className="bg-amber-50/50 dark:bg-amber-950/20 text-center">
+                            <td className="p-3 font-mono text-[11px] font-semibold text-amber-700 sticky left-0 bg-surface z-10 border-y border-amber-200">
                               {slot.label.split(' - ')[0]}
                             </td>
                             <td
                               colSpan={6}
-                              className="p-3 font-bold text-amber-400/90 tracking-widest text-xs border-y border-amber-500/20 uppercase"
+                              className="p-3 font-bold text-amber-700 tracking-wider text-xs border-y border-amber-200 uppercase"
                             >
-                              ✦ R E C E S S &nbsp; (11:00 AM - 11:30 AM) ✦
+                              ✦ R E C E S S &nbsp; (11:00 AM – 11:30 AM) ✦
                             </td>
                           </tr>
                         )
                       }
 
                       return (
-                        <tr key={slot.slot_id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="p-3 font-mono text-[11px] font-semibold text-slate-300 sticky left-0 bg-slate-950 z-10 border-r border-white/5">
+                        <tr key={slot.slot_id} className="hover:bg-bg/40 transition-colors">
+                          <td className="p-3 font-mono text-[11px] font-semibold text-ink sticky left-0 bg-surface z-10 border-r border-line">
                             <div>{slot.label.split(' - ')[0]}</div>
-                            <div className="text-[10px] text-brand-muted">to {slot.label.split(' - ')[1]}</div>
+                            <div className="text-[10px] text-muted font-normal">to {slot.label.split(' - ')[1]}</div>
                           </td>
 
                           {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day) => {
@@ -610,8 +595,8 @@ export default function MyClasses() {
                               return (
                                 <td
                                   key={day}
-                                  className={`p-3 text-center text-brand-muted/40 font-mono text-xs ${
-                                    isDayToday ? 'bg-brand-accent/[0.02]' : ''
+                                  className={`p-3 text-center text-muted/40 font-mono text-xs ${
+                                    isDayToday ? 'bg-brand/5' : ''
                                   }`}
                                 >
                                   —
@@ -626,9 +611,9 @@ export default function MyClasses() {
                                 key={day}
                                 className={`p-2.5 text-center transition-all ${
                                   isMine
-                                    ? 'bg-brand-accent/15 border-2 border-brand-accent/50 rounded-lg shadow-sm'
+                                    ? 'bg-brand/10 border-2 border-brand/50 rounded-lg shadow-2xs'
                                     : isDayToday
-                                    ? 'bg-brand-accent/[0.04]'
+                                    ? 'bg-brand/5'
                                     : ''
                                 }`}
                               >
@@ -636,17 +621,17 @@ export default function MyClasses() {
                                   <div className="flex items-center justify-center gap-1">
                                     <span className={`font-bold font-mono text-xs px-2 py-0.5 rounded ${
                                       isPractical
-                                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                        : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                        ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                                        : 'bg-blue-100 text-blue-700 border border-blue-200'
                                     }`}>
                                       {item.code}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] text-white font-medium truncate max-w-[130px] mx-auto" title={item.name}>
+                                  <p className="text-[11px] font-semibold text-ink truncate max-w-[130px] mx-auto" title={item.name}>
                                     {item.name}
                                   </p>
                                   <p className={`text-[10px] truncate max-w-[130px] mx-auto ${
-                                    isMine ? 'text-brand-accent font-semibold' : 'text-brand-muted'
+                                    isMine ? 'text-brand font-bold' : 'text-muted'
                                   }`} title={item.teacher}>
                                     {item.teacher}
                                     {item.co_teacher ? ` & ${item.co_teacher}` : ''}
@@ -660,7 +645,7 @@ export default function MyClasses() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </Card>
             </div>
           )}
 
@@ -669,16 +654,14 @@ export default function MyClasses() {
           {/* ============================================================== */}
           {activeTab === 'subjects' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-white font-bold text-base flex items-center gap-2">
-                    <BookOpen size={18} className="text-brand-accent" />
-                    <span>NEP SEM-I Subject Modules (FY.BSc CS)</span>
-                  </h3>
-                  <p className="text-brand-muted text-xs mt-0.5">
-                    Course syllabus modules and assigned faculty for academic year 2026-27
-                  </p>
-                </div>
+              <div>
+                <h3 className="font-semibold text-ink text-base flex items-center gap-2">
+                  <BookOpen size={18} className="text-brand shrink-0" />
+                  <span>NEP SEM-I Subject Modules (FY.BSc CS)</span>
+                </h3>
+                <p className="text-muted text-xs mt-0.5">
+                  Course syllabus modules and assigned faculty for academic year 2026-27
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -687,43 +670,51 @@ export default function MyClasses() {
                   .map((sub) => {
                     const isPractical = sub.code?.includes('(P)')
                     return (
-                      <div
+                      <Card
                         key={sub.id}
-                        className="card flex flex-col justify-between hover:border-brand-accent/50 transition-all group"
+                        className="p-5 flex flex-col justify-between hover:border-brand/40 transition-colors shadow-xs"
                       >
                         <div>
                           <div className="flex items-start justify-between gap-2 mb-3">
-                            <span className="badge badge-info text-xs font-mono font-bold">{sub.code || 'SUBJ'}</span>
-                            <span className={`badge text-[10px] ${isPractical ? 'badge-warning' : 'badge-active'}`}>
+                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-brand/10 text-brand border border-brand/20">
+                              {sub.code || 'SUBJ'}
+                            </span>
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                              isPractical ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'
+                            }`}>
                               {isPractical ? 'Lab Course' : 'Theory Course'}
                             </span>
                           </div>
-                          <h4 className="text-white font-bold text-lg group-hover:text-brand-accent transition-colors leading-snug">
+                          <h4 className="font-bold text-ink text-base leading-snug">
                             {sub.name}
                           </h4>
-                          <p className="text-brand-muted text-xs mt-2 flex items-center gap-1.5">
-                            <GraduationCap size={14} className="text-brand-accent" />
+                          <p className="text-muted text-xs mt-2 flex items-center gap-1.5">
+                            <GraduationCap size={14} className="text-brand shrink-0" />
                             <span>F.Y.BSc Computer Science • Div A</span>
                           </p>
                         </div>
 
-                        <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between gap-2">
-                          <button
+                        <div className="mt-5 pt-3.5 border-t border-line flex items-center justify-between gap-2">
+                          <Button
                             onClick={() => navigate('/teacher/attendance')}
-                            className="btn-primary !py-1.5 !px-3 text-xs flex items-center gap-1.5 flex-1 justify-center"
+                            variant="primary"
+                            size="sm"
+                            className="gap-1.5 flex-1 justify-center text-xs"
                           >
                             <Play size={13} />
                             <span>Start Lecture</span>
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             onClick={() => navigate('/teacher/announce')}
-                            className="btn-secondary !py-1.5 !px-3 text-xs flex items-center gap-1.5 text-brand-muted hover:text-white"
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs text-muted hover:text-ink"
                           >
                             <Bell size={13} />
                             <span>Notice</span>
-                          </button>
+                          </Button>
                         </div>
-                      </div>
+                      </Card>
                     )
                   })}
               </div>

@@ -2,18 +2,23 @@ import { useEffect, useState, useCallback } from 'react'
 import {
   Bell, Plus, X, Send, Users, BookOpen,
   Megaphone, Clock, Trash2, RefreshCw,
-  Paperclip, FileText, Image as ImageIcon, Download
+  Paperclip, FileText, Image as ImageIcon, Download,
+  CheckCircle2, Globe, GraduationCap
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
 import { openAttachment } from '../../utils/attachmentHelper'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Input, Modal, Skeleton, EmptyState
+} from '../../components/ui'
 
 const TARGET_TYPES = [
-  { value: 'ALL',      label: 'Everyone (All roles)',  icon: '🌐' },
-  { value: 'TEACHER',  label: 'All Teachers',          icon: '👨‍🏫' },
-  { value: 'STUDENT',  label: 'All Students',          icon: '🎓' },
-  { value: 'DIVISION', label: 'Specific Division',     icon: '📋' },
-  { value: 'COURSE',   label: 'Specific Course',       icon: '📚' },
+  { value: 'ALL',      label: 'Everyone (All roles)',  icon: Globe },
+  { value: 'TEACHER',  label: 'All Faculty Members',   icon: Users },
+  { value: 'STUDENT',  label: 'All Enrolled Students', icon: GraduationCap },
+  { value: 'DIVISION', label: 'Specific Class Division', icon: BookOpen },
+  { value: 'COURSE',   label: 'Specific Degree Program', icon: Megaphone },
 ]
 
 export default function AnnouncementsPanel() {
@@ -55,122 +60,157 @@ export default function AnnouncementsPanel() {
   }
 
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="space-y-6 animate-fade-in pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="page-title">Announcements</h2>
-          <p className="page-subtitle">Send and manage college-wide announcements</p>
+          <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
+            Institutional Notices & Broadcasts
+          </h1>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Publish college circulars, exam schedules, and department notices with file attachments
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={fetchAll} className="btn btn-ghost btn-sm">
+        <div className="flex items-center gap-2">
+          <Button onClick={fetchAll} variant="outline" size="sm" className="gap-1.5" title="Refresh notices">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
+          </Button>
+          <Button
             id="add-announcement-btn"
             onClick={() => setShowForm(true)}
-            className="btn btn-primary flex items-center gap-2"
+            variant="primary"
+            size="sm"
+            className="gap-1.5"
           >
-            <Plus size={16} /> New Announcement
-          </button>
+            <Plus size={15} /> New Announcement
+          </Button>
         </div>
       </div>
 
-      {/* Announcement list */}
+      {/* Announcement List */}
       {loading ? (
-        <div className="flex justify-center py-24">
-          <div className="w-8 h-8 border-4 border-white/10 border-t-brand-accent rounded-full animate-spin" />
+        <div className="space-y-4">
+          <Card className="p-6"><Skeleton className="h-20 w-full" /></Card>
+          <Card className="p-6"><Skeleton className="h-20 w-full" /></Card>
+          <Card className="p-6"><Skeleton className="h-20 w-full" /></Card>
         </div>
       ) : announcements.length === 0 ? (
-        <div className="card text-center py-16">
-          <Megaphone size={40} className="mx-auto text-brand-muted mb-3" />
-          <p className="text-white font-semibold">No announcements yet</p>
-          <p className="text-brand-muted text-sm mt-1">Click "New Announcement" to send one</p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="btn btn-primary mt-4 mx-auto"
-          >
-            <Plus size={15} /> Create First Announcement
-          </button>
-        </div>
+        <EmptyState
+          icon={Megaphone}
+          title="No institutional announcements published"
+          description="Click 'New Announcement' to broadcast notices and exam timetables to teachers and students."
+          action={
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setShowForm(true)}
+              className="gap-1.5"
+            >
+              <Plus size={14} /> Create First Announcement
+            </Button>
+          }
+        />
       ) : (
-        <div className="space-y-3">
-          {announcements.map(a => (
-            <div key={a.id} className="card group hover:border-brand-accent/30 transition-colors">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-brand-accent/20 flex items-center justify-center flex-shrink-0">
-                    <Bell size={18} className="text-brand-accent" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h4 className="text-white font-semibold">{a.title}</h4>
-                      <span className="badge badge-info text-xs">
-                        {TARGET_TYPES.find(t => t.value === a.target_type)?.label || a.target_type}
-                      </span>
-                    </div>
-                    <p className="text-brand-muted text-sm whitespace-pre-line leading-relaxed">{a.content}</p>
+        <div className="space-y-3.5">
+          {announcements.map(a => {
+            const targetObj = TARGET_TYPES.find(t => t.value === a.target_type)
+            const targetLabel = targetObj?.label || a.target_type
 
-                    {/* Attachments */}
-                    {a.attachments && a.attachments.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {a.attachments.map((att, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-xl max-w-sm hover:border-brand-accent/40 transition-colors"
-                          >
-                            {att.file_type === 'IMAGE' ? (
-                              <ImageIcon size={16} className="text-emerald-400 flex-shrink-0" />
-                            ) : (
-                              <FileText size={16} className="text-blue-400 flex-shrink-0" />
-                            )}
-                            <span className="text-xs text-white font-medium truncate flex-1" title={att.file_name}>
-                              {att.file_name}
-                            </span>
-                            <a
-                              href={att.file_url}
-                              download={att.file_name}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                openAttachment(att.file_url)
-                              }}
-                              className="btn btn-secondary !py-1 !px-2.5 text-[11px] flex items-center gap-1 text-brand-accent hover:text-white"
-                              title="Download document / image"
-                            >
-                              <Download size={12} />
-                              <span>Download</span>
-                            </a>
-                          </div>
-                        ))}
+            return (
+              <Card
+                key={a.id}
+                className="p-4 sm:p-5 hover:border-brand/40 transition-colors group relative"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-brand/10 text-brand flex items-center justify-center shrink-0">
+                      <Bell size={18} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <h3 className="font-semibold text-ink text-sm sm:text-base leading-snug">
+                          {a.title}
+                        </h3>
+                        <Badge variant="brand" size="sm">
+                          {targetLabel}
+                        </Badge>
                       </div>
-                    )}
 
-                    <div className="flex items-center gap-3 mt-3">
-                      <span className="text-brand-muted text-xs flex items-center gap-1">
-                        <Clock size={11} />
-                        {new Date(a.created_at).toLocaleString('en-IN')}
-                      </span>
-                      {a.sent_by_user?.name && (
-                        <span className="text-brand-muted text-xs">
-                          by {a.sent_by_user.name}
-                        </span>
+                      <p className="text-xs sm:text-sm text-ink/80 whitespace-pre-line leading-relaxed">
+                        {a.content}
+                      </p>
+
+                      {/* Attachments Preview Row */}
+                      {a.attachments && a.attachments.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {a.attachments.map((att, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2.5 px-3 py-2 bg-bg border border-line rounded-lg max-w-sm hover:border-brand/40 transition-colors shadow-2xs"
+                            >
+                              {att.file_type === 'IMAGE' ? (
+                                <ImageIcon size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                              ) : (
+                                <FileText size={16} className="text-brand shrink-0" />
+                              )}
+                              <span className="text-xs font-medium text-ink truncate flex-1" title={att.file_name}>
+                                {att.file_name}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  openAttachment(att.file_url)
+                                }}
+                                className="!py-1 !px-2 text-[11px] gap-1 text-brand"
+                                title="Download attachment"
+                              >
+                                <Download size={12} />
+                                <span>Download</span>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       )}
+
+                      <div className="flex items-center gap-3 mt-3.5 pt-2.5 border-t border-line/60">
+                        <span className="text-muted text-xs flex items-center gap-1 font-mono">
+                          <Clock size={12} />
+                          {new Date(a.created_at).toLocaleString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                        {a.sent_by_user?.name && (
+                          <span className="text-muted text-xs font-medium">
+                            • Posted by {a.sent_by_user.name}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteAnn(a.id)}
+                    className="opacity-70 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 p-1.5 shrink-0"
+                    title="Delete notice"
+                  >
+                    <Trash2 size={15} />
+                  </Button>
                 </div>
-                <button
-                  onClick={() => deleteAnn(a.id)}
-                  className="btn btn-danger btn-sm opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </div>
-          ))}
+              </Card>
+            )
+          })}
         </div>
       )}
 
+      {/* Broadcast Announcement Modal */}
       {showForm && (
         <NewAnnouncementModal
           divisions={divisions}
@@ -226,7 +266,7 @@ function NewAnnouncementModal({ divisions, courses, onClose, onSuccess }) {
       return toast.error('Title and content are required')
     }
     if (needsTarget && !form.target_id) {
-      return toast.error('Please select a specific target')
+      return toast.error('Please select a specific target cohort')
     }
     setSaving(true)
     try {
@@ -235,165 +275,168 @@ function NewAnnouncementModal({ divisions, courses, onClose, onSuccess }) {
         target_id: needsTarget ? form.target_id : null,
         attachment: attachment || null,
       })
-      toast.success('Announcement sent!')
+      toast.success('Announcement broadcast successfully!')
       onSuccess()
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed to send')
+      toast.error(err?.response?.data?.message || 'Failed to send announcement')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="card w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
-        <button onClick={onClose} className="absolute top-4 right-4 btn-icon btn-ghost">
-          <X size={16} />
-        </button>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Create Institutional Announcement"
+      description="Send instant circulars and notices to faculty and student dashboards"
+      maxWidth="max-w-lg"
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Notice Title *</label>
+          <input
+            id="ann-title"
+            type="text"
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+            placeholder="e.g. Mid-Term Examination Schedule or Holiday Circular"
+            value={form.title}
+            onChange={e => set('title', e.target.value)}
+            required
+            maxLength={200}
+          />
+        </div>
 
-        <h3 className="text-white font-bold text-lg mb-5 flex items-center gap-2">
-          <Megaphone size={18} className="text-brand-accent" />
-          New Announcement
-        </h3>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div className="form-group">
-            <label className="form-label">Title *</label>
-            <input
-              id="ann-title"
-              type="text"
-              className="form-input"
-              placeholder="Announcement title"
-              value={form.title}
-              onChange={e => set('title', e.target.value)}
-              required
-              maxLength={200}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Target Audience *</label>
-            <div className="grid grid-cols-1 gap-2">
-              {TARGET_TYPES.map(t => (
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-ink">Target Audience *</label>
+          <div className="grid grid-cols-1 gap-1.5">
+            {TARGET_TYPES.map(t => {
+              const Icon = t.icon
+              const isSelected = form.target_type === t.value
+              return (
                 <label key={t.value} className="cursor-pointer">
                   <input
                     type="radio"
                     name="target_type"
                     value={t.value}
-                    checked={form.target_type === t.value}
+                    checked={isSelected}
                     onChange={() => set('target_type', t.value)}
                     className="sr-only"
                   />
-                  <div className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-                    form.target_type === t.value
-                      ? 'border-brand-accent bg-brand-accent/10'
-                      : 'border-brand-border hover:border-white/30'
+                  <div className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
+                    isSelected
+                      ? 'border-brand bg-brand/10 text-ink shadow-2xs'
+                      : 'border-line bg-surface hover:bg-bg/60 text-muted'
                   }`}>
-                    <span className="text-lg">{t.icon}</span>
-                    <span className={`text-sm font-medium ${form.target_type === t.value ? 'text-white' : 'text-brand-text'}`}>
+                    <div className={`p-1.5 rounded-md ${isSelected ? 'bg-brand text-white' : 'bg-bg text-muted'}`}>
+                      <Icon size={14} />
+                    </div>
+                    <span className={`text-xs font-medium flex-1 ${isSelected ? 'text-ink font-semibold' : 'text-muted'}`}>
                       {t.label}
                     </span>
-                    {form.target_type === t.value && (
-                      <div className="ml-auto w-4 h-4 rounded-full bg-brand-accent flex items-center justify-center">
-                        <div className="w-2 h-2 rounded-full bg-white" />
-                      </div>
+                    {isSelected && (
+                      <div className="w-2 h-2 rounded-full bg-brand" />
                     )}
                   </div>
                 </label>
-              ))}
-            </div>
+              )
+            })}
           </div>
+        </div>
 
-          {needsTarget && (
-            <div className="form-group">
-              <label className="form-label">
-                Select {form.target_type === 'DIVISION' ? 'Division' : 'Course'} *
-              </label>
-              <select
-                id="ann-target-id"
-                className="form-input"
-                value={form.target_id}
-                onChange={e => set('target_id', e.target.value)}
-                required
-              >
-                <option value="">-- Select --</option>
-                {(form.target_type === 'DIVISION' ? divisions : courses).map(item => (
-                  <option key={item.id} value={item.id}>{item.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div className="form-group">
-            <label className="form-label">Message *</label>
-            <textarea
-              id="ann-content"
-              className="form-input"
-              rows={4}
-              placeholder="Type your announcement message here..."
-              value={form.content}
-              onChange={e => set('content', e.target.value)}
-              required
-            />
-          </div>
-
-          {/* Attachment Selector */}
-          <div className="form-group">
-            <label className="form-label flex items-center gap-1.5">
-              <Paperclip size={14} className="text-brand-accent" /> Attach PDF / Image (Optional, Max 8MB)
+        {needsTarget && (
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">
+              Select {form.target_type === 'DIVISION' ? 'Class Division' : 'Degree Course'} *
             </label>
-            {attachment ? (
-              <div className="flex items-center justify-between p-3 bg-white/5 border border-brand-accent/40 rounded-xl">
-                <div className="flex items-center gap-2 min-w-0">
-                  {attachment.type === 'IMAGE' ? (
-                    <ImageIcon size={18} className="text-emerald-400 flex-shrink-0" />
-                  ) : (
-                    <FileText size={18} className="text-blue-400 flex-shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-white text-xs font-medium truncate">{attachment.name}</p>
-                    <p className="text-brand-muted text-[10px]">{(attachment.size / 1024).toFixed(0)} KB</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAttachment(null)}
-                  className="btn btn-ghost btn-sm text-red-400 hover:text-red-300"
-                >
-                  <X size={14} /> Remove
-                </button>
-              </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-white/10 hover:border-brand-accent/50 rounded-xl cursor-pointer transition-colors bg-white/[0.02]">
-                <Paperclip size={20} className="text-brand-muted mb-1" />
-                <span className="text-brand-text text-xs font-medium">Click to select PDF notes, circular, or image</span>
-                <span className="text-brand-muted text-[10px] mt-0.5">Supports PDF, PNG, JPG, WebP (up to 8MB)</span>
-                <input
-                  type="file"
-                  accept=".pdf,image/*"
-                  onChange={handleFileChange}
-                  className="sr-only"
-                />
-              </label>
-            )}
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn btn-ghost flex-1">
-              Cancel
-            </button>
-            <button
-              id="send-announcement-btn"
-              type="submit"
-              disabled={saving}
-              className="btn btn-primary flex-1 flex items-center justify-center gap-2"
+            <select
+              id="ann-target-id"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.target_id}
+              onChange={e => set('target_id', e.target.value)}
+              required
             >
-              <Send size={15} />
-              {saving ? 'Sending...' : 'Send Announcement'}
-            </button>
+              <option value="">-- Choose Target --</option>
+              {(form.target_type === 'DIVISION' ? divisions : courses).map(item => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Notice Content / Instructions *</label>
+          <textarea
+            id="ann-content"
+            className="w-full text-xs p-3 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none resize-none"
+            rows={4}
+            placeholder="Type your circular details, timings, or academic instructions here..."
+            value={form.content}
+            onChange={e => set('content', e.target.value)}
+            required
+          />
+        </div>
+
+        {/* Attachment Selector */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-ink flex items-center gap-1.5">
+            <Paperclip size={13} className="text-brand" /> Attach PDF / Circular Image (Optional, Max 8MB)
+          </label>
+          {attachment ? (
+            <div className="flex items-center justify-between p-3 bg-bg border border-brand/40 rounded-lg">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {attachment.type === 'IMAGE' ? (
+                  <ImageIcon size={18} className="text-emerald-600 shrink-0" />
+                ) : (
+                  <FileText size={18} className="text-brand shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-ink truncate">{attachment.name}</p>
+                  <p className="text-[10px] text-muted font-mono">{(attachment.size / 1024).toFixed(0)} KB</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setAttachment(null)}
+                className="text-red-600 hover:bg-red-50 text-xs gap-1"
+              >
+                <X size={13} /> Remove
+              </Button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center p-4 border border-dashed border-line hover:border-brand rounded-lg cursor-pointer transition-colors bg-bg/50">
+              <Paperclip size={18} className="text-muted mb-1" />
+              <span className="text-ink text-xs font-medium">Click to select PDF notes, circular, or image</span>
+              <span className="text-muted text-[10px] mt-0.5">Supports PDF, PNG, JPG, WebP (up to 8MB)</span>
+              <input
+                type="file"
+                accept=".pdf,image/*"
+                onChange={handleFileChange}
+                className="sr-only"
+              />
+            </label>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            id="send-announcement-btn"
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={saving}
+            className="gap-1.5"
+          >
+            <Send size={14} />
+            {saving ? 'Broadcasting...' : 'Publish Notice'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
