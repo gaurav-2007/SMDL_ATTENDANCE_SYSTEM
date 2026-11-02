@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Eye, EyeOff, ShieldCheck, CheckCircle2, AlertCircle, ArrowLeft, KeyRound } from 'lucide-react'
+import { Eye, EyeOff, ShieldCheck, CheckCircle2, AlertCircle, ArrowLeft, KeyRound, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
+import { Card, Button, Input } from '../../components/ui'
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams()
@@ -106,212 +107,188 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-dark bg-dot-pattern flex items-center justify-center p-4 py-8 relative overflow-hidden">
-      {/* Background glow effects */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -right-32 w-96 h-96 bg-primary-700/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-brand-accent/15 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-md animate-slide-up">
+    <div className="min-h-screen bg-bg text-ink flex items-center justify-center p-4 py-8 relative antialiased">
+      <div className="w-full max-w-md animate-fade-in space-y-6">
         {/* Header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-brand shadow-xl shadow-primary-900/50 mb-3 transition-transform hover:scale-105">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 text-brand shadow-xs mx-auto">
             {success ? (
-              <CheckCircle2 size={32} className="text-white" />
+              <CheckCircle2 className="w-6 h-6 text-present" />
             ) : (
-              <KeyRound size={32} className="text-white" />
+              <KeyRound className="w-6 h-6 text-brand" />
             )}
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            {success ? 'Password Updated' : 'Reset Your Password'}
-          </h1>
-          <p className="text-brand-muted mt-1 text-sm font-medium">
-            SES&apos;s S. M. Dadasaheb Limaye College, Kalamboli
-          </p>
+          <div>
+            <h1 className="text-2xl font-bold font-display text-ink tracking-tight">
+              {success ? 'Password Updated' : 'Reset Your Password'}
+            </h1>
+            <p className="text-xs text-muted mt-0.5">
+              SES&apos;s S. M. Dadasaheb Limaye College, Kalamboli
+            </p>
+          </div>
         </div>
 
-        <div className="card shadow-2xl border-brand-border/80 p-6 sm:p-8">
+        <Card className="p-6 sm:p-7 shadow-sm">
           {/* Loading verification state */}
           {verifyingToken ? (
-            <div className="py-12 text-center space-y-4">
-              <div className="w-10 h-10 border-4 border-white/20 border-t-brand-accent rounded-full animate-spin mx-auto" />
-              <p className="text-xs text-brand-muted animate-pulse font-medium">
+            <div className="py-10 text-center space-y-3">
+              <Loader2 className="w-8 h-8 text-brand animate-spin mx-auto" />
+              <p className="text-xs text-muted font-medium">
                 Validating security link...
               </p>
             </div>
           ) : !tokenValid ? (
-            /* Invalid or Expired Link state (Section 8) */
-            <div className="text-center space-y-4 py-3">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-rose-500/15 border border-rose-500/30 text-rose-400 mb-1">
-                <AlertCircle size={28} />
+            /* Invalid or Expired Link state */
+            <div className="text-center space-y-4 py-2">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-absent/15 text-absent border border-absent/30 mx-auto">
+                <AlertCircle className="w-6 h-6" />
               </div>
 
-              <h2 className="text-lg font-bold text-white">Invalid or Expired Link</h2>
-              
-              <p className="text-xs text-brand-muted leading-relaxed">
+              <h2 className="text-base font-bold font-display text-ink">Invalid or Expired Link</h2>
+
+              <p className="text-xs text-muted leading-relaxed">
                 {tokenErrorMessage || 'This password reset link is invalid or has expired.'}
               </p>
 
-              <div className="pt-3 flex flex-col gap-2.5">
-                <Link
-                  to="/forgot-password"
-                  id="request-new-reset-link-btn"
-                  className="btn-primary w-full text-xs font-semibold py-2.5"
-                >
-                  Request a New Reset Link
+              <div className="pt-2 flex flex-col gap-2">
+                <Link to="/forgot-password">
+                  <Button variant="primary" size="md" className="w-full">
+                    Request a New Reset Link
+                  </Button>
                 </Link>
 
-                <Link
-                  to="/login"
-                  className="btn-secondary w-full text-xs font-semibold py-2.5 flex items-center justify-center gap-1.5"
-                >
-                  <ArrowLeft size={14} /> Back to Sign In
+                <Link to="/login">
+                  <Button variant="outline" size="md" className="w-full">
+                    <ArrowLeft className="w-4 h-4 mr-1.5" />
+                    <span>Back to Sign In</span>
+                  </Button>
                 </Link>
               </div>
             </div>
           ) : success ? (
-            /* Successful password update state (Section 10) */
-            <div className="text-center space-y-4 py-3 animate-slide-up">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 mb-1">
-                <CheckCircle2 size={30} />
+            /* Successful password update state */
+            <div className="text-center space-y-4 py-2 animate-fade-in">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-present/15 text-present border border-present/30 mx-auto">
+                <CheckCircle2 className="w-6 h-6" />
               </div>
 
-              <h2 className="text-xl font-bold text-white">Password Updated Successfully</h2>
+              <h2 className="text-lg font-bold font-display text-ink">Password Changed Successfully</h2>
 
-              <p className="text-xs text-brand-muted leading-relaxed">
-                Your password has been changed successfully. You can now log in with your new password.
+              <p className="text-xs text-muted leading-relaxed">
+                Your password credentials have been updated securely. You can now log into your college portal.
               </p>
 
-              <div className="pt-3">
-                <button
-                  type="button"
+              <div className="pt-2">
+                <Button
+                  variant="primary"
+                  size="md"
                   id="go-to-login-btn"
                   onClick={() => navigate('/login', { replace: true })}
-                  className="btn-primary w-full btn-lg font-bold shadow-lg shadow-primary-900/40"
+                  className="w-full font-semibold shadow-xs"
                 >
-                  Go to Login
-                </button>
+                  Proceed to Login
+                </Button>
               </div>
             </div>
           ) : (
-            /* Password Reset Input Form (Section 6 & 7) */
+            /* Password Reset Input Form */
             <form onSubmit={handleSubmit} noValidate className="space-y-4">
-              <p className="text-xs text-brand-muted leading-relaxed">
-                Please enter a new password that is at least 8 characters long.
+              <p className="text-xs text-muted leading-relaxed">
+                Please enter a new secure password (at least 8 characters).
               </p>
 
               {errors.form && (
-                <div className="bg-rose-500/10 border border-rose-500/30 rounded-xl p-3 text-xs text-rose-300 flex items-center gap-2">
-                  <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-lg p-2.5 text-xs text-absent flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{errors.form}</span>
                 </div>
               )}
 
               <div>
-                <label htmlFor="new-password" className="label">
-                  New Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="new-password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    placeholder="Min 8 characters"
-                    value={password}
-                    onChange={e => {
-                      setPassword(e.target.value)
-                      if (errors.password) setErrors(p => ({ ...p, password: '' }))
-                    }}
-                    className={`input pr-11 ${errors.password ? 'input-error' : ''}`}
-                    disabled={loading}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(s => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                {errors.password && (
-                  <p className="text-brand-danger text-xs mt-1.5 flex items-center gap-1 font-medium">
-                    <AlertCircle size={13} /> {errors.password}
-                  </p>
-                )}
+                <Input
+                  id="new-password"
+                  label="New Password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="Minimum 8 characters"
+                  value={password}
+                  onChange={e => {
+                    setPassword(e.target.value)
+                    if (errors.password) setErrors(p => ({ ...p, password: '' }))
+                  }}
+                  error={errors.password}
+                  disabled={loading}
+                  autoFocus
+                  required
+                  rightElement={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(s => !s)}
+                      className="text-muted hover:text-ink p-1"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
               </div>
 
               <div>
-                <label htmlFor="confirm-new-password" className="label">
-                  Confirm New Password
-                </label>
-                <div className="relative">
-                  <input
-                    id="confirm-new-password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    placeholder="Repeat new password"
-                    value={confirmPassword}
-                    onChange={e => {
-                      setConfirmPassword(e.target.value)
-                      if (errors.confirm_password) setErrors(p => ({ ...p, confirm_password: '' }))
-                    }}
-                    className={`input pr-11 ${errors.confirm_password ? 'input-error' : ''}`}
-                    disabled={loading}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(s => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                {errors.confirm_password && (
-                  <p className="text-brand-danger text-xs mt-1.5 flex items-center gap-1 font-medium">
-                    <AlertCircle size={13} /> {errors.confirm_password}
-                  </p>
-                )}
+                <Input
+                  id="confirm-new-password"
+                  label="Confirm New Password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="Repeat new password"
+                  value={confirmPassword}
+                  onChange={e => {
+                    setConfirmPassword(e.target.value)
+                    if (errors.confirm_password) setErrors(p => ({ ...p, confirm_password: '' }))
+                  }}
+                  error={errors.confirm_password}
+                  disabled={loading}
+                  required
+                  rightElement={
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(s => !s)}
+                      className="text-muted hover:text-ink p-1"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
               </div>
 
-              <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-2.5 text-[11px] text-sky-300 flex items-center gap-2">
-                <ShieldCheck size={16} className="shrink-0 text-sky-400" />
-                <span>Password must be minimum 8 characters with letters and numbers.</span>
+              <div className="bg-bg border border-line rounded-lg p-2.5 text-[11px] text-muted flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-brand shrink-0" />
+                <span>Password must be minimum 8 characters with letters &amp; numbers.</span>
               </div>
 
-              <button
+              <Button
                 type="submit"
                 id="update-password-submit-btn"
+                variant="primary"
+                size="md"
+                loading={loading}
                 disabled={loading}
-                className="btn-primary w-full btn-lg font-bold shadow-lg shadow-primary-900/40 mt-2"
+                className="w-full font-semibold shadow-xs"
               >
-                {loading ? (
-                  <>
-                    <div className="spinner w-4 h-4 border-2" />
-                    <span>Updating password...</span>
-                  </>
-                ) : (
-                  <>
-                    <KeyRound size={18} />
-                    <span>Update Password</span>
-                  </>
-                )}
-              </button>
+                <KeyRound className="w-4 h-4 mr-1.5" />
+                <span>Update Password</span>
+              </Button>
 
-              <div className="divider mt-5" />
-
-              <div className="text-center">
+              <div className="border-t border-line pt-3 text-center">
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1.5 text-xs text-brand-accent hover:underline font-semibold"
+                  className="inline-flex items-center gap-1.5 text-xs text-brand hover:underline font-semibold"
                 >
-                  <ArrowLeft size={14} /> Back to Sign In
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Sign In</span>
                 </Link>
               </div>
             </form>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )

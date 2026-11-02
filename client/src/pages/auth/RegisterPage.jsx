@@ -19,6 +19,7 @@ import {
 import toast from 'react-hot-toast'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../lib/api'
+import { Card, Badge, Button, Input, Select, Tabs } from '../../components/ui'
 
 const DEFAULT_COURSES = [
   { id: '80acc4c6-829f-40a4-ab0b-6cd44032fffc', name: 'B.Sc. Computer Science', code: 'BSC-CS', department: 'Computer Science' },
@@ -43,106 +44,79 @@ const INITIAL_TEACHER = {
   employee_id: '', department: '', designation: '', phone: '',
 }
 
-function FieldInput({ id, label, name, type = 'text', placeholder, value, onChange, error, optional, disabled }) {
-  return (
-    <div>
-      <label htmlFor={id} className="label">
-        {label} {optional && <span className="text-brand-muted text-xs">(optional)</span>}
-      </label>
-      <input
-        id={id}
-        name={name}
-        type={type}
-        autoComplete={name}
-        placeholder={placeholder}
-        value={value}
-        onChange={onChange}
-        disabled={disabled}
-        className={`input ${error ? 'input-error' : ''} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-      />
-      {error && <p className="text-brand-danger text-xs mt-1">{error}</p>}
-    </div>
-  )
-}
-
 export default function RegisterPage() {
-  const { register, sendOtp, verifyOtp } = useAuth()
+  const { register, sendOtp } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
   const [role, setRole] = useState(location.state?.role || 'student')
   const [courses, setCourses] = useState(DEFAULT_COURSES)
-  const [divisions, setDivisions] = useState([])
-  const [loadingAcademic, setLoadingAcademic] = useState(false)
+  const [divisionsByCourse, setDivisionsByCourse] = useState({})
+  const [loadingAcademic, setLoadingAcademic] = useState(true)
 
-  // Multi-step flow: 'form' -> 'otp'
+  const [form, setForm] = useState(role === 'student' ? INITIAL_STUDENT : INITIAL_TEACHER)
+  const [show, setShow] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState({})
+
+  // Two-step flow: 'form' -> 'otp'
   const [step, setStep] = useState('form')
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', ''])
   const [otpLoading, setOtpLoading] = useState(false)
   const [otpError, setOtpError] = useState('')
   const [resendTimer, setResendTimer] = useState(0)
-  const [verifiedToken, setVerifiedToken] = useState(null)
-
   const otpInputsRef = useRef([])
 
-  const [form, setForm] = useState(() => {
-    const initBranch = location.state?.branch || location.state?.course_id || DEFAULT_COURSES[0].id
-    const matched = DEFAULT_COURSES.find(c => c.id === initBranch || c.name === initBranch || c.code === initBranch)
-    return {
-      ...INITIAL_STUDENT,
-      branch: matched?.name || DEFAULT_COURSES[0].name,
-      course_id: matched?.id || DEFAULT_COURSES[0].id,
-    }
-  })
-
-  const [show, setShow] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [errors, setErrors] = useState({})
-
-  // Fetch academic courses and divisions
+  // Load courses and divisions
   useEffect(() => {
-    let isMounted = true
-    async function fetchAcademic() {
-      setLoadingAcademic(true)
+    let mounted = true
+    async function loadAcademic() {
       try {
+        setLoadingAcademic(true)
         const [cRes, dRes] = await Promise.allSettled([
           api.get('/academic/courses'),
           api.get('/academic/divisions'),
         ])
-        if (!isMounted) return
 
-        if (cRes.status === 'fulfilled' && cRes.value.data?.data?.courses?.length > 0) {
-          const fetchedCourses = cRes.value.data.data.courses
-          setCourses(fetchedCourses)
+        if (!mounted) return
 
-          const passed = location.state?.course_id || location.state?.branch
-          const found = passed
-            ? fetchedCourses.find(c => c.id === passed || c.name === passed || c.code === passed)
-            : fetchedCourses[0]
-
-          if (found) {
-            setForm(prev => ({
-              ...prev,
-              course_id: found.id,
-              branch: found.name,
-            }))
-          }
+        let loadedCourses = DEFAULT_COURSES
+        if (cRes.status === 'fulfilled' && cRes.value?.data?.data?.courses?.length > 0) {
+          loadedCourses = cRes.value.data.data.courses
+          setCourses(loadedCourses)
         }
 
-        if (dRes.status === 'fulfilled' && dRes.value.data?.data?.divisions?.length > 0) {
-          setDivisions(dRes.value.data.data.divisions)
+        const divMap = {}
+        if (dRes.status === 'fulfilled' && dRes.value?.data?.data?.divisions) {
+          dRes.value.data.data.divisions.forEach(d => {
+            if (!divMap[d.course_id]) divMap[d.course_id] = []
+            divMap[d.course_id].push(d)
+          })
+          setDivisionsByCourse(divMap)
+        }
+
+        if (role === 'student' && loadedCourses.length > 0) {
+          const defaultC = loadedCourses[0]
+          const matchedDivs = divMap[defaultC.id] || []
+          setForm(f => ({
+            ...f,
+            course_id: f.course_id || defaultC.id,
+            branch: f.branch || defaultC.department || defaultC.name,
+            division_id: f.division_id || (matchedDivs[0]?.id || ''),
+          }))
         }
       } catch (err) {
-        console.warn('Academic fetch error:', err)
+        console.error('Failed to load academic data:', err)
       } finally {
-        if (isMounted) setLoadingAcademic(false)
+        if (mounted) setLoadingAcademic(false)
       }
     }
-    fetchAcademic()
-    return () => { isMounted = false }
-  }, [location.state])
 
-  // Resend OTP countdown timer
+    loadAcademic()
+    return () => { mounted = false }
+  }, [role])
+
+  // Timer countdown for OTP resend
   useEffect(() => {
     let interval = null
     if (resendTimer > 0) {
@@ -155,175 +129,161 @@ export default function RegisterPage() {
     }
   }, [resendTimer])
 
-  function switchRole(r) {
-    if (step === 'otp') return // don't switch role midway through OTP verification
-    setRole(r)
-    if (r === 'student') {
-      const defaultCourse = courses[0] || DEFAULT_COURSES[0]
+  function switchRole(newRole) {
+    if (newRole === role) return
+    setRole(newRole)
+    setErrors({})
+    setStep('form')
+    setOtpDigits(['', '', '', '', '', ''])
+    setOtpError('')
+
+    if (newRole === 'student') {
+      const defaultC = courses[0] || DEFAULT_COURSES[0]
+      const matchedDivs = divisionsByCourse[defaultC.id] || []
       setForm({
         ...INITIAL_STUDENT,
-        course_id: defaultCourse.id,
-        branch: defaultCourse.name,
+        course_id: defaultC.id,
+        branch: defaultC.department || defaultC.name,
+        division_id: matchedDivs[0]?.id || '',
       })
     } else {
       setForm(INITIAL_TEACHER)
     }
-    setErrors({})
-    setOtpError('')
   }
 
   function change(e) {
     const { name, value } = e.target
-    setForm(p => ({ ...p, [name]: value }))
-    if (errors[name]) setErrors(p => ({ ...p, [name]: undefined }))
+    setForm(f => ({ ...f, [name]: value }))
+    if (errors[name]) setErrors(errs => ({ ...errs, [name]: '' }))
   }
 
   function handleBranchChange(e) {
     const courseId = e.target.value
-    const found = courses.find(c => c.id === courseId) || DEFAULT_COURSES.find(c => c.id === courseId)
-    setForm(p => ({
-      ...p,
+    const found = courses.find(c => c.id === courseId)
+    const matchedDivs = divisionsByCourse[courseId] || []
+    setForm(f => ({
+      ...f,
       course_id: courseId,
-      branch: found?.name || courseId,
-      division_id: '',
+      branch: found?.department || found?.name || '',
+      division_id: matchedDivs[0]?.id || '',
     }))
-    if (errors.branch) setErrors(p => ({ ...p, branch: undefined }))
+    if (errors.branch) setErrors(errs => ({ ...errs, branch: '' }))
   }
 
-  // Filter divisions that belong to current selected course
-  const currentCourseDivisions = divisions.filter(d => d.course_id === form.course_id)
-
-  function validate() {
-    const e = {}
-    if (!form.full_name?.trim()) e.full_name = 'Full name required'
-    if (!form.email?.trim()) e.email = 'Email required'
-    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Valid email address required'
-    if (!form.password) e.password = 'Password required'
-    else if (form.password.length < 8) e.password = 'Min 8 characters'
-    if (form.password !== form.confirm_password) e.confirm_password = 'Passwords do not match'
-    if (!form.phone?.trim()) e.phone = 'Phone number required'
-
-    if (role === 'student') {
-      if (!form.branch && !form.course_id) e.branch = 'Branch (department) required'
-      if (!form.roll_number?.trim()) e.roll_number = 'Roll number required'
-      if (!form.class?.trim()) e.class = 'Class / Year required'
-      if (!form.division?.trim()) e.division = 'Division required'
-    } else {
-      if (!form.employee_id?.trim()) e.employee_id = 'Employee ID required'
-      if (!form.department) e.department = 'Department required'
+  function validateForm() {
+    const errs = {}
+    if (!form.full_name.trim()) errs.full_name = 'Full name is required'
+    if (!form.email.trim()) {
+      errs.email = 'Email is required'
+    } else if (!/\S+@\S+\.\S+/.test(form.email)) {
+      errs.email = 'Invalid email address format'
     }
 
-    setErrors(e)
-    return Object.keys(e).length === 0
+    if (!form.password) {
+      errs.password = 'Password is required'
+    } else if (form.password.length < 8) {
+      errs.password = 'Password must be at least 8 characters'
+    }
+
+    if (form.password !== form.confirm_password) {
+      errs.confirm_password = 'Passwords do not match'
+    }
+
+    if (role === 'student') {
+      if (!form.course_id && !form.branch) errs.branch = 'Please select a course/department'
+      if (!form.roll_number?.trim()) {
+        errs.roll_number = 'Roll number is required'
+      } else if (!/^[A-Za-z0-9\-]+$/.test(form.roll_number.trim())) {
+        errs.roll_number = 'Alphanumeric and hyphen only (e.g. CS-2024-001)'
+      }
+      if (!form.class) errs.class = 'Class year is required'
+      if (!form.division) errs.division = 'Division is required'
+    } else if (role === 'teacher') {
+      if (!form.employee_id?.trim()) errs.employee_id = 'Employee ID is required'
+      if (!form.department?.trim()) errs.department = 'Department is required'
+    }
+
+    setErrors(errs)
+    return Object.keys(errs).length === 0
   }
 
-  /**
-   * Step 1: Validate form details and send OTP to user's email
-   */
   async function handleProceedToOtp(e) {
     e.preventDefault()
-    if (!validate()) return
+    if (!validateForm()) return
+
     setLoading(true)
     setOtpError('')
 
     try {
-      const email = form.email.trim().toLowerCase()
-      await sendOtp(email, role, {
-        roll_number: form.roll_number?.trim(),
-        employee_id: form.employee_id?.trim(),
+      await sendOtp({
+        email: form.email.trim().toLowerCase(),
+        role,
+        purpose: 'REGISTER',
       })
 
-      setResendTimer(45)
-      setOtpDigits(['', '', '', '', '', ''])
       setStep('otp')
-      toast.success(`Verification code sent to ${email}. Check your Gmail inbox!`)
-      
-      // Auto-focus first OTP input on next tick
+      setResendTimer(60)
+      setOtpDigits(['', '', '', '', '', ''])
+      toast.success(`Verification code sent to ${form.email}! Please check your inbox.`)
+
       setTimeout(() => {
-        otpInputsRef.current[0]?.focus()
+        if (otpInputsRef.current[0]) otpInputsRef.current[0].focus()
       }, 100)
     } catch (err) {
-      console.error('Send OTP error:', err)
-      const msg = err.response?.data?.message || err.message || 'Failed to send OTP verification email.'
+      const msg = err.response?.data?.message || err.message || 'Failed to send OTP code. Please try again.'
       toast.error(msg)
-      if (msg.toLowerCase().includes('email')) setErrors(p => ({ ...p, email: msg }))
-      if (msg.toLowerCase().includes('roll')) setErrors(p => ({ ...p, roll_number: msg }))
-      if (msg.toLowerCase().includes('employee')) setErrors(p => ({ ...p, employee_id: msg }))
+      setErrors({ email: msg })
     } finally {
       setLoading(false)
     }
   }
 
-  /**
-   * Resend OTP code with rate limit handling
-   */
-  async function handleResendOtp() {
-    if (resendTimer > 0 || otpLoading) return
-    setOtpLoading(true)
-    setOtpError('')
-
-    try {
-      const email = form.email.trim().toLowerCase()
-      await sendOtp(email, role, {
-        roll_number: form.roll_number?.trim(),
-        employee_id: form.employee_id?.trim(),
-      })
-
-      setResendTimer(45)
-      toast.success('A fresh OTP has been sent to your email.')
-    } catch (err) {
-      const msg = err.response?.data?.message || err.message || 'Failed to resend code.'
-      toast.error(msg)
-      setOtpError(msg)
-    } finally {
-      setOtpLoading(false)
-    }
-  }
-
-  /**
-   * Handle changes in the 6 individual OTP input boxes
-   */
   function handleOtpChange(index, value) {
-    const clean = value.replace(/\D/g, '')
+    const char = value.replace(/[^0-9]/g, '').slice(-1)
     const newDigits = [...otpDigits]
-
-    // Handle pasting the full code (e.g., "654321")
-    if (clean.length > 1) {
-      const pasted = clean.slice(0, 6).split('')
-      for (let i = 0; i < 6; i++) {
-        newDigits[i] = pasted[i] || ''
-      }
-      setOtpDigits(newDigits)
-      setOtpError('')
-      const nextIdx = Math.min(pasted.length, 5)
-      otpInputsRef.current[nextIdx]?.focus()
-      return
-    }
-
-    newDigits[index] = clean.slice(-1)
+    newDigits[index] = char
     setOtpDigits(newDigits)
-    setOtpError('')
+    if (otpError) setOtpError('')
 
-    // Move to next box if character entered
-    if (clean && index < 5) {
-      otpInputsRef.current[index + 1]?.focus()
+    if (char && index < 5 && otpInputsRef.current[index + 1]) {
+      otpInputsRef.current[index + 1].focus()
     }
   }
 
   function handleOtpKeyDown(index, e) {
     if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      otpInputsRef.current[index - 1]?.focus()
+      otpInputsRef.current[index - 1].focus()
     }
   }
 
-  /**
-   * Step 2: Verify OTP and finalize student/teacher registration
-   */
+  async function handleResendOtp() {
+    if (resendTimer > 0 || otpLoading) return
+    setOtpLoading(true)
+    setOtpError('')
+    try {
+      await sendOtp({
+        email: form.email.trim().toLowerCase(),
+        role,
+        purpose: 'REGISTER',
+      })
+      setResendTimer(60)
+      setOtpDigits(['', '', '', '', '', ''])
+      toast.success('A new verification code has been dispatched to your email.')
+      if (otpInputsRef.current[0]) otpInputsRef.current[0].focus()
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Could not resend OTP. Please wait before retrying.'
+      setOtpError(msg)
+      toast.error(msg)
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
   async function handleVerifyAndRegister(e) {
-    if (e) e.preventDefault()
-    const enteredCode = otpDigits.join('').trim()
+    e.preventDefault()
+    const enteredCode = otpDigits.join('')
     if (enteredCode.length !== 6) {
-      setOtpError('Please enter the complete 6-digit verification code.')
+      setOtpError('Please enter the full 6-digit verification code.')
       return
     }
 
@@ -331,22 +291,19 @@ export default function RegisterPage() {
     setOtpError('')
 
     try {
-      const email = form.email.trim().toLowerCase()
+      const verifyRes = await api.post('/auth/verify-otp', {
+        email: form.email.trim().toLowerCase(),
+        otp: enteredCode,
+        purpose: 'REGISTER',
+      })
 
-      // 1. Verify OTP with server
-      const vRes = await verifyOtp(email, enteredCode)
-      const token = vRes?.data?.otp_token
-      setVerifiedToken(token)
+      const token = verifyRes.data?.data?.token || verifyRes.data?.token
+      if (!token) throw new Error('Verification completed but authorization token was missing')
 
-      // 2. Submit user registration with verified email
       const payload = {
         ...form,
-        name: form.full_name?.trim(),
-        full_name: form.full_name?.trim(),
-        email,
-        phone: form.phone?.trim() || undefined,
-        roll_number: form.roll_number?.trim(),
-        employee_id: form.employee_id?.trim(),
+        email: form.email.trim().toLowerCase(),
+        roll_number: form.roll_number?.trim().toUpperCase(),
         branch: form.branch,
         department: form.branch || form.department,
         designation: form.designation?.trim() || undefined,
@@ -385,70 +342,58 @@ export default function RegisterPage() {
   const selectedCourse = courses.find(c => c.id === form.course_id) || DEFAULT_COURSES.find(c => c.id === form.course_id)
   const rollPrefixPlaceholder = selectedCourse?.code ? `${selectedCourse.code.replace('BSC-', '')}-2026-001` : 'CS-2024-001'
 
-  return (
-    <div className="min-h-screen bg-brand-dark bg-dot-pattern flex items-center justify-center p-4 py-10 relative overflow-hidden">
-      {/* Background glow effects */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -right-32 w-96 h-96 bg-primary-700/20 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-brand-accent/15 rounded-full blur-3xl" />
-      </div>
+  const roleTabs = [
+    { id: 'student', label: 'Student Account' },
+    { id: 'teacher', label: 'Faculty / Teacher' },
+  ]
 
-      <div className="relative w-full max-w-lg">
+  return (
+    <div className="min-h-screen bg-bg text-ink flex items-center justify-center p-4 py-8 relative antialiased">
+      <div className="w-full max-w-lg animate-fade-in space-y-6">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-brand shadow-xl shadow-primary-900/50 mb-4 transition-transform hover:scale-105">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 text-brand shadow-xs mx-auto">
             {step === 'otp' ? (
-              <ShieldCheck size={34} className="text-white animate-bounce-short" />
+              <ShieldCheck className="w-6 h-6" />
             ) : (
-              <GraduationCap size={32} className="text-white" />
+              <GraduationCap className="w-6 h-6" />
             )}
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            {step === 'otp' ? 'Verify Your Email' : 'Create Account'}
-          </h1>
-          <p className="text-brand-muted mt-1 text-sm font-medium">
-            SES&apos;s S. M. Dadasaheb Limaye College &bull; Attendance Portal
-          </p>
+          <div>
+            <h1 className="text-2xl font-bold font-display text-ink tracking-tight">
+              {step === 'otp' ? 'Verify Your Email' : 'Create an Account'}
+            </h1>
+            <p className="text-xs text-muted mt-0.5">
+              SES&apos;s S. M. Dadasaheb Limaye College &bull; Student &amp; Faculty Registration
+            </p>
+          </div>
         </div>
 
         {/* STEP 1: Registration Form */}
         {step === 'form' && (
-          <div className="card p-6 sm:p-8 animate-slide-up shadow-2xl border border-brand-border/80">
-            {/* Role toggle */}
-            <div className="flex gap-2 mb-6 bg-brand-card/90 border border-brand-border rounded-2xl p-1.5 backdrop-blur-sm">
-              {[
-                { key: 'student', label: 'Student', Icon: BookOpen },
-                { key: 'teacher', label: 'Teacher', Icon: UserPlus },
-              ].map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  id={`role-tab-${key}`}
-                  type="button"
-                  onClick={() => switchRole(key)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                    role === key
-                      ? 'bg-gradient-brand text-white shadow-md shadow-primary-900/40'
-                      : 'text-brand-muted hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon size={16} /> {label}
-                </button>
-              ))}
-            </div>
+          <Card className="p-6 sm:p-7 shadow-sm space-y-5">
+            {/* Role Switcher Tabs */}
+            <Tabs
+              tabs={roleTabs}
+              activeTab={role}
+              onChange={switchRole}
+              fullWidth
+            />
 
             <form onSubmit={handleProceedToOtp} className="space-y-4">
-              <FieldInput
+              <Input
                 id="reg-name"
-                label="Full Name"
-                name="full_name"
+                label="Full Legal Name"
                 placeholder={role === 'student' ? 'e.g. Rahul Sharma' : 'e.g. Prof. Girish Kumbhar'}
                 value={form.full_name}
                 onChange={change}
+                name="full_name"
                 error={errors.full_name}
+                required
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FieldInput
+                <Input
                   id="reg-email"
                   label="Email Address"
                   name="email"
@@ -457,8 +402,9 @@ export default function RegisterPage() {
                   value={form.email}
                   onChange={change}
                   error={errors.email}
+                  required
                 />
-                <FieldInput
+                <Input
                   id="reg-phone"
                   label="Phone Number"
                   name="phone"
@@ -474,16 +420,16 @@ export default function RegisterPage() {
               {role === 'student' ? (
                 <>
                   <div>
-                    <label htmlFor="reg-course" className="label flex items-center justify-between">
-                      <span>Course / Department</span>
-                      {loadingAcademic && <span className="text-[10px] text-brand-muted animate-pulse">Loading departments...</span>}
+                    <label htmlFor="reg-course" className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5 flex items-center justify-between">
+                      <span>Course / Academic Branch</span>
+                      {loadingAcademic && <span className="text-[10px] text-muted animate-pulse">Loading curriculum...</span>}
                     </label>
                     <select
                       id="reg-course"
                       name="course_id"
                       value={form.course_id || ''}
                       onChange={handleBranchChange}
-                      className={`input ${errors.branch ? 'input-error' : ''}`}
+                      className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
                     >
                       {courses.map(c => (
                         <option key={c.id} value={c.id}>
@@ -491,67 +437,60 @@ export default function RegisterPage() {
                         </option>
                       ))}
                     </select>
-                    {errors.branch && <p className="text-brand-danger text-xs mt-1">{errors.branch}</p>}
+                    {errors.branch && <p className="text-absent text-xs mt-1">{errors.branch}</p>}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label htmlFor="reg-roll" className="label">Roll Number</label>
-                      <input
-                        id="reg-roll"
-                        name="roll_number"
-                        type="text"
-                        placeholder={rollPrefixPlaceholder}
-                        value={form.roll_number || ''}
-                        onChange={change}
-                        className={`input ${errors.roll_number ? 'input-error' : ''}`}
-                      />
-                      {errors.roll_number && <p className="text-brand-danger text-xs mt-1">{errors.roll_number}</p>}
-                    </div>
+                    <Input
+                      id="reg-roll"
+                      label="Roll Number"
+                      name="roll_number"
+                      placeholder={rollPrefixPlaceholder}
+                      value={form.roll_number || ''}
+                      onChange={change}
+                      error={errors.roll_number}
+                      required
+                    />
 
                     <div>
-                      <label htmlFor="reg-class" className="label">Class / Year</label>
+                      <label htmlFor="reg-class" className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                        Year
+                      </label>
                       <select
                         id="reg-class"
                         name="class"
                         value={form.class || 'FY'}
                         onChange={change}
-                        className={`input ${errors.class ? 'input-error' : ''}`}
+                        className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
                       >
                         <option value="FY">FY (1st Year)</option>
                         <option value="SY">SY (2nd Year)</option>
                         <option value="TY">TY (3rd Year)</option>
                       </select>
-                      {errors.class && <p className="text-brand-danger text-xs mt-1">{errors.class}</p>}
                     </div>
 
                     <div>
-                      <label htmlFor="reg-division" className="label">Division</label>
+                      <label htmlFor="reg-division" className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                        Division
+                      </label>
                       <select
                         id="reg-division"
                         name="division"
                         value={form.division || 'A'}
                         onChange={change}
-                        className={`input ${errors.division ? 'input-error' : ''}`}
+                        className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
                       >
                         <option value="A">Division A</option>
                         <option value="B">Division B</option>
                         <option value="C">Division C</option>
                       </select>
-                      {errors.division && <p className="text-brand-danger text-xs mt-1">{errors.division}</p>}
                     </div>
                   </div>
-
-                  {currentCourseDivisions.length > 0 && (
-                    <div className="text-[11px] text-brand-muted bg-brand-dark/40 px-3 py-1.5 rounded-lg border border-brand-border/40">
-                      Linked Cohort: <span className="text-white font-medium">{form.class}{selectedCourse?.code || ''} - Div {form.division}</span>
-                    </div>
-                  )}
                 </>
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <FieldInput
+                    <Input
                       id="reg-emp-id"
                       label="Employee ID"
                       name="employee_id"
@@ -559,26 +498,29 @@ export default function RegisterPage() {
                       value={form.employee_id || ''}
                       onChange={change}
                       error={errors.employee_id}
+                      required
                     />
                     <div>
-                      <label htmlFor="reg-dept" className="label">Department</label>
+                      <label htmlFor="reg-dept" className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                        Department
+                      </label>
                       <select
                         id="reg-dept"
                         name="department"
                         value={form.department || ''}
                         onChange={change}
-                        className={`input ${errors.department ? 'input-error' : ''}`}
+                        className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
                       >
                         <option value="">Select dept.</option>
                         {TEACHER_DEPARTMENTS.map(d => (
                           <option key={d} value={d}>{d}</option>
                         ))}
                       </select>
-                      {errors.department && <p className="text-brand-danger text-xs mt-1">{errors.department}</p>}
+                      {errors.department && <p className="text-absent text-xs mt-1">{errors.department}</p>}
                     </div>
                   </div>
 
-                  <FieldInput
+                  <Input
                     id="reg-designation"
                     label="Designation"
                     name="designation"
@@ -586,88 +528,70 @@ export default function RegisterPage() {
                     value={form.designation || ''}
                     onChange={change}
                     error={errors.designation}
-                    optional
                   />
                 </div>
               )}
 
               {/* Password */}
-              <div>
-                <label htmlFor="reg-password" className="label">Password</label>
-                <div className="relative">
-                  <input
-                    id="reg-password"
-                    name="password"
-                    type={show ? 'text' : 'password'}
-                    placeholder="Min 8 characters"
-                    autoComplete="new-password"
-                    value={form.password || ''}
-                    onChange={change}
-                    className={`input pr-11 ${errors.password ? 'input-error' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    id="toggle-reg-password"
-                    onClick={() => setShow(s => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white transition-colors"
-                  >
-                    {show ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                {errors.password && <p className="text-brand-danger text-xs mt-1">{errors.password}</p>}
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  id="reg-password"
+                  label="Password"
+                  name="password"
+                  type={show ? 'text' : 'password'}
+                  placeholder="Min 8 characters"
+                  autoComplete="new-password"
+                  value={form.password || ''}
+                  onChange={change}
+                  error={errors.password}
+                  required
+                  rightElement={
+                    <button
+                      type="button"
+                      id="toggle-reg-password"
+                      onClick={() => setShow(s => !s)}
+                      className="text-muted hover:text-ink p-1"
+                    >
+                      {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
 
-              <div>
-                <label htmlFor="reg-confirm" className="label">Confirm Password</label>
-                <input
+                <Input
                   id="reg-confirm"
+                  label="Confirm Password"
                   name="confirm_password"
                   type={show ? 'text' : 'password'}
-                  placeholder="Re-enter password"
+                  placeholder="Repeat password"
                   autoComplete="new-password"
                   value={form.confirm_password || ''}
                   onChange={change}
-                  className={`input ${errors.confirm_password ? 'input-error' : ''}`}
+                  error={errors.confirm_password}
+                  required
                 />
-                {errors.confirm_password && <p className="text-brand-danger text-xs mt-1">{errors.confirm_password}</p>}
               </div>
 
-              {/* Teacher notice */}
-              {role === 'teacher' && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 flex items-start gap-2">
-                  <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
-                  <span>Teacher registrations require <strong>Admin verification &amp; approval</strong> before login access is activated.</span>
-                </div>
-              )}
-
-              {/* Security info badge */}
-              <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-3 text-xs text-sky-300 flex items-center gap-2">
-                <ShieldCheck size={16} className="shrink-0 text-sky-400" />
-                <span>A 6-digit OTP verification code will be sent to your email to verify authenticity.</span>
+              {/* Security info banner */}
+              <div className="bg-bg border border-line rounded-lg p-2.5 text-xs text-muted flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-brand shrink-0" />
+                <span>A 6-digit verification code will be sent to your email to verify authenticity.</span>
               </div>
 
-              <button
+              <Button
                 id="register-submit-btn"
                 type="submit"
+                variant="primary"
+                size="md"
                 disabled={loading || loadingAcademic}
-                className="btn-primary w-full btn-lg mt-2 group"
+                loading={loading}
+                className="w-full font-semibold shadow-xs"
               >
-                {loading ? (
-                  <>
-                    <div className="spinner w-4 h-4 border-2" />
-                    <span>Sending Verification Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <Mail size={18} className="transition-transform group-hover:scale-110" />
-                    <span>Verify Email &amp; Create Account</span>
-                  </>
-                )}
-              </button>
+                <Mail className="w-4 h-4 mr-1.5" />
+                <span>Verify Email &amp; Create Account</span>
+              </Button>
             </form>
 
-            <div className="divider mt-6" />
-            <p className="text-center text-sm text-brand-muted">
+            <div className="border-t border-line pt-3 text-center text-xs text-muted">
               Already have an account?{' '}
               <Link
                 to="/login"
@@ -677,18 +601,17 @@ export default function RegisterPage() {
                   selectedCourseId: form.course_id,
                   branch: form.branch,
                 }}
-                className="text-brand-accent hover:underline font-semibold"
+                className="text-brand font-semibold hover:underline ml-1"
               >
-                Sign in
+                Sign In
               </Link>
-            </p>
-          </div>
+            </div>
+          </Card>
         )}
 
         {/* STEP 2: OTP Verification Card */}
         {step === 'otp' && (
-          <div className="card p-6 sm:p-8 animate-slide-up shadow-2xl border border-brand-border/90 relative">
-            {/* Back button to edit details */}
+          <Card className="p-6 sm:p-7 shadow-sm space-y-5 animate-fade-in">
             <button
               type="button"
               id="back-to-form-btn"
@@ -696,41 +619,41 @@ export default function RegisterPage() {
                 setStep('form')
                 setOtpError('')
               }}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-muted hover:text-white transition-colors mb-4"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-ink transition-colors"
             >
-              <ArrowLeft size={14} /> Back to Edit Details
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Edit Details
             </button>
 
-            {/* Recipient Email Callout */}
-            <div className="bg-brand-dark/70 border border-brand-border rounded-2xl p-4 text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary-600/20 border border-primary-500/30 text-primary-400 mb-2">
-                <Mail size={22} />
+            <div className="bg-bg border border-line rounded-lg p-4 text-center space-y-2">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-brand/10 text-brand">
+                <Mail className="w-5 h-5" />
               </div>
-              <p className="text-xs text-brand-muted">We sent a 6-digit verification code to</p>
-              <div className="flex items-center justify-center gap-2 mt-1">
-                <span className="text-base font-bold text-white tracking-wide">{form.email}</span>
-                <button
-                  type="button"
-                  onClick={() => setStep('form')}
-                  title="Change email"
-                  className="text-brand-accent hover:text-sky-300 p-1"
-                >
-                  <Edit3 size={14} />
-                </button>
+              <div>
+                <p className="text-xs text-muted">We sent a 6-digit verification code to</p>
+                <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                  <span className="text-sm font-semibold font-mono text-ink">{form.email}</span>
+                  <button
+                    type="button"
+                    onClick={() => setStep('form')}
+                    title="Change email"
+                    className="text-brand hover:opacity-80 p-0.5"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <p className="text-[11px] text-brand-muted mt-1.5">
-                Role: <span className="capitalize font-semibold text-sky-400">{role}</span> &bull; Valid for 10 minutes
-              </p>
+              <Badge variant="brand" size="sm">
+                Role: <span className="capitalize ml-1">{role}</span> &bull; Valid for 10 minutes
+              </Badge>
             </div>
 
-            <form onSubmit={handleVerifyAndRegister} className="space-y-6">
-              <div>
-                <label className="label text-center block mb-3 font-semibold text-white">
-                  Enter 6-Digit Verification Code
+            <form onSubmit={handleVerifyAndRegister} className="space-y-5">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted text-center">
+                  Enter 6-Digit Code
                 </label>
 
-                {/* 6 Digit Input Boxes */}
-                <div className="flex justify-center gap-2 sm:gap-3">
+                <div className="flex justify-center gap-2 sm:gap-2.5">
                   {otpDigits.map((digit, index) => (
                     <input
                       key={index}
@@ -744,30 +667,29 @@ export default function RegisterPage() {
                       onChange={e => handleOtpChange(index, e.target.value)}
                       onKeyDown={e => handleOtpKeyDown(index, e)}
                       autoComplete="one-time-code"
-                      className={`w-11 h-13 sm:w-13 sm:h-15 text-center text-xl sm:text-2xl font-bold font-mono rounded-xl bg-brand-dark/80 border text-white transition-all shadow-inner focus:outline-none ${
+                      className={`w-11 h-12 text-center text-xl font-bold font-mono rounded-lg bg-surface border text-ink transition-colors duration-150 focus:outline-none ${
                         otpError
-                          ? 'border-brand-danger focus:ring-2 focus:ring-brand-danger/40'
+                          ? 'border-absent focus:ring-2 focus:ring-absent/20'
                           : digit
-                          ? 'border-primary-500 bg-primary-950/20 text-sky-300 ring-1 ring-primary-500/50'
-                          : 'border-brand-border focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/30'
+                          ? 'border-brand ring-1 ring-brand/30'
+                          : 'border-line focus:border-brand focus:ring-2 focus:ring-brand/20'
                       }`}
                     />
                   ))}
                 </div>
 
                 {otpError && (
-                  <p className="text-brand-danger text-xs text-center mt-2 flex items-center justify-center gap-1">
-                    <AlertCircle size={13} /> {otpError}
+                  <p className="text-xs text-absent text-center flex items-center justify-center gap-1 font-medium mt-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {otpError}
                   </p>
                 )}
               </div>
 
-              {/* Resend Code Section */}
               <div className="text-center text-xs">
                 {resendTimer > 0 ? (
-                  <span className="text-brand-muted">
-                    Didn&apos;t get the code? Resend in{' '}
-                    <span className="text-white font-mono font-semibold">{resendTimer}s</span>
+                  <span className="text-muted">
+                    Didn&apos;t receive code? Resend in{' '}
+                    <span className="font-mono font-semibold text-ink">{resendTimer}s</span>
                   </span>
                 ) : (
                   <button
@@ -775,40 +697,32 @@ export default function RegisterPage() {
                     id="resend-otp-btn"
                     disabled={otpLoading}
                     onClick={handleResendOtp}
-                    className="inline-flex items-center gap-1.5 text-brand-accent hover:underline font-semibold"
+                    className="inline-flex items-center gap-1.5 text-brand hover:underline font-semibold"
                   >
-                    <RotateCw size={13} className={otpLoading ? 'animate-spin' : ''} />
+                    <RotateCw className={`w-3.5 h-3.5 ${otpLoading ? 'animate-spin' : ''}`} />
                     Resend Verification Code
                   </button>
                 )}
               </div>
 
-              {/* Submit Button */}
-              <button
+              <Button
                 id="verify-otp-submit-btn"
                 type="submit"
+                variant="primary"
+                size="md"
+                loading={otpLoading}
                 disabled={otpLoading || otpDigits.join('').length !== 6}
-                className="btn-primary w-full btn-lg font-bold shadow-lg shadow-primary-900/40"
+                className="w-full font-semibold shadow-xs"
               >
-                {otpLoading ? (
-                  <>
-                    <div className="spinner w-4 h-4 border-2" />
-                    <span>Verifying &amp; Creating Account...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={18} />
-                    <span>Verify &amp; Complete Registration</span>
-                  </>
-                )}
-              </button>
+                <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                <span>Verify &amp; Create Account</span>
+              </Button>
             </form>
 
-            <div className="divider mt-6" />
-            <p className="text-center text-xs text-brand-muted">
-              Make sure to check your spam/junk folder if the email doesn&apos;t appear within a minute.
+            <p className="text-center text-[11px] text-muted border-t border-line pt-3">
+              Make sure to check your Spam/Junk folder if the email does not appear in your inbox.
             </p>
-          </div>
+          </Card>
         )}
       </div>
     </div>

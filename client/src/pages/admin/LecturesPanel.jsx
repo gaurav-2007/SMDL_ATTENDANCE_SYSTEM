@@ -1,19 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   BookOpen, Plus, X, Clock, Calendar, Users,
-  Trash2, RefreshCw, ChevronDown, Edit3, CheckCircle
+  Trash2, RefreshCw, ChevronDown, Edit3, CheckCircle,
+  AlertCircle, MapPin, UserCheck, Layers
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
-
-const STATUS_COLORS = {
-  SCHEDULED:   'badge badge-info',
-  UPCOMING:    'badge badge-info',
-  ONGOING:   'badge badge-active',
-  COMPLETED: 'badge badge-muted',
-  CANCELLED:   'badge badge-danger',
-  RESCHEDULED: 'badge badge-warning',
-}
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Input, Modal, StatCard, Skeleton, EmptyState
+} from '../../components/ui'
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
 const SLOTS = ['08:00','09:00','10:00','11:00','11:30','12:00','12:30','13:00','13:30','14:00','15:00','16:00','17:00','18:00']
@@ -40,7 +36,6 @@ function formatDisplayDate(dateStr) {
   }
   return new Date(dateStr).toLocaleDateString('en-IN')
 }
-
 
 export default function LecturesPanel() {
   const [lectures, setLectures]   = useState([])
@@ -86,90 +81,158 @@ export default function LecturesPanel() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
+  const stats = {
+    total: lectures.length,
+    scheduled: lectures.filter(l => l.status === 'SCHEDULED' || l.status === 'UPCOMING').length,
+    ongoing: lectures.filter(l => l.status === 'ONGOING').length,
+    completed: lectures.filter(l => l.status === 'COMPLETED').length,
+  }
+
+  function renderStatusBadge(status) {
+    switch (status) {
+      case 'ONGOING':
+        return <Badge variant="live" pulseDot>Ongoing</Badge>
+      case 'SCHEDULED':
+      case 'UPCOMING':
+        return <Badge variant="brand" dot>Scheduled</Badge>
+      case 'COMPLETED':
+        return <Badge variant="neutral">Completed</Badge>
+      case 'RESCHEDULED':
+        return <Badge variant="grace">Rescheduled</Badge>
+      case 'CANCELLED':
+        return <Badge variant="absent">Cancelled</Badge>
+      default:
+        return <Badge variant="neutral">{status || 'Unknown'}</Badge>
+    }
+  }
+
   return (
-    <div className="animate-fade-in">
-      <div className="page-header">
+    <div className="space-y-6 animate-fade-in pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="page-title">Lecture Scheduling</h2>
-          <p className="page-subtitle">Schedule and manage all lectures</p>
+          <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
+            Lecture Schedule & Operations
+          </h1>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Monitor real-time classrooms, assign faculty proxies, and manage session status
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {liveDateTime && (
-            <div className="glass px-3 py-1.5 rounded-xl border border-white/10 text-xs flex items-center gap-2">
-              <Clock size={14} className="text-brand-accent" />
-              <span className="text-white font-medium">{liveDateTime}</span>
+            <div className="px-3 py-1.5 rounded-lg border border-line bg-surface text-xs font-mono font-medium text-ink flex items-center gap-2 shadow-2xs">
+              <Clock size={13} className="text-brand shrink-0" />
+              <span>{liveDateTime}</span>
             </div>
           )}
-          <button onClick={fetchAll} className="btn btn-ghost btn-sm flex items-center gap-2">
+          <Button onClick={fetchAll} variant="outline" size="sm" className="gap-1.5">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button
+          </Button>
+          <Button
             id="add-lecture-btn"
             onClick={() => setShowForm(true)}
-            className="btn btn-primary flex items-center gap-2"
+            variant="primary"
+            size="sm"
+            className="gap-1.5"
           >
-            <Plus size={16} /> Schedule Lecture
-          </button>
+            <Plus size={15} /> Schedule Lecture
+          </Button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        {[
-          { label: 'Total', value: lectures.length, color: 'text-blue-400',   bg: 'bg-blue-500/10' },
-          { label: 'Scheduled', value: lectures.filter(l=>l.status==='SCHEDULED').length, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-          { label: 'Ongoing',   value: lectures.filter(l=>l.status==='ONGOING').length,   color: 'text-green-400',  bg: 'bg-green-500/10' },
-          { label: 'Completed', value: lectures.filter(l=>l.status==='COMPLETED').length, color: 'text-brand-muted', bg: 'bg-white/5' },
-        ].map(({ label, value, color, bg }) => (
-          <div key={label} className="stat-card">
-            <div className={`stat-icon ${bg} ${color}`}><BookOpen size={18} /></div>
-            <div>
-              <p className={`text-2xl font-bold ${color}`}>{loading ? '—' : value}</p>
-              <p className="text-brand-muted text-xs">{label}</p>
-            </div>
-          </div>
-        ))}
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard
+          label="Total Scheduled"
+          value={loading ? '—' : stats.total}
+          icon={BookOpen}
+        />
+        <StatCard
+          label="Upcoming / Scheduled"
+          value={loading ? '—' : stats.scheduled}
+          icon={Calendar}
+        />
+        <StatCard
+          label="Currently Live"
+          value={loading ? '—' : stats.ongoing}
+          icon={Clock}
+        />
+        <StatCard
+          label="Completed Today"
+          value={loading ? '—' : stats.completed}
+          icon={CheckCircle}
+        />
       </div>
 
-      {/* Lectures Table */}
-      <div className="card overflow-hidden p-0">
+      {/* Lectures Content Container */}
+      <Card className="overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-4 border-white/10 border-t-brand-accent rounded-full animate-spin" />
+          <div className="p-6 space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
           </div>
         ) : lectures.length === 0 ? (
-          <div className="text-center py-16">
-            <BookOpen size={40} className="mx-auto text-brand-muted mb-3" />
-            <p className="text-white font-semibold">No lectures scheduled</p>
-            <p className="text-brand-muted text-sm mt-1">Click "Schedule Lecture" to add one</p>
-          </div>
+          <EmptyState
+            icon={BookOpen}
+            title="No lectures scheduled"
+            description="There are currently no active or upcoming classroom lectures configured."
+            action={
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowForm(true)}
+                className="gap-1.5"
+              >
+                <Plus size={14} /> Schedule First Lecture
+              </Button>
+            }
+          />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Teacher</th>
-                  <th>Division</th>
-                  <th>Date & Time</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lectures.map(l => (
-                  <LectureRow
-                    key={l.id}
-                    lecture={l}
-                    onRefresh={fetchAll}
-                    onEdit={(lec) => setEditingLecture(lec)}
-                  />
-                ))}
-              </tbody>
-            </table>
+          <div>
+            {/* Desktop Table View */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
+                    <th className="py-3 px-4">Curriculum Subject</th>
+                    <th className="py-3 px-4">Assigned Faculty</th>
+                    <th className="py-3 px-4">Division</th>
+                    <th className="py-3 px-4">Scheduled Date & Time</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {lectures.map(l => (
+                    <LectureRow
+                      key={l.id}
+                      lecture={l}
+                      onRefresh={fetchAll}
+                      onEdit={(lec) => setEditingLecture(lec)}
+                      renderStatusBadge={renderStatusBadge}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile / Tablet Responsive Cards */}
+            <div className="lg:hidden divide-y divide-line">
+              {lectures.map(l => (
+                <MobileLectureCard
+                  key={l.id}
+                  lecture={l}
+                  onRefresh={fetchAll}
+                  onEdit={(lec) => setEditingLecture(lec)}
+                  renderStatusBadge={renderStatusBadge}
+                />
+              ))}
+            </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Add Lecture Modal */}
       {showForm && (
@@ -197,7 +260,7 @@ export default function LecturesPanel() {
   )
 }
 
-function LectureRow({ lecture: l, onRefresh, onEdit }) {
+function LectureRow({ lecture: l, onRefresh, onEdit, renderStatusBadge }) {
   const [updating, setUpdating] = useState(false)
 
   async function updateStatus(status) {
@@ -228,74 +291,206 @@ function LectureRow({ lecture: l, onRefresh, onEdit }) {
   }
 
   return (
-    <tr className={updating ? 'opacity-50' : ''}>
-      <td>
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-brand-accent/20 flex items-center justify-center">
-            <BookOpen size={13} className="text-brand-accent" />
+    <tr className={`hover:bg-bg/40 transition-colors ${updating ? 'opacity-50' : ''}`}>
+      <td className="py-3.5 px-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+            <BookOpen size={14} />
           </div>
-          <div>
-            <p className="text-white text-sm font-medium">{l.subjects?.name || '—'}</p>
-            <p className="text-brand-muted text-xs">{l.subjects?.code}</p>
+          <div className="min-w-0">
+            <p className="font-semibold text-ink leading-tight text-sm truncate max-w-[200px]">
+              {l.subjects?.name || '—'}
+            </p>
+            <p className="text-xs text-muted font-mono truncate mt-0.5">{l.subjects?.code}</p>
           </div>
         </div>
       </td>
-      <td>
-        <p className="text-sm text-brand-text">{l.teachers?.full_name || l.teacher?.full_name || '—'}</p>
+      <td className="py-3.5 px-4">
+        <p className="text-sm font-medium text-ink truncate max-w-[180px]">
+          {l.teachers?.full_name || l.teacher?.full_name || '—'}
+        </p>
       </td>
-      <td>
-        <span className="text-sm text-brand-text">{l.divisions?.name || '—'}</span>
+      <td className="py-3.5 px-4">
+        <span className="text-xs font-medium text-ink bg-bg px-2 py-0.5 rounded border border-line">
+          {l.divisions?.name || '—'}
+        </span>
       </td>
-      <td>
-        <div className="flex items-center gap-1.5">
-          <Calendar size={12} className="text-brand-muted" />
-          <span className="text-xs text-brand-text">
-            {formatDisplayDate(l.lecture_date)}
-          </span>
-          <Clock size={12} className="text-brand-muted ml-1" />
-          <span className="text-xs text-brand-text">{l.start_time?.slice(0, 5)} – {l.end_time?.slice(0, 5)}</span>
+      <td className="py-3.5 px-4">
+        <div className="flex items-center gap-1.5 text-xs text-ink">
+          <Calendar size={13} className="text-muted shrink-0" />
+          <span className="font-medium">{formatDisplayDate(l.lecture_date)}</span>
+          <span className="text-muted">•</span>
+          <Clock size={13} className="text-muted shrink-0" />
+          <span className="font-mono text-muted">{l.start_time?.slice(0, 5)} – {l.end_time?.slice(0, 5)}</span>
         </div>
       </td>
-      <td>
-        <span className={STATUS_COLORS[l.status] || 'badge badge-muted'}>{l.status}</span>
+      <td className="py-3.5 px-4">
+        {renderStatusBadge(l.status)}
       </td>
-      <td>
-        <div className="flex items-center gap-1">
-          <button
+      <td className="py-3.5 px-4 text-right">
+        <div className="flex items-center justify-end gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => onEdit(l)}
-            className="btn btn-ghost btn-sm text-xs text-amber-400 hover:text-amber-300 hover:bg-amber-400/10 flex items-center gap-1"
+            className="gap-1 text-xs text-amber-700 hover:bg-amber-50 border-amber-200"
             title="Edit Lecture / Change Faculty (Proxy)"
           >
-            <Edit3 size={13} /> Edit / Proxy
-          </button>
+            <Edit3 size={12} /> Edit / Proxy
+          </Button>
+
           {l.status === 'SCHEDULED' && (
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => updateStatus('ONGOING')}
-              className="btn btn-success btn-sm text-xs"
+              className="bg-green-600 hover:bg-green-700 text-white text-xs py-1 px-2.5"
               title="Start lecture"
             >
               Start
-            </button>
+            </Button>
           )}
+
           {l.status === 'ONGOING' && (
-            <button
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => updateStatus('COMPLETED')}
-              className="btn btn-ghost btn-sm text-xs"
+              className="gap-1 text-xs text-green-700 border-green-200 hover:bg-green-50"
               title="Mark complete"
             >
               <CheckCircle size={13} /> Done
-            </button>
+            </Button>
           )}
-          <button
+
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={deleteLecture}
-            className="btn btn-danger btn-sm"
-            title="Delete"
+            className="text-muted hover:text-red-600 p-1.5"
+            title="Delete lecture"
           >
-            <Trash2 size={13} />
-          </button>
+            <Trash2 size={14} />
+          </Button>
         </div>
       </td>
     </tr>
+  )
+}
+
+function MobileLectureCard({ lecture: l, onRefresh, onEdit, renderStatusBadge }) {
+  const [updating, setUpdating] = useState(false)
+
+  async function updateStatus(status) {
+    setUpdating(true)
+    try {
+      await api.patch(`/lectures/${l.id}/status`, { status })
+      toast.success(`Lecture marked as ${status}`)
+      onRefresh()
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  async function deleteLecture() {
+    if (!confirm('Delete this lecture?')) return
+    setUpdating(true)
+    try {
+      await api.delete(`/lectures/${l.id}`)
+      toast.success('Lecture deleted')
+      onRefresh()
+    } catch (err) {
+      toast.error('Delete failed')
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  return (
+    <div className={`p-4 space-y-3 ${updating ? 'opacity-50' : ''}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+            <BookOpen size={16} />
+          </div>
+          <div>
+            <h4 className="font-semibold text-ink text-sm leading-tight">{l.subjects?.name || '—'}</h4>
+            <p className="text-xs text-muted font-mono mt-0.5">{l.subjects?.code}</p>
+          </div>
+        </div>
+        <div>
+          {renderStatusBadge(l.status)}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs bg-bg/50 p-2.5 rounded-lg border border-line">
+        <div>
+          <span className="text-muted block text-[11px]">Faculty</span>
+          <span className="font-medium text-ink truncate block">
+            {l.teachers?.full_name || l.teacher?.full_name || '—'}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted block text-[11px]">Division</span>
+          <span className="font-medium text-ink">{l.divisions?.name || '—'}</span>
+        </div>
+        <div className="col-span-2">
+          <span className="text-muted block text-[11px]">Date & Time</span>
+          <div className="flex items-center gap-1.5 font-medium text-ink mt-0.5">
+            <Calendar size={12} className="text-muted" />
+            <span>{formatDisplayDate(l.lecture_date)}</span>
+            <span className="text-muted">•</span>
+            <Clock size={12} className="text-muted" />
+            <span className="font-mono text-muted">{l.start_time?.slice(0, 5)} – {l.end_time?.slice(0, 5)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1 border-t border-line/60">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onEdit(l)}
+          className="flex-1 text-xs text-amber-700 border-amber-200"
+        >
+          <Edit3 size={13} /> Edit / Proxy
+        </Button>
+
+        {l.status === 'SCHEDULED' && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => updateStatus('ONGOING')}
+            className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs"
+          >
+            Start
+          </Button>
+        )}
+
+        {l.status === 'ONGOING' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => updateStatus('COMPLETED')}
+            className="flex-1 text-xs text-green-700 border-green-200"
+          >
+            <CheckCircle size={13} /> Complete
+          </Button>
+        )}
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={deleteLecture}
+          className="text-muted hover:text-red-600 p-2"
+          title="Delete"
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+    </div>
   )
 }
 
@@ -336,172 +531,165 @@ function AddLectureModal({ teachers, subjects, divisions, onClose, onSuccess }) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="card w-full max-w-lg relative max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700/80 shadow-2xl rounded-2xl p-6">
-        <button onClick={onClose} className="absolute top-4 right-4 btn-icon btn-ghost">
-          <X size={16} />
-        </button>
-
-        <h3 className="text-white font-bold text-lg mb-5 flex items-center gap-2">
-          <BookOpen size={18} className="text-brand-accent" />
-          Schedule New Lecture
-        </h3>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="form-group sm:col-span-2">
-              <label className="form-label">Academic Division *</label>
-              <select
-                id="lecture-division"
-                className="form-input"
-                value={form.division_id}
-                onChange={e => {
-                  const divId = e.target.value
-                  setForm(p => ({
-                    ...p,
-                    division_id: divId,
-                    subject_id: '' // reset subject when division changes
-                  }))
-                }}
-                required
-              >
-                <option value="">-- Select Class Division --</option>
-                {divisions.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} - Division {d.division_name} ({d.courses?.name || 'General'})
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-500 mt-1">Select class division first to filter associated subjects</p>
-            </div>
-
-            <div className="form-group sm:col-span-2">
-              <label className="form-label">Subject *</label>
-              <select
-                id="lecture-subject"
-                className="form-input"
-                value={form.subject_id}
-                onChange={e => set('subject_id', e.target.value)}
-                required
-              >
-                <option value="">
-                  {form.division_id ? '-- Select Subject for this Division --' : '-- Select Division First --'}
-                </option>
-                {filteredSubjects.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.code}) {s.divisions ? `· ${s.divisions.name}` : ''}
-                  </option>
-                ))}
-              </select>
-              {form.division_id && filteredSubjects.length === 0 && (
-                <p className="text-[11px] text-amber-400 mt-1">No subjects found for this division. Add subjects in Academics tab.</p>
-              )}
-            </div>
-
-            <div className="form-group sm:col-span-2">
-              <label className="form-label">Teacher *</label>
-              <select
-                id="lecture-teacher"
-                className="form-input"
-                value={form.teacher_id}
-                onChange={e => set('teacher_id', e.target.value)}
-                required
-              >
-                <option value="">-- Select Teacher --</option>
-                {teachers.map(t => (
-                  <option key={t.id} value={t.profile?.id || t.teacher_profile_id || t.id}>{t.full_name} ({t.department || 'Faculty'})</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Date *</label>
-              <input
-                id="lecture-date"
-                type="date"
-                className="form-input"
-                value={form.lecture_date}
-                onChange={e => set('lecture_date', e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Start Time *</label>
-              <select
-                id="lecture-start"
-                className="form-input"
-                value={form.start_time}
-                onChange={e => {
-                  const val = e.target.value
-                  setForm(p => {
-                    const idx = SLOTS.indexOf(val)
-                    const nextSlot = idx >= 0 && idx + 1 < SLOTS.length ? SLOTS[idx + 1] : p.end_time
-                    return { ...p, start_time: val, end_time: nextSlot }
-                  })
-                }}
-              >
-                {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">End Time *</label>
-              <select
-                id="lecture-end"
-                className="form-input"
-                value={form.end_time}
-                onChange={e => set('end_time', e.target.value)}
-              >
-                {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Room / Location</label>
-            <input
-              id="lecture-room"
-              type="text"
-              className="form-input"
-              placeholder="e.g. Room 101, Lab A"
-              value={form.room}
-              onChange={e => set('room', e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Topic / Description</label>
-            <textarea
-              id="lecture-topic"
-              className="form-input"
-              rows={2}
-              placeholder="Optional: lecture topic or notes"
-              value={form.topic}
-              onChange={e => set('topic', e.target.value)}
-            />
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn btn-ghost flex-1">
-              Cancel
-            </button>
-            <button
-              id="save-lecture-btn"
-              type="submit"
-              disabled={saving}
-              className="btn btn-primary flex-1"
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Schedule New Lecture"
+      description="Create a classroom session and announce to division students"
+      maxWidth="max-w-lg"
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2 space-y-1">
+            <label className="text-xs font-semibold text-ink">Academic Division *</label>
+            <select
+              id="lecture-division"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.division_id}
+              onChange={e => {
+                const divId = e.target.value
+                setForm(p => ({
+                  ...p,
+                  division_id: divId,
+                  subject_id: ''
+                }))
+              }}
+              required
             >
-              {saving ? 'Scheduling...' : 'Schedule Lecture'}
-            </button>
+              <option value="">-- Select Class Division --</option>
+              {divisions.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} - Division {d.division_name} ({d.courses?.name || 'General'})
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-muted">Select division first to filter associated curriculum subjects</p>
           </div>
-        </form>
-      </div>
-    </div>
+
+          <div className="sm:col-span-2 space-y-1">
+            <label className="text-xs font-semibold text-ink">Subject *</label>
+            <select
+              id="lecture-subject"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.subject_id}
+              onChange={e => set('subject_id', e.target.value)}
+              required
+            >
+              <option value="">
+                {form.division_id ? '-- Select Subject for this Division --' : '-- Select Division First --'}
+              </option>
+              {filteredSubjects.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.code}) {s.divisions ? `· ${s.divisions.name}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-2 space-y-1">
+            <label className="text-xs font-semibold text-ink">Teacher *</label>
+            <select
+              id="lecture-teacher"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.teacher_id}
+              onChange={e => set('teacher_id', e.target.value)}
+              required
+            >
+              <option value="">-- Select Teacher --</option>
+              {teachers.map(t => (
+                <option key={t.id} value={t.profile?.id || t.teacher_profile_id || t.id}>
+                  {t.full_name} ({t.department || 'Faculty'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Date *</label>
+            <input
+              id="lecture-date"
+              type="date"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+              value={form.lecture_date}
+              onChange={e => set('lecture_date', e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Start Time *</label>
+            <select
+              id="lecture-start"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.start_time}
+              onChange={e => {
+                const val = e.target.value
+                setForm(p => {
+                  const idx = SLOTS.indexOf(val)
+                  const nextSlot = idx >= 0 && idx + 1 < SLOTS.length ? SLOTS[idx + 1] : p.end_time
+                  return { ...p, start_time: val, end_time: nextSlot }
+                })
+              }}
+            >
+              {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-xs font-semibold text-ink">End Time *</label>
+            <select
+              id="lecture-end"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.end_time}
+              onChange={e => set('end_time', e.target.value)}
+            >
+              {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Room / Location</label>
+          <input
+            id="lecture-room"
+            type="text"
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+            placeholder="e.g. Room 101, Lab A"
+            value={form.room}
+            onChange={e => set('room', e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Topic / Description</label>
+          <textarea
+            id="lecture-topic"
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none resize-none"
+            rows={2}
+            placeholder="Optional: lecture topic or notes"
+            value={form.topic}
+            onChange={e => set('topic', e.target.value)}
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            id="save-lecture-btn"
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={saving}
+          >
+            {saving ? 'Scheduling...' : 'Schedule Lecture'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
-
-const SLOTS_USED = SLOTS
 
 function EditLectureModal({ lecture: l, teachers, subjects, divisions, onClose, onSuccess }) {
   const [form, setForm] = useState({
@@ -541,170 +729,166 @@ function EditLectureModal({ lecture: l, teachers, subjects, divisions, onClose, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
-      <div className="card w-full max-w-lg relative max-h-[90vh] overflow-y-auto bg-slate-900 border border-slate-700/80 shadow-2xl rounded-2xl p-6">
-        <button onClick={onClose} className="absolute top-4 right-4 btn-icon btn-ghost">
-          <X size={16} />
-        </button>
-
-        <h3 className="text-white font-bold text-lg mb-1 flex items-center gap-2">
-          <Edit3 size={18} className="text-amber-400" />
-          Edit Lecture & Change Faculty (Proxy)
-        </h3>
-        <p className="text-brand-muted text-xs mb-4">
-          Update the assigned faculty (proxy), change subject, or reschedule. All enrolled students will receive a push notification immediately.
-        </p>
-
-        <form onSubmit={submit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="form-group sm:col-span-2">
-              <label className="form-label">Academic Division *</label>
-              <select
-                id="edit-lecture-division"
-                className="form-input"
-                value={form.division_id}
-                onChange={e => {
-                  const divId = e.target.value
-                  setForm(p => ({
-                    ...p,
-                    division_id: divId,
-                    subject_id: ''
-                  }))
-                }}
-                required
-              >
-                <option value="">-- Select Class Division --</option>
-                {divisions.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} - Division {d.division_name} ({d.courses?.name || 'General'})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group sm:col-span-2">
-              <label className="form-label">Subject *</label>
-              <select
-                id="edit-lecture-subject"
-                className="form-input"
-                value={form.subject_id}
-                onChange={e => set('subject_id', e.target.value)}
-                required
-              >
-                <option value="">-- Select Subject --</option>
-                {filteredSubjects.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.code}) {s.divisions ? `· ${s.divisions.name}` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group sm:col-span-2">
-              <div className="flex items-center justify-between mb-1">
-                <label className="form-label !mb-0">Faculty / Substitute Teacher *</label>
-                <span className="text-[11px] text-amber-400 font-medium">Select here for Proxy</span>
-              </div>
-              <select
-                id="edit-lecture-teacher"
-                className="form-input border-amber-500/50 focus:border-amber-400"
-                value={form.teacher_id}
-                onChange={e => set('teacher_id', e.target.value)}
-                required
-              >
-                <option value="">-- Select Substitute / Regular Faculty --</option>
-                {teachers.map(t => (
-                  <option key={t.id} value={t.profile?.id || t.teacher_profile_id || t.id}>
-                    {t.full_name} ({t.department || 'Faculty'})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Date *</label>
-              <input
-                id="edit-lecture-date"
-                type="date"
-                className="form-input"
-                value={form.lecture_date}
-                onChange={e => set('lecture_date', e.target.value)}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Start Time *</label>
-              <select
-                id="edit-lecture-start"
-                className="form-input"
-                value={form.start_time}
-                onChange={e => {
-                  const val = e.target.value
-                  setForm(p => {
-                    const idx = SLOTS.indexOf(val)
-                    const nextSlot = idx >= 0 && idx + 1 < SLOTS.length ? SLOTS[idx + 1] : p.end_time
-                    return { ...p, start_time: val, end_time: nextSlot }
-                  })
-                }}
-              >
-                {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group sm:col-span-2">
-              <label className="form-label">End Time *</label>
-              <select
-                id="edit-lecture-end"
-                className="form-input"
-                value={form.end_time}
-                onChange={e => set('end_time', e.target.value)}
-              >
-                {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Topic / Description</label>
-            <input
-              id="edit-lecture-topic"
-              type="text"
-              className="form-input"
-              placeholder="e.g. Unit 3 Discussion, Proxy Lecture"
-              value={form.topic}
-              onChange={e => set('topic', e.target.value)}
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Update Reason / Note for Students (Optional)</label>
-            <input
-              id="edit-lecture-reason"
-              type="text"
-              className="form-input placeholder:text-slate-600"
-              placeholder="e.g. Regular faculty on medical leave, Proxy assigned"
-              value={form.reason}
-              onChange={e => set('reason', e.target.value)}
-            />
-            <p className="text-[11px] text-slate-500 mt-1">This note will be included in the push notification sent to all students.</p>
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn btn-ghost flex-1">
-              Cancel
-            </button>
-            <button
-              id="save-edit-lecture-btn"
-              type="submit"
-              disabled={saving}
-              className="btn bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold flex-1"
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title="Edit Lecture & Change Faculty (Proxy)"
+      description="Update assigned faculty, reschedule, and trigger push alerts to students"
+      maxWidth="max-w-lg"
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2 space-y-1">
+            <label className="text-xs font-semibold text-ink">Academic Division *</label>
+            <select
+              id="edit-lecture-division"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.division_id}
+              onChange={e => {
+                const divId = e.target.value
+                setForm(p => ({
+                  ...p,
+                  division_id: divId,
+                  subject_id: ''
+                }))
+              }}
+              required
             >
-              {saving ? 'Updating & Notifying...' : 'Save & Notify Students'}
-            </button>
+              <option value="">-- Select Class Division --</option>
+              {divisions.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} - Division {d.division_name} ({d.courses?.name || 'General'})
+                </option>
+              ))}
+            </select>
           </div>
-        </form>
-      </div>
-    </div>
+
+          <div className="sm:col-span-2 space-y-1">
+            <label className="text-xs font-semibold text-ink">Subject *</label>
+            <select
+              id="edit-lecture-subject"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.subject_id}
+              onChange={e => set('subject_id', e.target.value)}
+              required
+            >
+              <option value="">-- Select Subject --</option>
+              {filteredSubjects.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.code}) {s.divisions ? `· ${s.divisions.name}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-2 space-y-1">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-ink">Faculty / Substitute Teacher *</label>
+              <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                Proxy Assignment
+              </span>
+            </div>
+            <select
+              id="edit-lecture-teacher"
+              className="w-full text-xs p-2.5 rounded-lg border border-amber-300 bg-amber-50/20 text-ink font-medium focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 outline-none cursor-pointer"
+              value={form.teacher_id}
+              onChange={e => set('teacher_id', e.target.value)}
+              required
+            >
+              <option value="">-- Select Substitute / Regular Faculty --</option>
+              {teachers.map(t => (
+                <option key={t.id} value={t.profile?.id || t.teacher_profile_id || t.id}>
+                  {t.full_name} ({t.department || 'Faculty'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Date *</label>
+            <input
+              id="edit-lecture-date"
+              type="date"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+              value={form.lecture_date}
+              onChange={e => set('lecture_date', e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Start Time *</label>
+            <select
+              id="edit-lecture-start"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.start_time}
+              onChange={e => {
+                const val = e.target.value
+                setForm(p => {
+                  const idx = SLOTS.indexOf(val)
+                  const nextSlot = idx >= 0 && idx + 1 < SLOTS.length ? SLOTS[idx + 1] : p.end_time
+                  return { ...p, start_time: val, end_time: nextSlot }
+                })
+              }}
+            >
+              {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-xs font-semibold text-ink">End Time *</label>
+            <select
+              id="edit-lecture-end"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={form.end_time}
+              onChange={e => set('end_time', e.target.value)}
+            >
+              {SLOTS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Topic / Description</label>
+          <input
+            id="edit-lecture-topic"
+            type="text"
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+            placeholder="e.g. Unit 3 Discussion, Proxy Lecture"
+            value={form.topic}
+            onChange={e => set('topic', e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-ink">Update Reason / Note for Students (Optional)</label>
+          <input
+            id="edit-lecture-reason"
+            type="text"
+            className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+            placeholder="e.g. Regular faculty on leave, Proxy assigned"
+            value={form.reason}
+            onChange={e => set('reason', e.target.value)}
+          />
+          <p className="text-[11px] text-muted">This note will be included in the instant notification broadcast.</p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            id="save-edit-lecture-btn"
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={saving}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            {saving ? 'Updating & Notifying...' : 'Save & Broadcast'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }

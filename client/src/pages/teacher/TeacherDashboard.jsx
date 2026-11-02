@@ -8,9 +8,14 @@ import ReportsPanel from '../admin/ReportsPanel'
 import AnnouncementsPanel from '../admin/AnnouncementsPanel'
 import {
   BookOpen, ClipboardList, BarChart2, Users, Bell,
-  ChevronRight, MessageSquare, Clock, Play, Sparkles, CheckCircle2
+  ChevronRight, MessageSquare, Clock, Play, Sparkles, CheckCircle2,
+  Calendar, MapPin, Zap, AlertCircle
 } from 'lucide-react'
 import api from '../../lib/api'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, StatCard, Skeleton
+} from '../../components/ui'
 
 function TeacherOverview() {
   const { user } = useAuth()
@@ -42,10 +47,10 @@ function TeacherOverview() {
   }, [])
 
   const cards = [
-    { to: '/teacher/classes',    label: 'My Classes & Timetable', Icon: BookOpen,      color: 'bg-blue-500/20 text-blue-400',     desc: 'Dynamic daily schedule & official weekly timetable' },
-    { to: '/teacher/attendance', label: 'Attendance Review',      Icon: ClipboardList, color: 'bg-green-500/20 text-green-400',   desc: 'Live roster, selfie review, manual override' },
-    { to: '/teacher/reports',    label: 'Reports',                Icon: BarChart2,    color: 'bg-purple-500/20 text-purple-400', desc: 'Class analytics and attendance registers' },
-    { to: '/teacher/announce',   label: 'Announcements',          Icon: Bell,         color: 'bg-orange-500/20 text-orange-400', desc: 'Send class notices and updates' },
+    { to: '/teacher/classes',    label: 'My Classes & Timetable', Icon: BookOpen,      variant: 'brand',   desc: 'Dynamic daily schedule & official weekly timetable' },
+    { to: '/teacher/attendance', label: 'Attendance Review',      Icon: ClipboardList, variant: 'present', desc: 'Live roster, selfie proofs, manual override' },
+    { to: '/teacher/reports',    label: 'Reports & Register',     Icon: BarChart2,     variant: 'grace',   desc: 'Class analytics and student attendance percentages' },
+    { to: '/teacher/announce',   label: 'Announcements',          Icon: Bell,          variant: 'neutral', desc: 'Send circulars and notices to student batches' },
   ]
 
   const featuredLecture = todayData?.current_lecture || todayData?.next_lecture || todayData?.my_lectures?.[0] || todayData?.all_lectures?.[0]
@@ -61,224 +66,242 @@ function TeacherOverview() {
   const assignedClasses = teacherProfile.assigned_classes || user?.assigned_classes || []
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Page Header */}
-      <div className="page-header flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 animate-fade-in">
+      {/* ── HEADER ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-line">
         <div>
-          <h2 className="page-title flex items-center gap-2">
-            <span>Welcome, {user?.name?.split(' ')[0] || user?.full_name?.split(' ')[0] || 'Teacher'} 👋</span>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight flex items-center gap-2">
+            <span>Welcome, {user?.name?.split(' ')[0] || user?.full_name?.split(' ')[0] || 'Teacher'}</span>
+            <span className="text-lg">👋</span>
           </h2>
-          <p className="page-subtitle">
-            Teacher Dashboard — Department of {dept} • SMDL College
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Faculty Dashboard · Department of {dept} · SMDL College
           </p>
         </div>
 
-        <div className="glass px-3.5 py-1.5 rounded-xl border border-white/10 text-xs flex items-center gap-2">
-          <Clock size={14} className="text-brand-accent" />
-          <span className="text-white font-medium">{todayData?.day_name || 'Today'}</span>
-          <span className="text-brand-muted">•</span>
-          <span className="text-brand-accent font-semibold">{todayData?.date || ''}</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-line rounded-lg text-xs self-start sm:self-auto shadow-xs">
+          <Clock className="w-3.5 h-3.5 text-brand" />
+          <span className="font-semibold text-ink">{todayData?.day_name || 'Today'}</span>
+          <span className="text-muted">•</span>
+          <span className="font-mono text-muted">{todayData?.date || ''}</span>
         </div>
       </div>
 
-      {/* Teacher Profile & Official Academic Assignments Card */}
-      <div className="card bg-gradient-to-br from-slate-900 via-slate-800/90 to-slate-900 border-white/10 p-5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-brand-accent/5 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6 relative z-10">
+      {/* ── TEACHER PROFILE & ASSIGNMENTS CARD ── */}
+      <Card className="p-5">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
           {/* Identity Info */}
           <div className="flex items-start gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-brand flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-brand-accent/20 flex-shrink-0">
-              {(user?.name || user?.full_name || 'T')[0]}
+            <div className="w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 text-brand flex items-center justify-center font-display font-bold text-lg shrink-0">
+              {(user?.name || user?.full_name || 'T')[0]?.toUpperCase()}
             </div>
 
             <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h3 className="text-xl font-bold text-white">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold font-display text-ink">
                   {user?.name || user?.full_name || 'Faculty Member'}
                 </h3>
-
-                {status === 'ACTIVE' ? (
-                  <span className="badge badge-active text-xs font-semibold flex items-center gap-1.5 py-0.5 px-2.5">
-                    <CheckCircle2 size={13} className="text-emerald-400" />
-                    <span>APPROVED & ACTIVE</span>
-                  </span>
-                ) : (
-                  <span className="badge badge-pending text-xs font-semibold flex items-center gap-1.5 py-0.5 px-2.5">
-                    <Clock size={13} className="text-amber-400" />
-                    <span>PENDING APPROVAL</span>
-                  </span>
-                )}
+                <Badge variant={status === 'ACTIVE' ? 'present' : 'grace'} size="sm">
+                  {status === 'ACTIVE' ? 'Active & Approved' : 'Pending Verification'}
+                </Badge>
               </div>
 
-              <p className="text-xs text-brand-muted flex flex-wrap items-center gap-2">
-                <span className="font-mono text-brand-accent bg-brand-accent/10 px-2 py-0.5 rounded border border-brand-accent/20 font-bold">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span className="font-mono font-semibold text-brand bg-brand/5 border border-brand/15 px-1.5 py-0.5 rounded">
                   ID: {empId}
                 </span>
                 <span>•</span>
-                <span className="text-slate-200 font-medium">{designation}</span>
+                <span className="text-ink font-medium">{designation}</span>
                 <span>•</span>
-                <span className="text-slate-300">Department of {dept}</span>
-              </p>
+                <span>Department of {dept}</span>
+              </div>
             </div>
           </div>
 
-          {/* Quick Stats / Class & Division Badges */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2">
-              <p className="text-[10px] uppercase tracking-wider text-brand-muted font-mono">Assigned Classes</p>
-              <div className="flex flex-wrap gap-1.5 mt-1">
+          {/* Quick Academic Assignment Badges */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="bg-bg border border-line rounded-lg px-3 py-2 text-left">
+              <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Assigned Classes</p>
+              <div className="flex flex-wrap gap-1 mt-1">
                 {assignedClasses.length > 0 ? (
                   assignedClasses.map((cls, i) => (
-                    <span key={i} className="badge badge-info text-xs font-semibold">
-                      {cls}
-                    </span>
+                    <Badge key={i} variant="neutral" size="sm">{cls}</Badge>
                   ))
                 ) : (
-                  <span className="badge badge-info text-xs font-semibold">
-                    FYBSc CS - Div A
-                  </span>
+                  <Badge variant="neutral" size="sm">FYBSc CS - Div A</Badge>
                 )}
               </div>
             </div>
 
-            <div className="bg-black/30 border border-white/10 rounded-xl px-3.5 py-2">
-              <p className="text-[10px] uppercase tracking-wider text-brand-muted font-mono">Total Subjects</p>
-              <p className="text-base font-bold text-white mt-0.5 font-mono">
-                {assignedSubjects.length > 0 ? assignedSubjects.length : '3'} Assigned
+            <div className="bg-bg border border-line rounded-lg px-3 py-2 text-left">
+              <p className="text-[10px] uppercase tracking-wider text-muted font-semibold">Assigned Subjects</p>
+              <p className="text-sm font-bold font-display text-ink mt-0.5">
+                {assignedSubjects.length > 0 ? assignedSubjects.length : '3'} Curriculums
               </p>
             </div>
           </div>
         </div>
 
-        {/* Assigned Subjects Badges */}
-        <div className="mt-4 pt-4 border-t border-white/5">
-          <p className="text-[11px] font-mono uppercase text-brand-muted tracking-wider mb-2 flex items-center gap-1.5">
-            <BookOpen size={13} className="text-brand-accent" />
-            <span>Official Timetable Subjects Assigned to You:</span>
+        {/* Assigned Subjects Pills */}
+        <div className="mt-4 pt-3.5 border-t border-line">
+          <p className="text-[11px] uppercase tracking-wider text-muted font-semibold mb-2 flex items-center gap-1.5">
+            <BookOpen className="w-3.5 h-3.5 text-brand" />
+            <span>Official Curriculum Subjects Assigned to You:</span>
           </p>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {assignedSubjects.length > 0 ? (
               assignedSubjects.map((subj, idx) => (
                 <div
                   key={subj.id || idx}
-                  className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 hover:border-brand-accent/40 transition-colors flex items-center gap-2 text-xs"
+                  className="px-2.5 py-1 rounded-md bg-bg border border-line flex items-center gap-1.5 text-xs text-ink"
                 >
-                  <span className="font-mono font-bold text-brand-accent">
-                    {subj.code}
-                  </span>
-                  <span className="text-slate-200">
-                    {subj.name}
-                  </span>
+                  <span className="font-mono font-bold text-brand">{subj.code}</span>
+                  <span className="text-muted truncate max-w-[200px]">{subj.name}</span>
                   {subj.code?.includes('(P)') && (
-                    <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
-                      Lab
-                    </span>
+                    <Badge variant="neutral" size="sm" className="text-[9px] py-0 px-1">Lab</Badge>
                   )}
                 </div>
               ))
             ) : (
-              <p className="text-xs text-brand-muted italic">
-                Subject mappings will appear dynamically according to the FY B.Sc CS Timetable.
+              <p className="text-xs text-muted italic">
+                Subject mappings will load automatically from the college curriculum database.
               </p>
             )}
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* Featured Today's Timetable Widget */}
+      {/* ── FEATURED TODAY'S LECTURE CARD ── */}
       {featuredLecture && (
-        <div className={`card transition-all p-5 border-2 ${
+        <Card className={`p-5 border-2 ${
           isOngoing
-            ? 'border-rose-500/60 bg-gradient-to-r from-rose-950/30 via-slate-900 to-rose-950/20'
-            : 'border-brand-accent/40 bg-gradient-to-r from-brand-accent/5 via-slate-900 to-transparent'
+            ? 'border-present/50 bg-present/5'
+            : 'border-brand/30 bg-surface'
         }`}>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 {isOngoing ? (
-                  <span className="badge badge-error text-xs font-bold flex items-center gap-1.5 animate-pulse">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                  <Badge variant="live" pulseDot size="sm">
                     LECTURE IN PROGRESS NOW
-                  </span>
+                  </Badge>
                 ) : (
-                  <span className="badge badge-warning text-xs font-semibold flex items-center gap-1">
-                    <Clock size={11} /> UPCOMING TIMETABLE SLOT
-                  </span>
+                  <Badge variant="grace" size="sm">
+                    UPCOMING TIMETABLE SLOT
+                  </Badge>
                 )}
-                <span className="text-xs font-mono text-brand-muted">
+                <span className="text-xs font-mono font-semibold text-muted bg-bg border border-line px-2 py-0.5 rounded">
                   {featuredLecture.start_time?.slice(0, 5)} - {featuredLecture.end_time?.slice(0, 5)}
                 </span>
               </div>
 
-              <h3 className="text-xl font-bold text-white">
-                {featuredLecture.subject?.code}: {featuredLecture.subject?.name}
+              <h3 className="text-base sm:text-lg font-bold font-display text-ink leading-tight">
+                {featuredLecture.subject?.code ? `${featuredLecture.subject.code}: ` : ''}{featuredLecture.subject?.name}
               </h3>
 
-              <p className="text-xs text-brand-muted">
-                F.Y.BSc (Computer Science) • Faculty: <strong className="text-white">{featuredLecture.teacher?.full_name}</strong>
+              <p className="text-xs text-muted flex items-center gap-2 flex-wrap">
+                <span>{featuredLecture.division?.name || 'Class'} Div {featuredLecture.division?.division_name || 'A'}</span>
+                <span>•</span>
+                <span>Faculty: <strong className="text-ink">{featuredLecture.teacher?.full_name || user?.name}</strong></span>
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5">
-              <button
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Button
+                variant={isOngoing ? 'success' : 'primary'}
+                size="md"
                 onClick={() => navigate('/teacher/attendance', { state: { lectureId: featuredLecture.id } })}
-                className="btn-primary !py-2 !px-4 text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-brand-accent/20"
+                className="font-semibold shadow-xs"
               >
-                <Play size={13} className="fill-current" />
+                <Play className="w-3.5 h-3.5 fill-current mr-1.5" />
                 <span>{isOngoing ? 'Live Roster' : 'Open Attendance'}</span>
-              </button>
+              </Button>
 
-              <button
+              <Button
+                variant="outline"
+                size="md"
                 onClick={() => navigate('/teacher/classes')}
-                className="btn-secondary !py-2 !px-3 text-xs text-brand-muted hover:text-white"
               >
-                Full Timetable
-              </button>
+                Full Schedule
+              </Button>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Navigation Quick Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map(({ to, label, Icon, color, desc }) => (
-          <div
+      {/* ── QUICK NAVIGATION CARDS ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {cards.map(({ to, label, Icon, variant, desc }) => (
+          <Card
             key={label}
+            hoverable
             onClick={() => navigate(to)}
-            className="card hover:border-brand-accent transition-colors cursor-pointer group flex items-start gap-4"
+            className="p-4 flex items-start gap-3.5 cursor-pointer group"
           >
-            <div className={`stat-icon ${color} w-12 h-12 flex-shrink-0`}><Icon size={22} /></div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold group-hover:text-brand-accent transition-colors">{label}</p>
-              <p className="text-brand-muted text-xs mt-1">{desc}</p>
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${
+              variant === 'present'
+                ? 'bg-present/10 text-present border-present/20'
+                : variant === 'brand'
+                ? 'bg-brand/10 text-brand border-brand/20'
+                : variant === 'grace'
+                ? 'bg-grace/10 text-grace border-grace/20'
+                : 'bg-bg text-muted border-line'
+            }`}>
+              <Icon className="w-5 h-5" />
             </div>
-            <ChevronRight size={18} className="text-brand-muted group-hover:text-brand-accent transition-colors mt-1" />
-          </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-ink group-hover:text-brand transition-colors truncate">
+                {label}
+              </p>
+              <p className="text-xs text-muted mt-0.5 line-clamp-2 leading-relaxed">{desc}</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0 mt-1" />
+          </Card>
         ))}
       </div>
 
-      {/* Quick Tips */}
-      <div className="card">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Users size={18} className="text-brand-accent" /> Quick Tips & Workflow
-        </h3>
-        <ul className="space-y-3 text-sm">
-          <li className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
-            <p className="text-brand-muted"><span className="text-white font-medium">Daily Lecture Planner:</span> Go to <span className="text-brand-accent font-semibold cursor-pointer" onClick={() => navigate('/teacher/classes')}>My Classes</span> to view your scheduled teaching slots for today or view the full 6-day official SMDL College Timetable.</p>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-lg bg-green-500/20 text-green-400 flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
-            <p className="text-brand-muted"><span className="text-white font-medium">Review Student Attendance:</span> Click <strong>"Live Roster"</strong> or visit <span className="text-brand-accent font-semibold cursor-pointer" onClick={() => navigate('/teacher/attendance')}>Attendance Review</span> to verify live student selfie proofs and GPS markers.</p>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="w-6 h-6 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
-            <p className="text-brand-muted"><span className="text-white font-medium">Students Without Smartphones:</span> Teachers can directly check-in students who don't have a smartphone using the <strong>"Mark (No Phone)"</strong> direct override button.</p>
-          </li>
-        </ul>
-      </div>
+      {/* ── QUICK WORKFLOW & CLASSROOM TIPS ── */}
+      <Card className="p-5">
+        <CardHeader className="p-0 pb-3 border-b-0">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-brand" />
+            <CardTitle className="text-base">Classroom Attendance Workflow</CardTitle>
+          </div>
+        </CardHeader>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+          <div className="p-3.5 rounded-lg bg-bg border border-line text-xs space-y-1">
+            <div className="flex items-center gap-2 font-semibold text-ink">
+              <span className="w-5 h-5 rounded-full bg-brand/10 text-brand flex items-center justify-center text-[11px] font-bold">1</span>
+              <span>Daily Class Schedule</span>
+            </div>
+            <p className="text-muted leading-relaxed pl-7">
+              View your scheduled slots in <strong className="text-ink">My Classes</strong> or click Start Lecture to launch an ad-hoc session.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-bg border border-line text-xs space-y-1">
+            <div className="flex items-center gap-2 font-semibold text-ink">
+              <span className="w-5 h-5 rounded-full bg-present/10 text-present flex items-center justify-center text-[11px] font-bold">2</span>
+              <span>Live Selfie Verification</span>
+            </div>
+            <p className="text-muted leading-relaxed pl-7">
+              Review live student check-ins and tap thumbnails in <strong className="text-ink">Attendance Review</strong> to view captured facial proofs.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-bg border border-line text-xs space-y-1">
+            <div className="flex items-center gap-2 font-semibold text-ink">
+              <span className="w-5 h-5 rounded-full bg-grace/10 text-grace flex items-center justify-center text-[11px] font-bold">3</span>
+              <span>Phone-less Students</span>
+            </div>
+            <p className="text-muted leading-relaxed pl-7">
+              Directly check-in students who don't have a phone using the 1-click <strong className="text-ink">Mark (No Phone)</strong> button.
+            </p>
+          </div>
+        </div>
+      </Card>
     </div>
   )
 }

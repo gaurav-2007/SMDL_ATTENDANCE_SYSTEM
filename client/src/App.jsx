@@ -17,10 +17,10 @@ const StudentDashboard  = lazy(() => import('./pages/student/StudentDashboard'))
 const NotFound          = lazy(() => import('./pages/NotFound'))
 
 const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-brand-dark">
-    <div className="flex flex-col items-center gap-4">
-      <div className="w-12 h-12 border-4 border-white/20 border-t-brand-accent rounded-full animate-spin" />
-      <p className="text-brand-muted text-sm animate-pulse">Loading page...</p>
+  <div className="min-h-screen flex items-center justify-center bg-bg">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-10 h-10 border-3 border-line border-t-brand rounded-full animate-spin" />
+      <p className="text-muted text-xs font-medium">Loading institutional portal...</p>
     </div>
   </div>
 )
@@ -101,9 +101,9 @@ function NativeBridgeListener() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
 
-    // 1. Set dark theme status bar matching brand design
-    StatusBar.setStyle({ style: Style.Dark }).catch(() => {})
-    StatusBar.setBackgroundColor({ color: '#0B1120' }).catch(() => {})
+    // 1. Set clean daylight status bar matching academic theme
+    StatusBar.setStyle({ style: Style.Light }).catch(() => {})
+    StatusBar.setBackgroundColor({ color: '#F7F8FA' }).catch(() => {})
 
     // 2. Hide splash screen after React mounts
     SplashScreen.hide().catch(() => {})
@@ -143,14 +143,16 @@ export default function App() {
           toastOptions={{
             duration: 4000,
             style: {
-              background: '#1e293b',
-              color: '#f1f5f9',
-              border: '1px solid #334155',
+              background: '#FFFFFF',
+              color: '#111827',
+              border: '1px solid #E5E7EB',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.06)',
               borderRadius: '12px',
-              fontSize: '14px',
+              fontSize: '13px',
+              fontWeight: 500,
             },
-            success: { iconTheme: { primary: '#22c55e', secondary: '#1e293b' } },
-            error:   { iconTheme: { primary: '#ef4444', secondary: '#1e293b' } },
+            success: { iconTheme: { primary: '#16a34a', secondary: '#FFFFFF' } },
+            error:   { iconTheme: { primary: '#dc2626', secondary: '#FFFFFF' } },
           }}
         />
       </AuthProvider>

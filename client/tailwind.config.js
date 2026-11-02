@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,6 +8,25 @@ export default {
   theme: {
     extend: {
       colors: {
+        bg:      'rgb(var(--bg) / <alpha-value>)',
+        surface: 'rgb(var(--surface) / <alpha-value>)',
+        line:    'rgb(var(--line) / <alpha-value>)',
+        ink:     'rgb(var(--ink) / <alpha-value>)',
+        muted:   'rgb(var(--muted) / <alpha-value>)',
+        present: 'rgb(var(--present) / <alpha-value>)',
+        grace:   'rgb(var(--grace) / <alpha-value>)',
+        absent:  'rgb(var(--absent) / <alpha-value>)',
+        brand: {
+          DEFAULT: 'rgb(var(--brand) / <alpha-value>)',
+          dark:    '#0f172a',
+          card:    '#1e293b',
+          border:  '#334155',
+          muted:   '#94a3b8',
+          accent:  '#38bdf8',
+          success: '#22c55e',
+          warning: '#f59e0b',
+          danger:  '#ef4444',
+        },
         primary: {
           50:  '#eff6ff',
           100: '#dbeafe',
@@ -20,19 +40,14 @@ export default {
           900: '#1e3a8a',
           950: '#172554',
         },
-        brand: {
-          dark:    '#0f172a',
-          card:    '#1e293b',
-          border:  '#334155',
-          muted:   '#94a3b8',
-          accent:  '#38bdf8',
-          success: '#22c55e',
-          warning: '#f59e0b',
-          danger:  '#ef4444',
-        }
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Manrope', 'Inter', 'sans-serif'],
+      },
+      borderRadius: {
+        'button': '8px',
+        'card': '12px',
       },
       backgroundImage: {
         'gradient-brand': 'linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%)',

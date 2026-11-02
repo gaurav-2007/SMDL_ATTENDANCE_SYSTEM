@@ -15,11 +15,11 @@
     },
     "SplashScreen": {
       "launchShowDuration": 1500,
-      "backgroundColor": "#0B1120"
+      "backgroundColor": "#FFFFFF"
     },
     "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#0B1120"
+      "style": "LIGHT",
+      "backgroundColor": "#F7F8FA"
     }
   }
 }
