@@ -67,6 +67,9 @@ async function getFirebaseMessaging() {
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
 
+// Guard to prevent repeated taps from triggering overlapping registration attempts
+let isPushRegistering = false
+
 /**
  * Requests notification permission, retrieves FCM token,
  * registers Android notification channel, and registers token with backend.
@@ -74,6 +77,11 @@ import { PushNotifications } from '@capacitor/push-notifications'
 export async function requestWebPushPermission() {
   // --- NATIVE ANDROID FCM WORKFLOW (Capacitor) ---
   if (Capacitor.isNativePlatform()) {
+    if (isPushRegistering) {
+      return { supported: true, granted: false, reason: 'Push notification registration already in progress' }
+    }
+    isPushRegistering = true
+
     try {
       // 1. Create native Android notification channel matching backend fcmService
       await PushNotifications.createChannel({
@@ -92,36 +100,100 @@ export async function requestWebPushPermission() {
       }
 
       if (permStatus.receive !== 'granted') {
+        isPushRegistering = false
         return { supported: true, granted: false, reason: 'Push notification permission denied by user' }
       }
 
-      // 3. Register with Google FCM
-      return new Promise((resolve) => {
-        PushNotifications.addListener('registration', async (token) => {
-          const nativeToken = token.value
-          localStorage.setItem('smdl_fcm_token', nativeToken)
-          try {
-            await api.post('/notifications/devices', {
-              fcm_token: nativeToken,
-              device_type: 'ANDROID',
-              device_name: 'Android Device',
+      // 3. Register with Google FCM and await token or error with single-use listener cleanup
+      return await new Promise((resolve) => {
+        let settled = false
+        let regListener = null
+        let errListener = null
+
+        const cleanup = () => {
+          if (regListener?.remove) regListener.remove()
+          if (errListener?.remove) errListener.remove()
+          clearTimeout(timeoutId)
+          isPushRegistering = false
+        }
+
+        const timeoutId = setTimeout(() => {
+          if (!settled) {
+            settled = true
+            cleanup()
+            resolve({
+              supported: true,
+              granted: false,
+              reason: 'Push notification registration timed out. Please check network/Google Play Services.',
             })
-          } catch (_e) {
-            // Token registration recorded locally
           }
-          resolve({ supported: true, granted: true, token: nativeToken })
-        })
+        }, 15000)
 
-        PushNotifications.addListener('registrationError', (err) => {
-          console.warn('[firebase.js] Native FCM registration error:', err.error)
-          resolve({ supported: true, granted: false, error: err.error })
-        })
+        Promise.all([
+          PushNotifications.addListener('registration', async (token) => {
+            if (settled) return
+            settled = true
+            const nativeToken = token?.value
+            if (nativeToken) {
+              localStorage.setItem('smdl_fcm_token', nativeToken)
+              try {
+                await api.post('/notifications/devices', {
+                  fcm_token: nativeToken,
+                  device_type: 'ANDROID',
+                  device_name: 'Android Device',
+                })
+              } catch (_e) {
+                // Token registration recorded locally
+              }
+            }
+            cleanup()
+            resolve({ supported: true, granted: true, token: nativeToken })
+          }),
+          PushNotifications.addListener('registrationError', (err) => {
+            if (settled) return
+            settled = true
+            console.warn('[firebase.js] Native FCM registration error:', err?.error || err)
+            cleanup()
+            resolve({
+              supported: true,
+              granted: false,
+              error: err?.error || err?.message || 'Push notification registration failed',
+              reason: err?.error || err?.message || 'Push notification registration failed',
+            })
+          }),
+        ]).then(([regHandle, errHandle]) => {
+          regListener = regHandle
+          errListener = errHandle
 
-        PushNotifications.register()
+          // Trigger native register() only after listeners are established
+          PushNotifications.register().catch((regErr) => {
+            if (settled) return
+            settled = true
+            console.warn('[firebase.js] PushNotifications.register() call rejected:', regErr?.message || regErr)
+            cleanup()
+            resolve({
+              supported: true,
+              granted: false,
+              error: regErr?.message || 'Push notification service unavailable',
+              reason: regErr?.message || 'Push notification service unavailable',
+            })
+          })
+        }).catch((listenerErr) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          resolve({
+            supported: true,
+            granted: false,
+            error: listenerErr?.message,
+            reason: 'Failed to initialize notification listeners',
+          })
+        })
       })
     } catch (err) {
+      isPushRegistering = false
       console.warn('[firebase.js] Native push exception:', err.message)
-      return { supported: true, granted: false, error: err.message }
+      return { supported: true, granted: false, error: err.message, reason: err.message }
     }
   }
 

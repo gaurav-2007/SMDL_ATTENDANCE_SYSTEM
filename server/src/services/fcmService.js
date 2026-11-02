@@ -1,4 +1,6 @@
+const path = require('path');
 const admin = require('firebase-admin');
+const { getMessaging } = require('firebase-admin/messaging');
 const { supabaseAdmin } = require('../config/db');
 
 let isFirebaseInitialized = false;
@@ -15,16 +17,23 @@ function initFirebaseAdmin() {
       ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
       : null;
 
+    const getCert = (admin.credential && typeof admin.credential.cert === 'function')
+      ? admin.credential.cert
+      : admin.cert;
+
     if (serviceAccountJson) {
       let credentials;
       if (serviceAccountJson.trim().startsWith('{')) {
         credentials = JSON.parse(serviceAccountJson);
       } else {
-        // Assume file path
-        credentials = require(serviceAccountJson);
+        // Assume file path (relative to server root or absolute)
+        const resolvedPath = path.isAbsolute(serviceAccountJson)
+          ? serviceAccountJson
+          : path.resolve(__dirname, '../../', serviceAccountJson);
+        credentials = require(resolvedPath);
       }
       admin.initializeApp({
-        credential: admin.credential.cert(credentials),
+        credential: getCert(credentials),
       });
       isFirebaseInitialized = true;
       console.log('🔥 [fcmService] Firebase Admin initialized successfully via Service Account JSON.');
@@ -33,7 +42,7 @@ function initFirebaseAdmin() {
 
     if (projectId && clientEmail && privateKey) {
       admin.initializeApp({
-        credential: admin.credential.cert({
+        credential: getCert({
           projectId,
           clientEmail,
           privateKey,
@@ -72,12 +81,19 @@ async function sendMulticastPush(devices, { title, body, data = {}, notification
     return { success: true, deliveredCount: 0 };
   }
 
-  // Stringify all data payload values for FCM compatibility
+  // Stringify all data payload values for strict FCM compatibility (rejects undefined/null/non-strings)
   const cleanData = {};
   for (const [key, val] of Object.entries(data || {})) {
-    cleanData[key] = typeof val === 'string' ? val : JSON.stringify(val);
+    if (val === undefined || val === null) continue;
+    if (typeof val === 'string') {
+      cleanData[key] = val;
+    } else if (typeof val === 'boolean' || typeof val === 'number') {
+      cleanData[key] = String(val);
+    } else {
+      cleanData[key] = JSON.stringify(val);
+    }
   }
-  cleanData.notificationType = notificationType;
+  cleanData.notificationType = String(notificationType || 'SYSTEM');
   cleanData.sentAt = new Date().toISOString();
 
   // Unified payload structure: Works for both Web and Android
@@ -110,11 +126,15 @@ async function sendMulticastPush(devices, { title, body, data = {}, notification
   };
 
   try {
-    const response = await admin.messaging().sendEachForMulticast(multicastMessage);
+    const messaging = typeof admin.messaging === 'function' ? admin.messaging() : getMessaging();
+    const response = await messaging.sendEachForMulticast(multicastMessage);
     const failedTokens = [];
+
+    console.log(`📡 [fcmService] FCM multicast dispatched to ${activeTokens.length} device(s). Success: ${response.successCount}, Failure: ${response.failureCount}`);
 
     response.responses.forEach((resp, idx) => {
       if (!resp.success) {
+        console.warn(`⚠️ [fcmService] Delivery failed for token [${idx}]:`, resp.error?.code, resp.error?.message);
         const errCode = resp.error?.code;
         if (
           errCode === 'messaging/registration-token-not-registered' ||

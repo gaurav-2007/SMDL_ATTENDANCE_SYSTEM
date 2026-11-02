@@ -1,6 +1,7 @@
 const { z } = require('zod');
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { getKolkataDateString } = require('../utils/dateUtils');
 const {
   sendTeacherApprovalEmail,
   sendTeacherRejectionEmail,
@@ -31,6 +32,7 @@ const mapRow = (user, profile, subjects = []) => ({
   phone: user.phone,
   created_at: user.created_at,
   // Flattened profile fields (for convenient frontend access)
+  teacher_profile_id: profile?.id || null,
   employee_id: profile?.teacher_id || null,
   department: profile?.department || null,
   designation: profile?.designation || null,
@@ -689,7 +691,7 @@ const transferStudentDivision = asyncHandler(async (req, res) => {
 // @desc   Today's live attendance summary
 // @route  GET /api/admin/attendance/live-summary
 const getLiveAttendanceSummary = asyncHandler(async (_req, res) => {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getKolkataDateString();
 
   const { count: studentCount } = await supabaseAdmin
     .from('students')

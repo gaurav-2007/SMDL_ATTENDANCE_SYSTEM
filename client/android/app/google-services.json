@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1055325335219",
+    "project_id": "gaurav-f685e",
+    "storage_bucket": "gaurav-f685e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1055325335219:android:8c5871c30ab73d58ce8ac6",
+        "android_client_info": {
+          "package_name": "in.ac.smdl.attendance"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbMxOhQ2HXf18ZYDfQb8594PT9SOC7qj4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

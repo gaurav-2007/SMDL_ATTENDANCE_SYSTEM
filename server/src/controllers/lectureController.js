@@ -6,14 +6,21 @@ const {
   getSlotStatus,
   syncTodayLectures,
 } = require('../services/timetableService');
+const {
+  getKolkataDateString,
+  getKolkataDayName,
+  getKolkataTimeString,
+  getKolkataMinutes,
+} = require('../utils/dateUtils');
 
 function calculateDynamicStatus(l) {
   if (l.status && ['CANCELLED', 'RESCHEDULED'].includes(l.status)) return l.status;
-  const today = new Date().toISOString().slice(0, 10);
+  if (l.topic && l.topic.includes('[CANCELLED]')) return 'CANCELLED';
+  if (l.topic && l.topic.includes('[RESCHEDULED]')) return 'RESCHEDULED';
+  const today = getKolkataDateString();
   if (l.lecture_date < today) return 'COMPLETED';
   if (l.lecture_date > today) return 'SCHEDULED';
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = getKolkataMinutes();
   const [sh, sm] = (l.start_time || '00:00').split(':').map(Number);
   const [eh, em] = (l.end_time || '23:59').split(':').map(Number);
   const startMin = (sh || 0) * 60 + (sm || 0);
@@ -29,7 +36,7 @@ function calculateDynamicStatus(l) {
 // Max duration allowed is 2 hours from start time.
 function isLectureInAttendanceWindow(lecture, now = new Date()) {
   if (!lecture) return false;
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getKolkataDateString(now);
   const lectureDateStr = (lecture.lecture_date || '').toString().slice(0, 10);
   if (lectureDateStr && lectureDateStr !== todayStr) {
     return false;
@@ -39,7 +46,7 @@ function isLectureInAttendanceWindow(lecture, now = new Date()) {
   const [eh, em] = (lecture.end_time || '23:59').split(':').map(Number);
   const startMin = (sh || 0) * 60 + (sm || 0);
   const endMin = (eh || 0) * 60 + (em || 0);
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = getKolkataMinutes(now);
 
   // 1 hour after lecture ends, capped at max 2 hours (120 mins) from lecture start
   const expirationMin = Math.min(endMin + 60, startMin + 120);
@@ -72,8 +79,11 @@ async function attachTeacherNames(lectures) {
     const tObj = l.teachers || l.teacher;
     const teacherName = (tObj?.user_id && userMap[tObj.user_id]) || 'Assigned Teacher';
     const status = calculateDynamicStatus(l);
+    const cleanTopic = (l.topic || '').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '').trim() || l.topic;
     return {
       ...l,
+      topic: cleanTopic,
+      raw_topic: l.topic,
       status,
       subject: l.subjects || l.subject,
       subjects: l.subjects || l.subject,
@@ -94,7 +104,7 @@ async function attachTeacherNames(lectures) {
 // @desc   Get active/today's lectures
 // @route  GET /api/lectures/active
 const getActiveLectures = asyncHandler(async (req, res) => {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getKolkataDateString();
 
   // Auto-sync today's timetable slots so they exist in DB
   try {
@@ -189,9 +199,8 @@ const getActiveLectures = asyncHandler(async (req, res) => {
 // @desc   Get comprehensive today schedule for Teacher / Admin
 // @route  GET /api/lectures/today
 const getTodaySchedule = asyncHandler(async (req, res) => {
-  const targetDateStr = req.query.date || new Date().toISOString().split('T')[0];
-  const targetDate = new Date(targetDateStr);
-  const dayName = DAY_NAMES[targetDate.getDay()];
+  const targetDateStr = req.query.date ? getKolkataDateString(req.query.date) : getKolkataDateString();
+  const dayName = getKolkataDayName(targetDateStr);
 
   // Sync timetable for requested date
   try {
@@ -287,9 +296,9 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
 // @desc   Get Full Weekly Timetable Matrix
 // @route  GET /api/lectures/timetable
 const getTimetableMatrix = asyncHandler(async (req, res) => {
-  const today = new Date();
-  const currentDay = DAY_NAMES[today.getDay()];
-  const currentDate = today.toISOString().split('T')[0];
+  const currentDay = getKolkataDayName();
+  const currentDate = getKolkataDateString();
+  const currentTime = getKolkataTimeString().slice(0, 5);
 
   res.json({
     success: true,
@@ -297,7 +306,7 @@ const getTimetableMatrix = asyncHandler(async (req, res) => {
       matrix: SMDL_TIMETABLE_MATRIX,
       current_day: currentDay,
       current_date: currentDate,
-      current_time: `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`,
+      current_time: currentTime,
     },
   });
 });
@@ -345,27 +354,133 @@ const createLecture = asyncHandler(async (req, res) => {
     throw new Error('Subject and Division are required');
   }
 
-  if (!teacher_id) {
+  // Robust teacher ID resolution: supports teachers.id, users.id, or employee code
+  let resolvedTeacherId = null;
+
+  if (teacher_id) {
+    // 1. Direct match on teachers.id (UUID)
+    const { data: byId } = await supabaseAdmin
+      .from('teachers')
+      .select('id, user_id')
+      .eq('id', teacher_id)
+      .maybeSingle();
+
+    if (byId) {
+      resolvedTeacherId = byId.id;
+    } else {
+      // 2. Match on teachers.user_id (UUID from users table)
+      const { data: byUserId } = await supabaseAdmin
+        .from('teachers')
+        .select('id, user_id')
+        .eq('user_id', teacher_id)
+        .maybeSingle();
+
+      if (byUserId) {
+        resolvedTeacherId = byUserId.id;
+      } else {
+        // 3. Match on teachers.teacher_id (VARCHAR employee code)
+        const { data: byEmpCode } = await supabaseAdmin
+          .from('teachers')
+          .select('id, user_id')
+          .eq('teacher_id', teacher_id)
+          .maybeSingle();
+
+        if (byEmpCode) {
+          resolvedTeacherId = byEmpCode.id;
+        } else {
+          res.status(400);
+          throw new Error('Teacher record not found. Please verify the selected teacher is active and registered.');
+        }
+      }
+    }
+  } else if (req.user.role === 'teacher') {
+    // Current user is a teacher scheduling for themselves
     const { data: teacher } = await supabaseAdmin
       .from('teachers')
-      .select('id')
+      .select('id, user_id')
       .eq('user_id', req.user.id)
       .maybeSingle();
 
     if (teacher) {
-      teacher_id = teacher.id;
+      resolvedTeacherId = teacher.id;
     }
   }
 
-  if (!teacher_id && req.user.role !== 'admin') {
+  if (!resolvedTeacherId && req.user.role !== 'admin') {
     res.status(403);
     throw new Error('Teacher identification is required');
   }
 
-  const todayStr = lecture_date || new Date().toISOString().split('T')[0];
-  const now = new Date();
-  const defaultStartTime = start_time || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
-  const defaultEndTime = end_time || '23:59:59';
+  const todayStr = lecture_date ? getKolkataDateString(lecture_date) : getKolkataDateString();
+  const defaultStartTime = start_time || getKolkataTimeString();
+  let defaultEndTime = end_time;
+  if (!defaultEndTime) {
+    const [sh, sm] = defaultStartTime.split(':').map(Number);
+    const endH = ((sh || 0) + 1) % 24;
+    defaultEndTime = `${String(endH).padStart(2, '0')}:${String(sm || 0).padStart(2, '0')}:00`;
+  }
+
+  // Conflict Resolution: If teacher already has an overlapping lecture on this date,
+  // automatically cancel the conflicting lecture and notify students & teacher.
+  if (resolvedTeacherId) {
+    try {
+      const { data: existingLectures } = await supabaseAdmin
+        .from('lectures')
+        .select('id, start_time, end_time, topic, division_id, subject:subjects(name)')
+        .eq('teacher_id', resolvedTeacherId)
+        .eq('lecture_date', todayStr);
+
+      const toMin = (t) => {
+        if (!t) return 0;
+        const [h, m] = t.toString().split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+
+      const newStartMin = toMin(defaultStartTime);
+      const newEndMin = toMin(defaultEndTime);
+
+      const conflicting = (existingLectures || []).filter((lec) => {
+        if (lec.topic && lec.topic.includes('[CANCELLED]')) return false;
+        const exStartMin = toMin(lec.start_time);
+        const exEndMin = toMin(lec.end_time || '23:59:59');
+        return exStartMin < newEndMin && exEndMin > newStartMin;
+      });
+
+      if (conflicting.length > 0) {
+        const conflictingIds = conflicting.map((c) => c.id);
+        console.log(`[lectureController] Auto-cancelling ${conflictingIds.length} conflicting lecture(s) for teacher ${resolvedTeacherId}:`, conflictingIds);
+
+        // Mark each conflicting lecture as CANCELLED in DB
+        for (const conf of conflicting) {
+          const originalTopic = (conf.topic || 'Regular Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
+          await supabaseAdmin
+            .from('lectures')
+            .update({ topic: `[CANCELLED] ${originalTopic}` })
+            .eq('id', conf.id);
+        }
+
+        // Also attempt status update if column ever added
+        try {
+          await supabaseAdmin.from('lectures').update({ status: 'CANCELLED' }).in('id', conflictingIds);
+        } catch (_ignore) {}
+
+        // Dispatch cancellation notifications
+        const { notifyLectureCancellation } = require('../services/lectureScheduler');
+        for (const conf of conflicting) {
+          try {
+            await notifyLectureCancellation(
+              conf.id,
+              `Automatically cancelled due to schedule conflict with newly scheduled lecture at ${defaultStartTime.slice(0, 5)}`
+            );
+          } catch (notifErr) {
+            console.warn('[lectureController] Conflict cancel notice error:', notifErr.message);
+          }
+        }
+      }
+    } catch (conflictCheckErr) {
+      console.warn('[lectureController] Non-blocking conflict check error:', conflictCheckErr.message);
+    }
+  }
 
   const insertData = {
     subject_id,
@@ -377,8 +492,8 @@ const createLecture = asyncHandler(async (req, res) => {
     created_by: req.user.id,
   };
 
-  if (teacher_id) {
-    insertData.teacher_id = teacher_id;
+  if (resolvedTeacherId) {
+    insertData.teacher_id = resolvedTeacherId;
   }
 
   const { data: lecture, error } = await supabaseAdmin
@@ -400,6 +515,36 @@ const createLecture = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
+  // Notify enrolled students in this division about the newly scheduled lecture
+  (async () => {
+    try {
+      const { sendToUsers } = require('../services/notificationService');
+      const { data: students } = await supabaseAdmin
+        .from('students')
+        .select('user_id')
+        .eq('division_id', division_id);
+
+      const studentUserIds = (students || []).map((s) => s.user_id).filter(Boolean);
+      if (studentUserIds.length > 0) {
+        const subjName = lecture?.subject?.name || topic || 'Class';
+        await sendToUsers(studentUserIds, {
+          type: 'LECTURE_STARTING',
+          title: `New Lecture Scheduled: ${subjName}`,
+          message: `${subjName} lecture has been scheduled on ${todayStr} at ${defaultStartTime.slice(0, 5)}.`,
+          relatedId: lecture.id,
+          relatedType: 'lecture',
+          metadata: {
+            lecture_id: lecture.id,
+            subject_name: subjName,
+            start_time: defaultStartTime,
+          },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[lectureController] Non-blocking lecture notification error:', notifErr.message);
+    }
+  })();
+
   res.status(201).json({
     success: true,
     message: 'Lecture scheduled successfully',
@@ -412,6 +557,23 @@ const createLecture = asyncHandler(async (req, res) => {
 const updateLectureStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+
+  if (status === 'CANCELLED' || status === 'RESCHEDULED') {
+    try {
+      const { data: curr } = await supabaseAdmin
+        .from('lectures')
+        .select('topic')
+        .eq('id', id)
+        .maybeSingle();
+      if (curr) {
+        const cleanT = (curr.topic || 'Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
+        await supabaseAdmin
+          .from('lectures')
+          .update({ topic: `[${status}] ${cleanT}` })
+          .eq('id', id);
+      }
+    } catch (_tErr) {}
+  }
 
   const { data: updated, error } = await supabaseAdmin
     .from('lectures')
@@ -474,8 +636,8 @@ const deleteLecture = asyncHandler(async (req, res) => {
 // @desc   Live query today's classes for student from division timetable (Fix #4: No cron, live query)
 // @route  GET /api/lectures/today-classes
 const getStudentTodayClasses = asyncHandler(async (req, res) => {
-  const todayStr = new Date().toISOString().split('T')[0];
-  const dayName = DAY_NAMES[new Date().getDay()];
+  const todayStr = getKolkataDateString();
+  const dayName = getKolkataDayName();
 
   // 1. Find student's division
   let divisionId = req.query.division_id;
@@ -646,10 +808,243 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Admin / Teacher updates an existing lecture (Proxy teacher, subject change, reschedule)
+// @route  PUT /api/lectures/:id
+const updateLecture = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { subject_id, division_id, topic, start_time, end_time, lecture_date, reason } = req.body;
+  let { teacher_id } = req.body;
+
+  // 1. Fetch current lecture
+  const { data: currentLecture, error: fetchErr } = await supabaseAdmin
+    .from('lectures')
+    .select(`
+      id,
+      division_id,
+      subject_id,
+      teacher_id,
+      lecture_date,
+      start_time,
+      end_time,
+      topic,
+      subject:subjects(id, name, code),
+      division:divisions(id, name, division_name),
+      teacher:teachers(id, teacher_id, user_id)
+    `)
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchErr || !currentLecture) {
+    res.status(404);
+    throw new Error('Lecture session not found');
+  }
+
+  // 2. Resolve teacher_id if provided
+  let resolvedTeacherId = currentLecture.teacher_id;
+  let teacherChanged = false;
+
+  if (teacher_id !== undefined && teacher_id !== null && teacher_id !== '') {
+    // 2.1 Match by teachers.id
+    const { data: byId } = await supabaseAdmin
+      .from('teachers')
+      .select('id, user_id, teacher_id')
+      .eq('id', teacher_id)
+      .maybeSingle();
+
+    if (byId) {
+      resolvedTeacherId = byId.id;
+    } else {
+      // 2.2 Match by teachers.user_id
+      const { data: byUserId } = await supabaseAdmin
+        .from('teachers')
+        .select('id, user_id, teacher_id')
+        .eq('user_id', teacher_id)
+        .maybeSingle();
+
+      if (byUserId) {
+        resolvedTeacherId = byUserId.id;
+      } else {
+        // 2.3 Match by employee code
+        const { data: byEmpCode } = await supabaseAdmin
+          .from('teachers')
+          .select('id, user_id, teacher_id')
+          .eq('teacher_id', teacher_id)
+          .maybeSingle();
+
+        if (byEmpCode) {
+          resolvedTeacherId = byEmpCode.id;
+        } else {
+          res.status(400);
+          throw new Error('Specified teacher record was not found.');
+        }
+      }
+    }
+
+    if (resolvedTeacherId !== currentLecture.teacher_id) {
+      teacherChanged = true;
+    }
+  }
+
+  const effectiveDivisionId = division_id || currentLecture.division_id;
+  const effectiveSubjectId = subject_id || currentLecture.subject_id;
+  const effectiveDate = lecture_date ? getKolkataDateString(lecture_date) : currentLecture.lecture_date;
+  const effectiveStartTime = start_time || currentLecture.start_time;
+  const effectiveEndTime = end_time || currentLecture.end_time;
+  const effectiveTopic = topic !== undefined ? topic : currentLecture.topic;
+
+  // 3. Conflict Resolution for the new teacher (if teacher or timing changed)
+  if (resolvedTeacherId && (teacherChanged || start_time || lecture_date)) {
+    try {
+      const { data: existingLectures } = await supabaseAdmin
+        .from('lectures')
+        .select('id, start_time, end_time, topic, division_id, subject:subjects(name)')
+        .eq('teacher_id', resolvedTeacherId)
+        .eq('lecture_date', effectiveDate)
+        .neq('id', id);
+
+      const toMin = (t) => {
+        if (!t) return 0;
+        const [h, m] = t.toString().split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+
+      const newStartMin = toMin(effectiveStartTime);
+      const newEndMin = toMin(effectiveEndTime);
+
+      const conflicting = (existingLectures || []).filter((lec) => {
+        if (lec.topic && lec.topic.includes('[CANCELLED]')) return false;
+        const exStartMin = toMin(lec.start_time);
+        const exEndMin = toMin(lec.end_time || '23:59:59');
+        return exStartMin < newEndMin && exEndMin > newStartMin;
+      });
+
+      if (conflicting.length > 0) {
+        const conflictingIds = conflicting.map((c) => c.id);
+        console.log(`[lectureController] Auto-cancelling ${conflictingIds.length} conflicting lecture(s) for substitute teacher ${resolvedTeacherId}:`, conflictingIds);
+
+        for (const conf of conflicting) {
+          const origT = (conf.topic || 'Regular Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
+          await supabaseAdmin
+            .from('lectures')
+            .update({ topic: `[CANCELLED] ${origT}` })
+            .eq('id', conf.id);
+        }
+
+        const { notifyLectureCancellation } = require('../services/lectureScheduler');
+        for (const conf of conflicting) {
+          try {
+            await notifyLectureCancellation(
+              conf.id,
+              `Automatically cancelled due to proxy schedule conflict at ${effectiveStartTime.slice(0, 5)}`
+            );
+          } catch (_e) {}
+        }
+      }
+    } catch (_cErr) {}
+  }
+
+  // 4. Update the lecture record
+  const updatePayload = {
+    subject_id: effectiveSubjectId,
+    teacher_id: resolvedTeacherId,
+    division_id: effectiveDivisionId,
+    lecture_date: effectiveDate,
+    start_time: effectiveStartTime,
+    end_time: effectiveEndTime,
+    topic: effectiveTopic,
+  };
+
+  const { data: updated, error: updErr } = await supabaseAdmin
+    .from('lectures')
+    .update(updatePayload)
+    .eq('id', id)
+    .select(`
+      id,
+      lecture_date,
+      start_time,
+      end_time,
+      topic,
+      subject:subjects(id, name, code),
+      division:divisions(id, name, division_name),
+      teacher:teachers(id, teacher_id, user_id)
+    `)
+    .single();
+
+  if (updErr) {
+    res.status(500);
+    throw new Error(updErr.message);
+  }
+
+  const [mappedLecture] = await attachTeacherNames([updated]);
+
+  // 5. Send Notification to all students in division & affected faculty
+  (async () => {
+    try {
+      const { sendToUsers } = require('../services/notificationService');
+      const { data: students } = await supabaseAdmin
+        .from('students')
+        .select('user_id')
+        .eq('division_id', effectiveDivisionId);
+
+      const studentUserIds = (students || []).map((s) => s.user_id).filter(Boolean);
+      const recipientIds = [...new Set([
+        ...studentUserIds,
+        currentLecture.teacher?.user_id,
+        updated.teacher?.user_id,
+      ].filter(Boolean))];
+
+      if (recipientIds.length > 0) {
+        const subjName = mappedLecture?.subject?.name || 'Class';
+        const teacherName = mappedLecture?.teacher?.full_name || 'Faculty';
+        const formattedTime = effectiveStartTime.slice(0, 5);
+
+        let notifTitle = `Lecture Updated: ${subjName}`;
+        let notifMessage = `Today's ${subjName} lecture (${formattedTime}) has been updated. Faculty: ${teacherName}.`;
+
+        if (teacherChanged) {
+          notifTitle = `Faculty Update (Proxy): ${subjName}`;
+          notifMessage = `Notice: Today's ${subjName} lecture at ${formattedTime} will now be conducted by ${teacherName} (Substitute faculty). ${reason ? `Note: ${reason}` : ''}`;
+        } else if (subject_id && subject_id !== currentLecture.subject_id) {
+          notifTitle = `Subject Updated: ${subjName}`;
+          notifMessage = `Notice: Lecture at ${formattedTime} is now scheduled for ${subjName} with ${teacherName}. ${reason ? `Note: ${reason}` : ''}`;
+        }
+
+        await sendToUsers(recipientIds, {
+          type: 'LECTURE_RESCHEDULED',
+          title: notifTitle,
+          message: notifMessage,
+          relatedId: id,
+          relatedType: 'lecture',
+          metadata: {
+            lecture_id: id,
+            subject_name: subjName,
+            teacher_name: teacherName,
+            is_proxy: teacherChanged,
+            new_date: effectiveDate,
+            new_time: effectiveStartTime,
+            reason: reason || null,
+          },
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[lectureController] Non-blocking update notification error:', notifErr.message);
+    }
+  })();
+
+  res.json({
+    success: true,
+    message: teacherChanged
+      ? `Lecture successfully transferred to substitute faculty (${mappedLecture?.teacher?.full_name || 'Teacher'}) and students notified!`
+      : 'Lecture details updated successfully and students notified!',
+    data: { lecture: mappedLecture },
+  });
+});
+
 module.exports = {
   getActiveLectures,
   getAllLectures,
   createLecture,
+  updateLecture,
   updateLectureStatus,
   deleteLecture,
   getTodaySchedule,

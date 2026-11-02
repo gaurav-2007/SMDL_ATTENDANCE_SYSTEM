@@ -22,8 +22,9 @@ import {
 } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import { Capacitor } from '@capacitor/core'
 import { useAuth } from '../../context/AuthContext'
-import api, { getBaseURL, setCustomApiUrl } from '../../lib/api'
+import api, { getBaseURL, setCustomApiUrl, normalizeApiUrl, isPrivateLanHost } from '../../lib/api'
 
 const DEFAULT_COURSES = [
   { id: '80acc4c6-829f-40a4-ab0b-6cd44032fffc', name: 'B.Sc. Computer Science', code: 'BSC-CS', department: 'Computer Science' },
@@ -54,25 +55,44 @@ export default function LoginPage() {
   const [testingServer, setTestingServer] = useState(false)
 
   async function testAndSaveServerUrl(urlToSave) {
-    if (!urlToSave?.trim()) return
+    if (!urlToSave?.trim()) {
+      toast.error('Please enter a backend API URL')
+      return
+    }
     setTestingServer(true)
     try {
-      let clean = urlToSave.trim().replace(/\/+$/, '')
-      if (!clean.endsWith('/api')) clean += '/api'
-      if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
-        clean = `http://${clean}`
+      const clean = normalizeApiUrl(urlToSave)
+      if (!clean) {
+        toast.error('Invalid URL format. Example: http://10.226.108.19:5000/api')
+        setTestingServer(false)
+        return
       }
-      const res = await axios.get(`${clean}/health`, { timeout: 4000 })
-      if (res.data?.success) {
+
+      const parsed = new URL(clean)
+      if (parsed.protocol === 'http:' && !isPrivateLanHost(parsed.hostname)) {
+        toast.error('Public URLs must use HTTPS. HTTP is only permitted for local LAN / private IP addresses.')
+        setTestingServer(false)
+        return
+      }
+
+      // Health check probe with 7-second timeout (Requirement 5)
+      const res = await axios.get(`${clean}/health`, { timeout: 7000 })
+      if (res.data && res.data.success === true) {
         setCustomApiUrl(clean)
         setServerUrlInput(clean)
         toast.success(`Connected to server! (${clean})`)
         setShowServerModal(false)
       } else {
-        toast.error('Server responded but health check failed')
+        toast.error('Server responded but health check failed (missing success status)')
       }
     } catch (err) {
-      toast.error(`Cannot connect to ${urlToSave}: ${err.message}`)
+      if (err.code === 'ECONNABORTED' || err.message?.toLowerCase().includes('timeout')) {
+        toast.error('Connection timed out (7s). Please verify phone and server are on the same Wi-Fi network.')
+      } else if (err.response) {
+        toast.error(`Server returned HTTP ${err.response.status}: ${err.response.statusText || 'Health check error'}`)
+      } else {
+        toast.error(`Cannot connect to server: ${err.message || 'Network unreachable'}`)
+      }
     } finally {
       setTestingServer(false)
     }
@@ -80,8 +100,13 @@ export default function LoginPage() {
 
   function handleResetDefaultServer() {
     setCustomApiUrl(null)
-    setServerUrlInput(getBaseURL())
-    toast.success('Reset to default server IP')
+    const defaultUrl = getBaseURL()
+    setServerUrlInput(defaultUrl || '')
+    if (defaultUrl) {
+      toast.success(`Reset to default server IP: ${defaultUrl}`)
+    } else {
+      toast.success('Cleared custom server IP. Please configure an active server.')
+    }
     setShowServerModal(false)
   }
 
@@ -199,6 +224,15 @@ export default function LoginPage() {
   async function handleLoginSubmit(e) {
     if (e) e.preventDefault()
     if (!validateLogin()) return
+
+    // If native Capacitor and no server URL is configured, prompt configuration
+    if (!getBaseURL() && Capacitor.isNativePlatform()) {
+      toast.error('Server URL is not configured. Please tap "Server" below to configure your server IP.')
+      setServerUrlInput('')
+      setShowServerModal(true)
+      return
+    }
+
     setLoading(true)
     try {
       const extra = {
@@ -1337,15 +1371,18 @@ export default function LoginPage() {
         <div className="mt-4 flex flex-col items-center justify-center text-xs text-brand-muted">
           <button
             type="button"
+            id="server-config-btn"
             onClick={() => {
-              setServerUrlInput(getBaseURL())
+              setServerUrlInput(getBaseURL() || '')
               setShowServerModal(true)
             }}
             className="inline-flex items-center gap-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-full px-3.5 py-1.5 transition-all text-slate-300"
           >
-            <Wifi size={13} className="text-emerald-400 animate-pulse" />
-            <span>Server: <span className="font-mono text-emerald-400 font-semibold">{getBaseURL()}</span></span>
-            <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-primary-400 font-medium">Change</span>
+            <Wifi size={13} className={getBaseURL() ? "text-emerald-400 animate-pulse" : "text-amber-400"} />
+            <span>Server: <span className="font-mono text-emerald-400 font-semibold">{getBaseURL() || 'Not Configured'}</span></span>
+            <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-primary-400 font-medium">
+              {getBaseURL() ? 'Change' : 'Configure'}
+            </span>
           </button>
         </div>
 
@@ -1355,27 +1392,31 @@ export default function LoginPage() {
             <div className="card w-full max-w-md p-6 bg-slate-900 border-slate-700 shadow-2xl relative">
               <div className="flex items-center gap-2 mb-4 text-white">
                 <Server size={20} className="text-primary-400" />
-                <h3 className="text-lg font-bold">Mobile Server Settings</h3>
+                <h3 className="text-lg font-bold">Server Configuration</h3>
               </div>
               <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                Agar aap mobile APK ya alag Wi-Fi se connect kar rahe hain, to apna active Laptop/Server IP yahan enter karein.
+                Enter your backend API URL (e.g. your Laptop/Server IP on the same Wi-Fi network).
               </p>
 
               <div className="mb-4">
                 <label className="label text-xs">Backend API URL</label>
                 <input
                   type="text"
+                  id="server-url-input"
                   value={serverUrlInput}
                   onChange={(e) => setServerUrlInput(e.target.value)}
-                  placeholder="http://10.75.38.19:5000/api"
+                  placeholder="http://10.226.108.19:5000/api"
                   className="input font-mono text-sm w-full"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">Default: http://10.75.38.19:5000/api</p>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Example: http://10.226.108.19:5000/api or https://api.smdl.edu.in/api
+                </p>
               </div>
 
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
+                  id="cancel-server-btn"
                   onClick={() => setShowServerModal(false)}
                   className="btn-secondary text-xs px-3 py-2"
                 >
@@ -1383,6 +1424,7 @@ export default function LoginPage() {
                 </button>
                 <button
                   type="button"
+                  id="reset-server-btn"
                   onClick={handleResetDefaultServer}
                   className="btn-secondary text-xs px-3 py-2 text-amber-400 hover:text-amber-300"
                 >
@@ -1390,6 +1432,7 @@ export default function LoginPage() {
                 </button>
                 <button
                   type="button"
+                  id="test-save-server-btn"
                   disabled={testingServer}
                   onClick={() => testAndSaveServerUrl(serverUrlInput)}
                   className="btn-primary text-xs px-4 py-2"

@@ -141,7 +141,7 @@ async function processUpcomingLectureReminders() {
 
   for (const lecture of lectures) {
     // 1. Skip cancelled or completed lectures
-    if (lecture.status === 'CANCELLED' || lecture.status === 'COMPLETED') {
+    if (lecture.status === 'CANCELLED' || lecture.status === 'COMPLETED' || lecture.topic?.includes('[CANCELLED]')) {
       continue;
     }
 
@@ -226,7 +226,7 @@ async function notifyLectureCancellation(lectureId, reason = 'Faculty unavailabl
   try {
     const { data: lecture } = await supabaseAdmin
       .from('lectures')
-      .select('id, division_id, lecture_date, start_time, subject:subjects(name)')
+      .select('id, division_id, lecture_date, start_time, subject:subjects(name), teacher:teachers(user_id)')
       .eq('id', lectureId)
       .single();
 
@@ -241,6 +241,7 @@ async function notifyLectureCancellation(lectureId, reason = 'Faculty unavailabl
       .eq('division_id', lecture.division_id);
 
     const studentUserIds = (students || []).map((s) => s.user_id).filter(Boolean);
+    const recipientUserIds = [...new Set([...studentUserIds, lecture.teacher?.user_id].filter(Boolean))];
 
     await atomicClaimEvent(eventKey, {
       lectureId,
@@ -248,11 +249,11 @@ async function notifyLectureCancellation(lectureId, reason = 'Faculty unavailabl
       notificationType: 'LECTURE_CANCELLED',
       divisionId: lecture.division_id,
       startTime: lecture.start_time,
-      studentCount: studentUserIds.length,
+      studentCount: recipientUserIds.length,
     });
 
-    if (studentUserIds.length > 0) {
-      await sendToUsers(studentUserIds, {
+    if (recipientUserIds.length > 0) {
+      await sendToUsers(recipientUserIds, {
         type: 'LECTURE_CANCELLED',
         title: 'Lecture Cancelled',
         message: `Today's ${subjectName} lecture has been cancelled. Reason: ${reason}.`,
@@ -273,7 +274,7 @@ async function notifyLectureRescheduling(lectureId, newTime, newDate, reason = '
   try {
     const { data: lecture } = await supabaseAdmin
       .from('lectures')
-      .select('id, division_id, subject:subjects(name)')
+      .select('id, division_id, subject:subjects(name), teacher:teachers(user_id)')
       .eq('id', lectureId)
       .single();
 
@@ -288,6 +289,7 @@ async function notifyLectureRescheduling(lectureId, newTime, newDate, reason = '
       .eq('division_id', lecture.division_id);
 
     const studentUserIds = (students || []).map((s) => s.user_id).filter(Boolean);
+    const recipientUserIds = [...new Set([...studentUserIds, lecture.teacher?.user_id].filter(Boolean))];
 
     await atomicClaimEvent(eventKey, {
       lectureId,
@@ -295,11 +297,11 @@ async function notifyLectureRescheduling(lectureId, newTime, newDate, reason = '
       notificationType: 'LECTURE_RESCHEDULED',
       divisionId: lecture.division_id,
       startTime: newTime,
-      studentCount: studentUserIds.length,
+      studentCount: recipientUserIds.length,
     });
 
-    if (studentUserIds.length > 0) {
-      await sendToUsers(studentUserIds, {
+    if (recipientUserIds.length > 0) {
+      await sendToUsers(recipientUserIds, {
         type: 'LECTURE_RESCHEDULED',
         title: 'Lecture Rescheduled',
         message: `Your ${subjectName} lecture has been rescheduled to ${newDate} at ${newTime.slice(0, 5)}.`,

@@ -1,4 +1,9 @@
 const { supabaseAdmin } = require('../config/db');
+const {
+  getKolkataDateString,
+  getKolkataDayName,
+  getKolkataMinutes,
+} = require('../utils/dateUtils');
 
 // Official SMDL College Timetable Definition for F.Y.BSc (Computer Science) - NEP SEM-I
 const SMDL_TIMETABLE_MATRIX = {
@@ -115,12 +120,12 @@ async function getAcademicEntities() {
 
 // Calculate dynamic status based on start and end time
 function getSlotStatus(startTime, endTime, targetDateStr) {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getKolkataDateString();
   if (targetDateStr < todayStr) return 'COMPLETED';
   if (targetDateStr > todayStr) return 'SCHEDULED';
 
   const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentMinutes = getKolkataMinutes();
 
   const [sh, sm] = (startTime || '00:00').split(':').map(Number);
   const [eh, em] = (endTime || '23:59').split(':').map(Number);
@@ -136,8 +141,8 @@ function getSlotStatus(startTime, endTime, targetDateStr) {
 // Ensure today's lectures from the timetable are generated in the database
 async function syncTodayLectures(targetDateStr) {
   const targetDate = targetDateStr ? new Date(targetDateStr) : new Date();
-  const dateStr = targetDate.toISOString().split('T')[0];
-  const dayName = DAY_NAMES[targetDate.getDay()];
+  const dateStr = targetDateStr ? getKolkataDateString(targetDateStr) : getKolkataDateString();
+  const dayName = getKolkataDayName(dateStr);
 
   const daySchedule = SMDL_TIMETABLE_MATRIX.weekly_schedule[dayName] || [];
   if (daySchedule.length === 0) {

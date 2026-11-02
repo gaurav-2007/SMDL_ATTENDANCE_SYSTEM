@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { getKolkataDateString } = require('../utils/dateUtils');
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -121,7 +122,7 @@ const markAttendance = asyncHandler(async (req, res) => {
 
     if (slot) {
       timetableId = slot.id;
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getKolkataDateString();
       const { data: existingLec } = await supabaseAdmin
         .from('lectures')
         .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
@@ -161,7 +162,7 @@ const markAttendance = asyncHandler(async (req, res) => {
 
   // 2.1 Timing Window Verification (+1 hr after lecture end, max 2 hrs from start)
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const todayStr = getKolkataDateString(now);
   const lectureDateStr = (lecture.lecture_date || '').toString().slice(0, 10);
   if (lectureDateStr && lectureDateStr !== todayStr) {
     res.status(400);
@@ -324,7 +325,7 @@ const markAttendance = asyncHandler(async (req, res) => {
       await supabaseAdmin.from('attendance_records').insert({
         student_id: student.id,
         timetable_id: timetableId,
-        attendance_date: lecture?.lecture_date || new Date().toISOString().split('T')[0],
+        attendance_date: lecture?.lecture_date || getKolkataDateString(),
         status: 'PRESENT',
         marked_at: new Date().toISOString(),
         marked_by: req.user.id,

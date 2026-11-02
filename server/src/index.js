@@ -66,9 +66,9 @@ app.use(
   })
 );
 
-// 4. Scoped High-Payload Parser for Attendance Photos (up to 15MB)
+// 4. Scoped High-Payload Parser for Attendance Photos & Announcement Attachments (up to 15MB)
 app.use(
-  '/api/attendance/mark',
+  ['/api/attendance/mark', '/api/announcements'],
   express.json({ limit: '15mb' }),
   express.urlencoded({ extended: true, limit: '15mb' })
 );

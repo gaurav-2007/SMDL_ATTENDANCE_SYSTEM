@@ -13,6 +13,8 @@ server/node_modules/
 *serviceAccount*.json
 firebase-admin*.json
 service-account*.json
+firebase-service-account*.json
+*firebase-service-account*.json
 
 # Logs
 logs
@@ -28,6 +30,7 @@ client/build/
 client/dist/
 server/dist/
 server/build/
+*.apk
 
 # IDE & Editor
 .idea/
