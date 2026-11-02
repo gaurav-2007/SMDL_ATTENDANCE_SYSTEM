@@ -1,11 +1,20 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Users, UserCheck, UserX, Clock, TrendingUp, RefreshCw, CheckCircle, XCircle, GraduationCap, MapPin, Save, RotateCcw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import {
+  Users, UserCheck, UserX, Clock, TrendingUp, RefreshCw,
+  CheckCircle2, XCircle, GraduationCap, MapPin, Save, RotateCcw,
+  ArrowRight, ShieldCheck, Settings
+} from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Input, StatCard, Skeleton, EmptyState
+} from '../../components/ui'
 
 export default function AdminHome() {
   const [teachers, setTeachers] = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const [loading, setLoading] = useState(true)
   const [actingId, setActingId] = useState(null)
 
   // Geofence configuration state
@@ -87,7 +96,6 @@ export default function AdminHome() {
     setLoading(true)
     try {
       const { data } = await api.get('/admin/teachers')
-      // Backend returns data.data.teachers (alias for 'all')
       const list = data.data?.teachers || data.data?.all || []
       setTeachers(list)
     } catch {
@@ -98,12 +106,14 @@ export default function AdminHome() {
     }
   }, [])
 
-  useEffect(() => { fetchTeachers() }, [fetchTeachers])
+  useEffect(() => {
+    fetchTeachers()
+  }, [fetchTeachers])
 
   const stats = {
-    total:    teachers.length,
-    active:   teachers.filter(t => (t.status || t.account_status) === 'ACTIVE').length,
-    pending:  teachers.filter(t => (t.status || t.account_status) === 'PENDING').length,
+    total: teachers.length,
+    active: teachers.filter(t => (t.status || t.account_status) === 'ACTIVE').length,
+    pending: teachers.filter(t => (t.status || t.account_status) === 'PENDING').length,
     rejected: teachers.filter(t => (t.status || t.account_status) === 'REJECTED').length,
   }
 
@@ -126,7 +136,7 @@ export default function AdminHome() {
 
   async function reject(teacherId, teacherName) {
     const reason = window.prompt(`Reason for rejecting ${teacherName} (required):`)
-    if (reason === null) return // user cancelled
+    if (reason === null) return
     if (!reason.trim()) {
       toast.error('Rejection reason is required')
       return
@@ -145,276 +155,278 @@ export default function AdminHome() {
     }
   }
 
-  const cards = [
-    { label: 'Total Teachers',   value: stats.total,    Icon: Users,     color: 'bg-blue-500/20 text-blue-400' },
-    { label: 'Active Teachers',  value: stats.active,   Icon: UserCheck, color: 'bg-green-500/20 text-green-400' },
-    { label: 'Pending Approval', value: stats.pending,  Icon: Clock,     color: 'bg-yellow-500/20 text-yellow-400' },
-    { label: 'Rejected',         value: stats.rejected, Icon: UserX,     color: 'bg-red-500/20 text-red-400' },
-  ]
-
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Header */}
-      <div className="page-header flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6 animate-fade-in">
+      {/* ── HEADER ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-line">
         <div>
-          <h2 className="page-title">Admin Dashboard</h2>
-          <p className="page-subtitle">SMDL College — Overview</p>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
+            Administrator Console
+          </h2>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Institution management, faculty credential approval, and geofence boundary configuration
+          </p>
         </div>
-        <button
+
+        <Button
           id="refresh-dashboard-btn"
+          variant="outline"
+          size="sm"
           onClick={fetchTeachers}
-          className="btn-secondary btn-sm gap-1"
           disabled={loading}
+          loading={loading}
+          className="self-start sm:self-auto h-9"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+          <span>Refresh</span>
+        </Button>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {cards.map(({ label, value, Icon, color }) => (
-          <div key={label} className="stat-card">
-            <div className={`stat-icon ${color}`}><Icon size={22} /></div>
-            <div>
-              <p className="text-2xl font-bold text-white">
-                {loading ? <span className="text-brand-muted">—</span> : value}
-              </p>
-              <p className="text-brand-muted text-xs mt-0.5">{label}</p>
-            </div>
-          </div>
-        ))}
+      {/* ── 4 STAT CARDS ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard
+          title="Total Faculty"
+          value={loading ? '—' : stats.total}
+          subtitle="Registered teachers"
+          icon={Users}
+        />
+        <StatCard
+          title="Active Teachers"
+          value={loading ? '—' : stats.active}
+          subtitle="Full access granted"
+          icon={UserCheck}
+        />
+        <StatCard
+          title="Pending Approvals"
+          value={loading ? '—' : stats.pending}
+          subtitle="Requires admin action"
+          icon={Clock}
+          badge={
+            stats.pending > 0 ? (
+              <Badge variant="grace" size="sm">{stats.pending} Action Needed</Badge>
+            ) : undefined
+          }
+        />
+        <StatCard
+          title="Rejected Accounts"
+          value={loading ? '—' : stats.rejected}
+          subtitle="Denied registrations"
+          icon={UserX}
+        />
       </div>
 
-      {/* Pending Teacher Approvals */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-white font-semibold flex items-center gap-2">
-            <Clock size={18} className="text-yellow-400" />
-            Pending Teacher Approvals
+      {/* ── PENDING TEACHER APPROVALS ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-grace" />
+            <CardTitle className="text-base">Pending Teacher Approvals</CardTitle>
             {!loading && stats.pending > 0 && (
-              <span className="ml-1 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs font-bold">
-                {stats.pending}
-              </span>
+              <Badge variant="grace" size="sm">{stats.pending}</Badge>
             )}
-          </h3>
-          <a href="/admin/teachers" className="text-brand-accent text-xs hover:underline">
-            View All Teachers →
-          </a>
-        </div>
+          </div>
+          <Link to="/admin/teachers" className="text-xs text-brand font-semibold hover:underline inline-flex items-center gap-1">
+            <span>View All Faculty</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </CardHeader>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-10">
-            <div className="spinner w-8 h-8 border-4" />
-          </div>
-        ) : pendingTeachers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-3">
-            <div className="w-14 h-14 rounded-full bg-green-500/15 flex items-center justify-center">
-              <CheckCircle size={28} className="text-green-400" />
+        <CardContent>
+          {loading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-14 w-full rounded-lg" />
+              <Skeleton className="h-14 w-full rounded-lg" />
             </div>
-            <div className="text-center">
-              <p className="text-white font-medium">All caught up!</p>
-              <p className="text-brand-muted text-sm mt-1">No pending teacher approval requests.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pendingTeachers.map((t) => (
-              <div
-                key={t.id}
-                className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-yellow-500/5 border border-yellow-500/20 hover:border-yellow-500/40 transition-colors"
-              >
-                {/* Teacher Info */}
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-brand flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                    {(t.name || t.full_name || '?').charAt(0).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-white font-semibold truncate">
-                      {t.name || t.full_name}
-                    </p>
-                    <p className="text-brand-muted text-xs truncate">{t.email}</p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {t.employee_id && (
-                        <span className="text-xs font-mono text-brand-accent bg-brand-accent/10 px-2 py-0.5 rounded">
-                          {t.employee_id}
-                        </span>
-                      )}
-                      {t.department && (
-                        <span className="text-xs text-brand-muted flex items-center gap-1">
-                          <GraduationCap size={11} />
-                          {t.department}
-                        </span>
-                      )}
-                      {t.registered_at && (
-                        <span className="text-xs text-brand-muted">
-                          Registered: {new Date(t.registered_at).toLocaleDateString('en-IN')}
-                        </span>
-                      )}
+          ) : pendingTeachers.length === 0 ? (
+            <EmptyState
+              icon={CheckCircle2}
+              title="All Caught Up!"
+              description="No pending teacher approval requests in the registration queue."
+            />
+          ) : (
+            <div className="divide-y divide-line">
+              {pendingTeachers.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-grace/10 border border-grace/20 text-grace font-bold text-sm flex items-center justify-center shrink-0">
+                      {(t.name || t.full_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-ink truncate">
+                        {t.name || t.full_name}
+                      </p>
+                      <p className="text-xs text-muted truncate">{t.email}</p>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
+                        {t.employee_id && (
+                          <span className="font-mono text-brand bg-brand/5 border border-brand/15 px-1.5 py-0.5 rounded font-semibold text-[11px]">
+                            ID: {t.employee_id}
+                          </span>
+                        )}
+                        {t.department && (
+                          <span className="text-muted flex items-center gap-1 text-[11px]">
+                            <GraduationCap className="w-3 h-3 text-muted" />
+                            {t.department}
+                          </span>
+                        )}
+                        {t.registered_at && (
+                          <span className="text-muted text-[11px]">
+                            Registered: {new Date(t.registered_at).toLocaleDateString('en-IN')}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    id={`home-approve-${t.id}`}
-                    onClick={() => approve(t.id, t.name || t.full_name)}
-                    disabled={actingId === t.id}
-                    className="btn-success btn-sm gap-1"
-                  >
-                    {actingId === t.id
-                      ? <div className="spinner w-3 h-3" />
-                      : <UserCheck size={14} />}
-                    Approve
-                  </button>
-                  <button
-                    id={`home-reject-${t.id}`}
-                    onClick={() => reject(t.id, t.name || t.full_name)}
-                    disabled={actingId === t.id}
-                    className="btn-danger btn-sm gap-1"
-                  >
-                    <XCircle size={14} />
-                    Reject
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      id={`home-approve-${t.id}`}
+                      variant="success"
+                      size="sm"
+                      onClick={() => approve(t.id, t.name || t.full_name)}
+                      disabled={actingId === t.id}
+                      loading={actingId === t.id}
+                      className="h-8"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 mr-1" />
+                      <span>Approve</span>
+                    </Button>
+                    <Button
+                      id={`home-reject-${t.id}`}
+                      variant="danger"
+                      size="sm"
+                      onClick={() => reject(t.id, t.name || t.full_name)}
+                      disabled={actingId === t.id}
+                      className="h-8"
+                    >
+                      <XCircle className="w-3.5 h-3.5 mr-1" />
+                      <span>Reject</span>
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Quick Actions */}
-      <div className="card">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <TrendingUp size={18} className="text-brand-accent" />
-          Quick Actions
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <a href="/admin/teachers" className="card-sm hover:border-brand-accent transition-colors cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="stat-icon bg-yellow-500/20 text-yellow-400 w-10 h-10">
-                <Clock size={18} />
+      {/* ── QUICK MANAGEMENT ACTIONS ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Link to="/admin/teachers" className="block">
+          <Card hoverable className="p-4 flex items-center justify-between group">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-white font-semibold text-sm group-hover:text-brand-accent transition-colors">
-                  Teacher Management
+                <p className="text-sm font-semibold text-ink group-hover:text-brand transition-colors">
+                  Faculty Management
                 </p>
-                <p className="text-brand-muted text-xs">
-                  {loading ? '...' : `${stats.pending} pending · ${stats.active} active`}
+                <p className="text-xs text-muted mt-0.5">
+                  {loading ? '...' : `${stats.pending} pending · ${stats.active} active faculty`}
                 </p>
               </div>
             </div>
-          </a>
-          <a href="/admin/students" className="card-sm hover:border-brand-accent transition-colors cursor-pointer group">
-            <div className="flex items-center gap-3">
-              <div className="stat-icon bg-blue-500/20 text-blue-400 w-10 h-10">
-                <Users size={18} />
+            <ArrowRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0" />
+          </Card>
+        </Link>
+
+        <Link to="/admin/students" className="block">
+          <Card hoverable className="p-4 flex items-center justify-between group">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-lg bg-present/10 border border-present/20 text-present flex items-center justify-center shrink-0">
+                <GraduationCap className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-white font-semibold text-sm group-hover:text-brand-accent transition-colors">
-                  Student Management
+                <p className="text-sm font-semibold text-ink group-hover:text-brand transition-colors">
+                  Student Database &amp; Cohorts
                 </p>
-                <p className="text-brand-muted text-xs">View and manage student accounts</p>
+                <p className="text-xs text-muted mt-0.5">View enrolled student cohorts, roll numbers &amp; records</p>
               </div>
             </div>
-          </a>
-        </div>
+            <ArrowRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0" />
+          </Card>
+        </Link>
       </div>
 
-      {/* Attendance Geofence Settings */}
-      <div className="card" id="geofence-settings-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      {/* ── ATTENDANCE GEOFENCE SETTINGS ── */}
+      <Card id="geofence-settings-card">
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
-            <h3 className="text-white font-semibold flex items-center gap-2">
-              <MapPin size={18} className="text-brand-accent" />
-              Attendance Geofence Settings
-            </h3>
-            <p className="text-brand-muted text-xs mt-0.5">
-              Configure college GPS coordinates and the allowed physical radius for student attendance verification.
-            </p>
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-brand" />
+              <CardTitle className="text-base">Campus Geofence Configuration</CardTitle>
+            </div>
+            <CardDescription className="text-xs mt-0.5">
+              Define college GPS coordinates and physical radius threshold for student attendance validation.
+            </CardDescription>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={fetchGeofence}
             disabled={loadingGeofence}
-            className="btn-ghost btn-sm gap-1"
+            className="text-xs h-8"
           >
-            <RefreshCw size={13} className={loadingGeofence ? 'animate-spin' : ''} />
-            Refresh Settings
-          </button>
-        </div>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loadingGeofence ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </Button>
+        </CardHeader>
 
-        {/* Current Active Configuration Status */}
-        <div className="p-4 rounded-xl bg-slate-900/60 border border-brand-border/80 mb-5">
-          <p className="text-xs uppercase font-semibold text-brand-muted tracking-wider mb-2">
-            Current Active Configuration
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-brand-card/90 p-3 rounded-lg border border-brand-border">
-              <span className="text-brand-muted text-xs block">Active Latitude</span>
-              <span className="text-white font-mono font-semibold text-sm">
-                {activeGeofence.latitude || '19.02479'}
-              </span>
-            </div>
-            <div className="bg-brand-card/90 p-3 rounded-lg border border-brand-border">
-              <span className="text-brand-muted text-xs block">Active Longitude</span>
-              <span className="text-white font-mono font-semibold text-sm">
-                {activeGeofence.longitude || '73.10159'}
-              </span>
-            </div>
-            <div className="bg-brand-card/90 p-3 rounded-lg border border-brand-border">
-              <span className="text-brand-muted text-xs block">Allowed Radius</span>
-              <span className="text-brand-accent font-mono font-bold text-sm">
-                {activeGeofence.radius || '100'} meters
-              </span>
+        <CardContent className="space-y-4">
+          {/* Active Configuration Info */}
+          <div className="p-3.5 rounded-lg bg-bg border border-line">
+            <p className="text-[10px] uppercase font-semibold text-muted tracking-wider mb-2">
+              Current Live Campus Boundary
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <span className="text-muted block text-[11px]">Latitude:</span>
+                <span className="font-mono font-semibold text-ink">{activeGeofence.latitude || '19.02479'}° N</span>
+              </div>
+              <div>
+                <span className="text-muted block text-[11px]">Longitude:</span>
+                <span className="font-mono font-semibold text-ink">{activeGeofence.longitude || '73.10159'}° E</span>
+              </div>
+              <div>
+                <span className="text-muted block text-[11px]">Authorized Radius:</span>
+                <span className="font-semibold text-brand font-mono">{activeGeofence.radius || '100'} meters</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Geofence Form */}
-        <form onSubmit={handleSaveGeofence} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="geo-latitude" className="block text-xs font-medium text-brand-muted mb-1.5">
-                College Latitude <span className="text-brand-danger">*</span>
-              </label>
-              <input
+          {/* Form */}
+          <form onSubmit={handleSaveGeofence} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input
                 id="geo-latitude"
+                label="College Latitude"
                 type="number"
                 step="any"
                 required
                 value={geofenceForm.latitude}
                 onChange={(e) => setGeofenceForm((prev) => ({ ...prev, latitude: e.target.value }))}
                 placeholder="19.02479"
-                className="input font-mono text-sm"
+                helperText="Valid range: -90.0 to +90.0"
               />
-              <span className="text-[11px] text-brand-muted/70 mt-1 block">Valid range: -90.0 to +90.0</span>
-            </div>
 
-            <div>
-              <label htmlFor="geo-longitude" className="block text-xs font-medium text-brand-muted mb-1.5">
-                College Longitude <span className="text-brand-danger">*</span>
-              </label>
-              <input
+              <Input
                 id="geo-longitude"
+                label="College Longitude"
                 type="number"
                 step="any"
                 required
                 value={geofenceForm.longitude}
                 onChange={(e) => setGeofenceForm((prev) => ({ ...prev, longitude: e.target.value }))}
                 placeholder="73.10159"
-                className="input font-mono text-sm"
+                helperText="Valid range: -180.0 to +180.0"
               />
-              <span className="text-[11px] text-brand-muted/70 mt-1 block">Valid range: -180.0 to +180.0</span>
-            </div>
 
-            <div>
-              <label htmlFor="geo-radius" className="block text-xs font-medium text-brand-muted mb-1.5">
-                Allowed Radius (Meters) <span className="text-brand-danger">*</span>
-              </label>
-              <input
+              <Input
                 id="geo-radius"
+                label="Allowed Radius (Meters)"
                 type="number"
                 min="1"
                 step="1"
@@ -422,45 +434,39 @@ export default function AdminHome() {
                 value={geofenceForm.radius}
                 onChange={(e) => setGeofenceForm((prev) => ({ ...prev, radius: e.target.value }))}
                 placeholder="100"
-                className="input font-mono text-sm"
+                helperText="Default: 100 meters (maximum 50,000)"
               />
-              <span className="text-[11px] text-brand-muted/70 mt-1 block">Default: 100 meters</span>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              id="save-geofence-btn"
-              type="submit"
-              disabled={savingGeofence}
-              className="btn-primary btn-sm gap-1.5"
-            >
-              {savingGeofence ? (
-                <>
-                  <div className="spinner w-3.5 h-3.5" />
-                  <span>Saving Settings...</span>
-                </>
-              ) : (
-                <>
-                  <Save size={14} />
-                  <span>Save Geofence Settings</span>
-                </>
-              )}
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-line">
+              <Button
+                id="save-geofence-btn"
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={savingGeofence}
+                loading={savingGeofence}
+                className="font-semibold shadow-xs"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                <span>Save Geofence Settings</span>
+              </Button>
 
-            <button
-              id="reset-geofence-btn"
-              type="button"
-              onClick={handleResetGeofence}
-              disabled={savingGeofence}
-              className="btn-secondary btn-sm gap-1.5"
-            >
-              <RotateCcw size={14} />
-              <span>Reset to Current Saved</span>
-            </button>
-          </div>
-        </form>
-      </div>
+              <Button
+                id="reset-geofence-btn"
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetGeofence}
+                disabled={savingGeofence}
+              >
+                <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                <span>Reset to Saved</span>
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   )
 }

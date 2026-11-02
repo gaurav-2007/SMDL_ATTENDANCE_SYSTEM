@@ -8,6 +8,10 @@ import {
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Input, Modal, Skeleton, EmptyState
+} from '../../components/ui'
 
 // Common degree presets with permanent course codes (fixed for all semesters)
 const COURSE_PRESETS = [
@@ -52,7 +56,7 @@ function getCoursePrefix(course) {
 }
 
 export default function AcademicPanel() {
-  const [tab, setTab] = useState('COURSES') // 'COURSES', 'DIVISIONS', 'SUBJECTS'
+  const [tab, setTab] = useState('COURSES') // 'COURSES', 'DIVISIONS', 'SUBJECTS', 'TIMETABLE'
   const [courses, setCourses] = useState([])
   const [divisions, setDivisions] = useState([])
   const [subjects, setSubjects] = useState([])
@@ -203,7 +207,6 @@ export default function AcademicPanel() {
       setSmdlLoading(false)
     }
   }
-
 
   // Count subjects per course
   const subjectCountByCourse = useMemo(() => {
@@ -439,39 +442,45 @@ export default function AcademicPanel() {
   }
 
   return (
-    <div className="animate-fade-in pb-12">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Page Header */}
-      <div className="page-header flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="page-title flex items-center gap-2.5">
-            <GraduationCap className="text-brand-accent" size={26} />
-            Academic Structure Management
-          </h2>
-          <p className="page-subtitle">Configure college degree courses, academic divisions, and curriculum subjects for attendance</p>
+          <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight flex items-center gap-2.5">
+            <GraduationCap className="text-brand shrink-0" size={26} />
+            Academic Structure & Curriculum Management
+          </h1>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Configure college degree programs, class divisions, curriculum subjects, and weekly timetable matrices
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={fetchData} className="btn btn-ghost btn-sm" title="Refresh data">
-            <RefreshCw size={15} className={loading ? 'animate-spin text-brand-accent' : ''} />
-          </button>
-          <button
+          <Button onClick={fetchData} variant="outline" size="sm" title="Refresh data">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </Button>
+          <Button
             onClick={() => {
               setCourseForm({ name: '', code: '', duration_years: 3 })
               setShowCourseModal(true)
             }}
-            className="btn btn-primary flex items-center gap-2 text-xs shadow-lg shadow-primary-900/30"
+            variant="primary"
+            size="sm"
+            className="gap-1.5"
           >
-            <Plus size={15} /> Add Course
-          </button>
-          <button
+            <Plus size={14} /> Add Course
+          </Button>
+          <Button
             onClick={() => {
               setDivisionForm({ course_id: courses[0]?.id || '', name: 'FY', division_name: 'A' })
               setShowDivisionModal(true)
             }}
-            className="btn btn-secondary flex items-center gap-2 text-xs"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
           >
-            <Plus size={15} /> Add Division
-          </button>
-          <button
+            <Plus size={14} /> Add Division
+          </Button>
+          <Button
             onClick={() => {
               const defaultCourse = courses[0]
               const matchedDivs = divisions.filter(d => d.course_id === defaultCourse?.id)
@@ -483,69 +492,78 @@ export default function AcademicPanel() {
               })
               setShowSubjectModal(true)
             }}
-            className="btn bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600/50 flex items-center gap-2 text-xs"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-emerald-700 dark:text-emerald-400 border-emerald-300 hover:bg-emerald-50"
           >
-            <Plus size={15} /> Add Subject
-          </button>
+            <Plus size={14} /> Add Subject
+          </Button>
         </div>
       </div>
 
       {/* Navigation Tabs & Quick Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl w-fit">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-wrap gap-1.5 p-1 bg-bg border border-line rounded-lg w-fit">
           <button
             onClick={() => setTab('COURSES')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
-              tab === 'COURSES' ? 'bg-gradient-brand text-white shadow-md' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              tab === 'COURSES'
+                ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                : 'text-muted hover:text-ink hover:bg-surface/50'
             }`}
           >
-            <GraduationCap size={15} /> Courses ({courses.length})
+            <GraduationCap size={14} /> Courses ({courses.length})
           </button>
           <button
             onClick={() => setTab('DIVISIONS')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
-              tab === 'DIVISIONS' ? 'bg-gradient-brand text-white shadow-md' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              tab === 'DIVISIONS'
+                ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                : 'text-muted hover:text-ink hover:bg-surface/50'
             }`}
           >
-            <Layers size={15} /> Divisions ({divisions.length})
+            <Layers size={14} /> Divisions ({divisions.length})
           </button>
           <button
             onClick={() => setTab('SUBJECTS')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
-              tab === 'SUBJECTS' ? 'bg-gradient-brand text-white shadow-md' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              tab === 'SUBJECTS'
+                ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                : 'text-muted hover:text-ink hover:bg-surface/50'
             }`}
           >
-            <BookOpen size={15} /> Subjects ({subjects.length})
+            <BookOpen size={14} /> Subjects ({subjects.length})
           </button>
           <button
             onClick={() => setTab('TIMETABLE')}
-            className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all ${
-              tab === 'TIMETABLE' ? 'bg-gradient-brand text-white shadow-md' : 'text-slate-400 hover:text-white'
+            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              tab === 'TIMETABLE'
+                ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                : 'text-muted hover:text-ink hover:bg-surface/50'
             }`}
           >
-            <Calendar size={15} /> Weekly Timetable
+            <Calendar size={14} /> Weekly Timetable
           </button>
         </div>
 
         {/* Filter & Search Bar for non-course tabs */}
         {tab !== 'COURSES' && (
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
+            <div className="w-48 sm:w-60">
+              <Input
                 type="text"
-                placeholder="Search..."
+                placeholder="Search by code or title..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="form-input !py-1.5 !pl-9 text-xs w-44 md:w-56"
+                icon={Search}
               />
             </div>
             <select
               value={selectedCourseFilter}
               onChange={e => setSelectedCourseFilter(e.target.value)}
-              className="form-input !py-1.5 text-xs w-44"
+              className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer max-w-[190px]"
             >
-              <option value="ALL">All Courses</option>
+              <option value="ALL">All Degree Courses</option>
               {courses.map(c => (
                 <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
               ))}
@@ -555,71 +573,78 @@ export default function AcademicPanel() {
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-24 gap-3">
-          <Loader2 className="animate-spin w-8 h-8 text-brand-accent" />
-          <p className="text-slate-400 text-xs">Loading academic structure...</p>
+        <div className="p-8 space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
         </div>
       ) : (
         <>
           {/* ═══════════ TAB 1: COURSES ═══════════ */}
           {tab === 'COURSES' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {courses.map(c => {
                 const courseDivs = divisions.filter(d => d.course_id === c.id)
                 const subjectCount = subjectCountByCourse[c.id] || 0
                 return (
-                  <div
+                  <Card
                     key={c.id}
-                    className="card group hover:border-brand-accent/60 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800/80 transition-all duration-200 hover:shadow-xl hover:shadow-primary-950/40 relative overflow-hidden"
+                    className="p-5 flex flex-col justify-between hover:border-brand/40 transition-colors shadow-xs"
                   >
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div>
-                        <span className="badge badge-info text-xs font-mono font-bold tracking-wider px-2.5 py-1">
-                          {c.code}
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div>
+                          <Badge variant="brand" size="md">
+                            {c.code}
+                          </Badge>
+                          <span className="block text-[10px] text-muted font-mono mt-1">
+                            Permanent Degree Identifier
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-muted text-xs font-medium">
+                            {c.duration_years || 3} Yrs ({(c.duration_years || 3) * 2} Sems)
+                          </span>
+                          <button
+                            onClick={() => handleDeleteCourse(c.id, c.name)}
+                            className="text-muted hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition-colors"
+                            title="Delete course"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <h3 className="font-bold text-ink text-base sm:text-lg mb-3">
+                        {c.name}
+                      </h3>
+
+                      {/* Meta counters */}
+                      <div className="flex items-center gap-2.5 text-xs text-muted mb-5">
+                        <span className="flex items-center gap-1.5 bg-bg px-2.5 py-1 rounded-md border border-line">
+                          <Layers size={13} className="text-brand shrink-0" />
+                          <strong className="text-ink font-semibold">{courseDivs.length}</strong> Divisions
                         </span>
-                        <span className="block text-[10px] text-sky-400 font-mono mt-1 font-semibold">
-                          Permanent Course Code
+                        <span className="flex items-center gap-1.5 bg-bg px-2.5 py-1 rounded-md border border-line">
+                          <BookOpen size={13} className="text-emerald-600 shrink-0" />
+                          <strong className="text-ink font-semibold">{subjectCount}</strong> Subjects
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-400 text-xs font-medium">
-                          {c.duration_years || 3} Years ({(c.duration_years || 3) * 2} Semesters)
-                        </span>
-                        <button
-                          onClick={() => handleDeleteCourse(c.id, c.name)}
-                          className="text-slate-500 hover:text-red-400 p-1 rounded-lg hover:bg-red-500/10 transition-colors"
-                          title="Delete course"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <h4 className="text-white font-bold text-lg mb-2 group-hover:text-brand-accent transition-colors">
-                      {c.name}
-                    </h4>
-
-                    {/* Meta stats badges */}
-                    <div className="flex items-center gap-3 text-xs text-slate-400 mb-5">
-                      <span className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700/50">
-                        <Layers size={13} className="text-sky-400" />
-                        <strong className="text-white font-semibold">{courseDivs.length}</strong> Divisions
-                      </span>
-                      <span className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-md border border-slate-700/50">
-                        <BookOpen size={13} className="text-emerald-400" />
-                        <strong className="text-white font-semibold">{subjectCount}</strong> Subjects
-                      </span>
                     </div>
 
                     {/* Bottom Actions */}
-                    <div className="pt-3.5 border-t border-slate-800 flex items-center justify-between gap-2">
-                      <button
+                    <div className="pt-3 border-t border-line flex items-center justify-between gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => setSelectedCourseForCurriculum(c)}
-                        className="btn btn-ghost !px-2.5 !py-1 text-xs text-brand-accent hover:text-white flex items-center gap-1.5"
+                        className="gap-1 text-xs text-brand"
                       >
-                        <BookMarked size={14} /> View & Add Subjects <ChevronRight size={14} />
-                      </button>
-                      <button
+                        <BookMarked size={13} /> Curriculum <ChevronRight size={13} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           setSubjectForm({
                             course_id: c.id,
@@ -629,24 +654,32 @@ export default function AcademicPanel() {
                           })
                           setShowSubjectModal(true)
                         }}
-                        className="btn btn-ghost !px-2.5 !py-1 text-xs text-slate-300 hover:text-emerald-400 flex items-center gap-1"
-                        title="Add subject directly to this course"
+                        className="gap-1 text-xs text-emerald-700 hover:bg-emerald-50"
                       >
                         <Plus size={13} /> Quick Add
-                      </button>
+                      </Button>
                     </div>
-                  </div>
+                  </Card>
                 )
               })}
 
               {courses.length === 0 && (
-                <div className="col-span-full text-center py-16 card border-dashed border-slate-700">
-                  <GraduationCap size={44} className="mx-auto text-slate-500 mb-3" />
-                  <p className="text-white font-semibold">No courses added yet</p>
-                  <p className="text-slate-400 text-xs mt-1 mb-4">Add your college degree courses to get started</p>
-                  <button onClick={() => setShowCourseModal(true)} className="btn btn-primary text-xs mx-auto">
-                    <Plus size={14} /> Add First Course
-                  </button>
+                <div className="col-span-full">
+                  <EmptyState
+                    icon={GraduationCap}
+                    title="No degree courses configured"
+                    description="Configure your college degree programs (e.g. B.Sc. Computer Science) to get started."
+                    action={
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setShowCourseModal(true)}
+                        className="gap-1.5"
+                      >
+                        <Plus size={14} /> Add First Course
+                      </Button>
+                    }
+                  />
                 </div>
               )}
             </div>
@@ -654,45 +687,45 @@ export default function AcademicPanel() {
 
           {/* ═══════════ TAB 2: DIVISIONS ═══════════ */}
           {tab === 'DIVISIONS' && (
-            <div className="card !p-0 overflow-hidden border border-slate-800">
-              <div className="table-wrapper">
-                <table className="table">
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr>
-                      <th className="w-12">#</th>
-                      <th>Class & Division</th>
-                      <th>Year / Level</th>
-                      <th>Section</th>
-                      <th>Associated Course</th>
-                      <th>Subjects</th>
-                      <th className="text-right">Actions</th>
+                    <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
+                      <th className="py-3 px-4 w-12">#</th>
+                      <th className="py-3 px-4">Class & Division</th>
+                      <th className="py-3 px-4">Academic Year</th>
+                      <th className="py-3 px-4">Section</th>
+                      <th className="py-3 px-4">Associated Degree</th>
+                      <th className="py-3 px-4">Curriculum</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-line">
                     {filteredDivisions.map((d, idx) => (
-                      <tr key={d.id} className="hover:bg-slate-800/40">
-                        <td className="text-slate-500 text-xs font-mono">{idx + 1}</td>
-                        <td className="text-white font-medium">
+                      <tr key={d.id} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3 px-4 text-muted text-xs font-mono">{idx + 1}</td>
+                        <td className="py-3 px-4 font-semibold text-ink">
                           {d.courses?.name ? `${d.courses.code} - ` : ''}{d.name} Div {d.division_name}
                         </td>
-                        <td>
-                          <span className="badge badge-info text-xs">{d.name}</span>
+                        <td className="py-3 px-4">
+                          <Badge variant="brand">{d.name}</Badge>
                         </td>
-                        <td>
-                          <span className="font-mono text-slate-300 bg-slate-800 px-2 py-0.5 rounded text-xs">
+                        <td className="py-3 px-4">
+                          <span className="font-mono text-ink bg-bg border border-line px-2 py-0.5 rounded text-xs font-medium">
                             Div {d.division_name}
                           </span>
                         </td>
-                        <td className="text-slate-300">{d.courses?.name || 'General'}</td>
-                        <td>
-                          <span className="badge bg-emerald-500/10 text-emerald-400 text-xs">
+                        <td className="py-3 px-4 text-ink text-xs font-medium">{d.courses?.name || 'General'}</td>
+                        <td className="py-3 px-4">
+                          <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                             {subjectCountByDivision[d.id] || 0} subjects
                           </span>
                         </td>
-                        <td className="text-right">
+                        <td className="py-3 px-4 text-right">
                           <button
                             onClick={() => handleDeleteDivision(d.id, `${d.name} Div ${d.division_name}`)}
-                            className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors inline-flex items-center"
+                            className="text-muted hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors inline-flex items-center"
                             title="Delete division"
                           >
                             <Trash2 size={14} />
@@ -702,7 +735,7 @@ export default function AcademicPanel() {
                     ))}
                     {filteredDivisions.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-slate-400 text-xs">
+                        <td colSpan={7} className="text-center py-12 text-muted text-xs">
                           No divisions found matching criteria
                         </td>
                       </tr>
@@ -710,52 +743,52 @@ export default function AcademicPanel() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* ═══════════ TAB 3: SUBJECTS ═══════════ */}
           {tab === 'SUBJECTS' && (
-            <div className="card !p-0 overflow-hidden border border-slate-800">
-              <div className="table-wrapper">
-                <table className="table">
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
                   <thead>
-                    <tr>
-                      <th className="w-12">#</th>
-                      <th>Subject Code</th>
-                      <th>Subject Name</th>
-                      <th>Course</th>
-                      <th>Assigned Division</th>
-                      <th className="text-right">Actions</th>
+                    <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
+                      <th className="py-3 px-4 w-12">#</th>
+                      <th className="py-3 px-4">Subject Code</th>
+                      <th className="py-3 px-4">Curriculum Subject Name</th>
+                      <th className="py-3 px-4">Degree Course</th>
+                      <th className="py-3 px-4">Assigned Division</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-line">
                     {filteredSubjects.map((s, idx) => (
-                      <tr key={s.id} className="hover:bg-slate-800/40">
-                        <td className="text-slate-500 text-xs font-mono">{idx + 1}</td>
-                        <td>
-                          <span className="font-mono text-brand-accent bg-sky-950/60 border border-sky-800/40 px-2.5 py-0.5 rounded text-xs font-bold">
+                      <tr key={s.id} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3 px-4 text-muted text-xs font-mono">{idx + 1}</td>
+                        <td className="py-3 px-4">
+                          <span className="font-mono text-brand bg-brand/10 border border-brand/20 px-2.5 py-0.5 rounded text-xs font-bold">
                             {s.code}
                           </span>
                         </td>
-                        <td className="text-white font-semibold">
+                        <td className="py-3 px-4 font-semibold text-ink">
                           {s.name}
                         </td>
-                        <td className="text-slate-300 text-xs">
+                        <td className="py-3 px-4 text-muted text-xs">
                           {s.divisions?.courses?.name || 'General Degree'}
                         </td>
-                        <td className="text-slate-300 text-xs">
+                        <td className="py-3 px-4 text-xs">
                           {s.divisions ? (
-                            <span className="badge badge-info text-[11px]">
+                            <Badge variant="brand">
                               {s.divisions.name} - Div {s.divisions.division_name}
-                            </span>
+                            </Badge>
                           ) : (
-                            <span className="text-slate-500">All Divisions</span>
+                            <span className="text-muted italic">All Divisions</span>
                           )}
                         </td>
-                        <td className="text-right">
+                        <td className="py-3 px-4 text-right">
                           <button
                             onClick={() => handleDeleteSubject(s.id, s.name)}
-                            className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors inline-flex items-center"
+                            className="text-muted hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors inline-flex items-center"
                             title="Delete subject"
                           >
                             <Trash2 size={14} />
@@ -765,7 +798,7 @@ export default function AcademicPanel() {
                     ))}
                     {filteredSubjects.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="text-center py-12 text-slate-400 text-xs">
+                        <td colSpan={6} className="text-center py-12 text-muted text-xs">
                           No curriculum subjects found matching criteria
                         </td>
                       </tr>
@@ -773,110 +806,118 @@ export default function AcademicPanel() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* ═══════════ TAB 4: WEEKLY TIMETABLE BUILDER ═══════════ */}
           {tab === 'TIMETABLE' && (
             <div className="space-y-4">
               {/* Top Controls: Division Picker & Actions */}
-              <div className="card !p-4 bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-slate-400 text-xs font-medium">Select Division:</span>
-                  <select
-                    value={timetableDivId}
-                    onChange={e => {
-                      setTimetableDivId(e.target.value)
-                      fetchTimetable(e.target.value)
-                    }}
-                    className="form-input !py-1.5 text-xs font-semibold w-64 bg-slate-950 border-slate-700"
-                  >
-                    {divisions.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} Div {d.division_name}
-                      </option>
-                    ))}
-                  </select>
+              <Card className="p-4 sm:p-5">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-muted text-xs font-semibold">Select Division:</span>
+                    <select
+                      value={timetableDivId}
+                      onChange={e => {
+                        setTimetableDivId(e.target.value)
+                        fetchTimetable(e.target.value)
+                      }}
+                      className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer w-64"
+                    >
+                      {divisions.map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.courses?.code ? `[${d.courses.code}] ` : ''}{d.name} Div {d.division_name}
+                        </option>
+                      ))}
+                    </select>
 
-                  <button
-                    onClick={() => fetchTimetable(timetableDivId)}
-                    className="btn btn-ghost btn-sm !p-2 text-slate-400 hover:text-white"
-                    title="Refresh schedule"
-                  >
-                    <RefreshCw size={14} className={loadingTimetable ? 'animate-spin' : ''} />
-                  </button>
-                </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchTimetable(timetableDivId)}
+                      className="p-2"
+                      title="Refresh schedule"
+                    >
+                      <RefreshCw size={14} className={loadingTimetable ? 'animate-spin' : ''} />
+                    </Button>
+                  </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={handleLoadSmdlMatrix}
-                    disabled={smdlLoading}
-                    className="btn bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 hover:bg-indigo-600/50 flex items-center gap-2 text-xs"
-                    title="Import official 14-subject SMDL FYBSc CS schedule"
-                  >
-                    {smdlLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    ⚡ Load SMDL Presets
-                  </button>
-                  <button
-                    onClick={() => {
-                      const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
-                      setSlotForm({
-                        id: null,
-                        day_of_week: 'Monday',
-                        start_time: '08:00:00',
-                        end_time: '09:00:00',
-                        subject_id: matchedSubjects[0]?.id || '',
-                        teacher_id: teachersList[0]?.id || '',
-                        room_number: 'Room 101',
-                        is_lab: false,
-                      })
-                      setConflictError('')
-                      setShowSlotModal(true)
-                    }}
-                    className="btn btn-primary flex items-center gap-2 text-xs shadow-md"
-                  >
-                    <Plus size={14} /> Add Lecture Slot
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLoadSmdlMatrix}
+                      disabled={smdlLoading}
+                      className="gap-1.5 text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50"
+                      title="Import official 14-subject SMDL FYBSc CS schedule"
+                    >
+                      {smdlLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      ⚡ Load SMDL Presets
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
+                        setSlotForm({
+                          id: null,
+                          day_of_week: 'Monday',
+                          start_time: '08:00:00',
+                          end_time: '09:00:00',
+                          subject_id: matchedSubjects[0]?.id || '',
+                          teacher_id: teachersList[0]?.id || '',
+                          room_number: 'Room 101',
+                          is_lab: false,
+                        })
+                        setConflictError('')
+                        setShowSlotModal(true)
+                      }}
+                      className="gap-1.5 text-xs"
+                    >
+                      <Plus size={14} /> Add Lecture Slot
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              </Card>
 
               {/* 6-Day Weekly Matrix Grid */}
               {loadingTimetable ? (
-                <div className="card text-center py-20">
-                  <Loader2 className="animate-spin w-8 h-8 mx-auto mb-2 text-brand-accent" />
-                  <p className="text-slate-400 text-xs">Loading division timetable...</p>
-                </div>
+                <Card className="text-center py-20">
+                  <Loader2 className="animate-spin w-8 h-8 mx-auto mb-2 text-brand" />
+                  <p className="text-muted text-xs">Loading division timetable matrix...</p>
+                </Card>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
                   {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(day => {
                     const daySlots = timetableSlots
                       .filter(s => s.day_of_week?.toLowerCase() === day.toLowerCase())
                       .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
 
                     return (
-                      <div key={day} className="flex flex-col bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden shadow-sm">
+                      <div key={day} className="flex flex-col bg-surface border border-line rounded-xl overflow-hidden shadow-2xs">
                         {/* Day Column Header */}
-                        <div className="px-3 py-2 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between">
-                          <span className="text-white font-bold text-xs">{day}</span>
-                          <span className="badge bg-slate-700/60 text-slate-300 text-[10px]">
+                        <div className="px-3.5 py-2.5 bg-bg/60 border-b border-line flex items-center justify-between">
+                          <span className="font-bold text-xs text-ink">{day}</span>
+                          <span className="text-[11px] font-mono text-muted">
                             {daySlots.length} {daySlots.length === 1 ? 'Slot' : 'Slots'}
                           </span>
                         </div>
 
                         {/* Slots container */}
-                        <div className="p-2 space-y-2 flex-1 min-h-[160px]">
+                        <div className="p-2.5 space-y-2 flex-1 min-h-[160px]">
                           {daySlots.map(slot => (
                             <div
                               key={slot.id}
-                              className="group relative bg-slate-950/80 hover:bg-slate-800/70 border border-slate-800/90 rounded-lg p-2.5 transition-all text-xs"
+                              className="group relative bg-bg/50 hover:bg-bg border border-line rounded-lg p-2.5 transition-all text-xs shadow-2xs"
                             >
                               {/* Slot Time */}
-                              <div className="flex items-center justify-between gap-1 text-[11px] font-mono text-slate-400 mb-1">
-                                <span className="flex items-center gap-1 font-semibold text-slate-300">
-                                  <Clock size={11} className="text-brand-accent" />
+                              <div className="flex items-center justify-between gap-1 text-[11px] font-mono text-muted mb-1">
+                                <span className="flex items-center gap-1 font-semibold text-ink">
+                                  <Clock size={11} className="text-brand shrink-0" />
                                   {(slot.start_time || '').slice(0, 5)} - {(slot.end_time || '').slice(0, 5)}
                                 </span>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                   <button
                                     onClick={() => {
                                       setSlotForm({
@@ -892,14 +933,14 @@ export default function AcademicPanel() {
                                       setConflictError('')
                                       setShowSlotModal(true)
                                     }}
-                                    className="text-slate-400 hover:text-white p-0.5"
+                                    className="text-muted hover:text-ink p-0.5"
                                     title="Edit slot"
                                   >
                                     <Edit2 size={12} />
                                   </button>
                                   <button
                                     onClick={() => handleDeleteSlot(slot.id, slot.subject?.name)}
-                                    className="text-slate-400 hover:text-red-400 p-0.5"
+                                    className="text-muted hover:text-red-600 p-0.5"
                                     title="Delete slot"
                                   >
                                     <Trash2 size={12} />
@@ -910,25 +951,25 @@ export default function AcademicPanel() {
                               {/* Subject Badge & Name */}
                               <div className="flex items-start gap-1.5 mb-1.5">
                                 {slot.subject?.code && (
-                                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-950 text-sky-400 border border-sky-800/50 flex-shrink-0">
+                                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-brand/10 text-brand border border-brand/20 shrink-0">
                                     {slot.subject.code}
                                   </span>
                                 )}
-                                <p className="text-white font-medium line-clamp-2 leading-snug">
+                                <p className="font-semibold text-ink line-clamp-2 leading-tight">
                                   {slot.subject?.name || 'Class'}
                                 </p>
                               </div>
 
                               {/* Faculty & Room Footer */}
-                              <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-slate-800/50 text-[10px]">
-                                <span className="text-slate-400 truncate max-w-[110px] flex items-center gap-1" title={slot.teacher?.user?.full_name || 'Faculty'}>
-                                  <User size={10} className="text-slate-500" />
+                              <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5 border-t border-line text-[10px]">
+                                <span className="text-muted truncate max-w-[105px] flex items-center gap-1" title={slot.teacher?.user?.full_name || 'Faculty'}>
+                                  <User size={10} className="text-muted shrink-0" />
                                   {slot.teacher?.user?.full_name || 'Assigned Faculty'}
                                 </span>
                                 <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
                                   slot.is_lab
-                                    ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
-                                    : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+                                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                    : 'bg-purple-50 text-purple-700 border border-purple-200'
                                 }`}>
                                   {slot.room_number || 'Room 101'}
                                 </span>
@@ -937,8 +978,8 @@ export default function AcademicPanel() {
                           ))}
 
                           {daySlots.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full py-8 text-center text-slate-500">
-                              <p className="text-[11px] mb-2">No lectures</p>
+                            <div className="flex flex-col items-center justify-center h-full py-8 text-center text-muted">
+                              <p className="text-[11px] mb-2">No lectures scheduled</p>
                               <button
                                 onClick={() => {
                                   const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
@@ -955,7 +996,7 @@ export default function AcademicPanel() {
                                   setConflictError('')
                                   setShowSlotModal(true)
                                 }}
-                                className="text-[10px] text-brand-accent hover:underline flex items-center gap-1"
+                                className="text-[11px] text-brand hover:underline flex items-center gap-1 font-medium cursor-pointer"
                               >
                                 <Plus size={11} /> Add slot
                               </button>
@@ -973,894 +1014,661 @@ export default function AcademicPanel() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          MODAL 1: ADD COURSE (Polished UI with fixed width & duration)
+          MODAL 1: ADD COURSE
       ══════════════════════════════════════════════════════════════════ */}
-      {showCourseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-          <div className="card w-full max-w-lg relative bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl overflow-hidden p-6 sm:p-7">
-            {/* Top accent line */}
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-brand" />
+      <Modal
+        isOpen={showCourseModal}
+        onClose={() => setShowCourseModal(false)}
+        title="Add Degree Program"
+        description="Configure permanent degree course structure for SMDL College"
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          {/* Quick Presets */}
+          <div className="p-3 rounded-lg bg-bg border border-line">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-2 flex items-center gap-1">
+              <Sparkles size={12} className="text-brand" /> Quick Degree Presets:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {COURSE_PRESETS.map(p => (
+                <button
+                  key={p.code}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className={`text-[11px] px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                    courseForm.code === p.code
+                      ? 'bg-brand/10 border-brand text-brand font-bold shadow-2xs'
+                      : 'bg-surface border-line text-muted hover:text-ink hover:bg-bg'
+                  }`}
+                >
+                  {p.code}
+                </button>
+              ))}
+            </div>
+          </div>
 
-            {/* Close button */}
-            <button
-              onClick={() => setShowCourseModal(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X size={18} />
-            </button>
+          <form onSubmit={handleCreateCourse} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Full Degree Name *</label>
+              <input
+                type="text"
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                placeholder="e.g. B.Sc. Computer Science"
+                value={courseForm.name}
+                onChange={e => setCourseForm(p => ({ ...p, name: e.target.value }))}
+                required
+              />
+            </div>
 
-            {/* Modal Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-11 h-11 rounded-xl bg-gradient-brand flex items-center justify-center text-white shadow-lg shadow-sky-900/30">
-                <GraduationCap size={22} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-ink flex items-center justify-between">
+                  <span>Permanent Code *</span>
+                  <span className="text-[10px] text-muted normal-case font-medium">Fixed for all sems</span>
+                </label>
+                <input
+                  type="text"
+                  className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-mono uppercase tracking-wider font-bold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                  placeholder="e.g. BSC-CS"
+                  value={courseForm.code}
+                  onChange={e => setCourseForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                  required
+                />
               </div>
-              <div>
-                <h3 className="text-white font-bold text-lg">Add Degree Course</h3>
-                <p className="text-slate-400 text-xs">Configure a permanent degree program for SMDL College</p>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-ink">Duration (Years)</label>
+                <select
+                  className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                  value={courseForm.duration_years}
+                  onChange={e => setCourseForm(p => ({ ...p, duration_years: Number(e.target.value) }))}
+                >
+                  <option value="1">1 Year (2 Semesters)</option>
+                  <option value="2">2 Years (4 Semesters)</option>
+                  <option value="3">3 Years (6 Semesters)</option>
+                  <option value="4">4 Years (8 Semesters)</option>
+                  <option value="5">5 Years (10 Semesters)</option>
+                </select>
               </div>
             </div>
 
-            {/* Quick 1-Click Presets */}
-            <div className="mb-5 p-3 rounded-xl bg-slate-800/70 border border-slate-700/50">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1">
-                <Sparkles size={12} className="text-brand-accent" /> Quick Fill Presets:
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {COURSE_PRESETS.map(p => (
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowCourseModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" size="sm" disabled={savingCourse}>
+                {savingCourse ? 'Creating...' : 'Create Program'}
+              </Button>
+            </div>
+          </form>
+        </div>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL 2: ADD DIVISION
+      ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={showDivisionModal}
+        onClose={() => setShowDivisionModal(false)}
+        title="Add Academic Division"
+        description="Create class sections (e.g. FY Div A) for lectures and attendance"
+        maxWidth="max-w-lg"
+      >
+        <form onSubmit={handleCreateDivision} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Parent Degree Course *</label>
+            <select
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={divisionForm.course_id}
+              onChange={e => setDivisionForm(p => ({ ...p, course_id: e.target.value }))}
+              required
+            >
+              <option value="">-- Select Degree Course --</option>
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Academic Level *</label>
+              <input
+                type="text"
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-bold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                placeholder="e.g. FY, SY, TY"
+                value={divisionForm.name}
+                onChange={e => setDivisionForm(p => ({ ...p, name: e.target.value.toUpperCase() }))}
+                required
+              />
+              <div className="flex gap-1.5 mt-1.5">
+                {['FY', 'SY', 'TY'].map(lvl => (
                   <button
-                    key={p.code}
+                    key={lvl}
                     type="button"
-                    onClick={() => applyPreset(p)}
-                    className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-all ${
-                      courseForm.code === p.code
-                        ? 'bg-sky-500/20 border-sky-400 text-sky-300 font-bold shadow-sm'
-                        : 'bg-slate-700/60 hover:bg-brand-accent/20 hover:border-brand-accent/40 text-slate-300 hover:text-white border-slate-600/40'
+                    onClick={() => setDivisionForm(p => ({ ...p, name: lvl }))}
+                    className={`text-[10px] px-2 py-0.5 rounded font-mono border transition-all cursor-pointer ${
+                      divisionForm.name === lvl
+                        ? 'bg-brand/10 border-brand text-brand font-bold'
+                        : 'bg-bg border-line text-muted'
                     }`}
                   >
-                    {p.code}
+                    {lvl}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Form */}
-            <form onSubmit={handleCreateCourse} className="space-y-4">
-              <div className="form-group">
-                <label className="form-label">Full Course Name *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. B.Sc. Computer Science"
-                  value={courseForm.name}
-                  onChange={e => setCourseForm(p => ({ ...p, name: e.target.value }))}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="form-group">
-                  <label className="form-label flex items-center justify-between">
-                    <span>Permanent Code *</span>
-                    <span className="text-[10px] text-sky-400 normal-case font-medium">Fixed for all sems</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input font-mono uppercase tracking-wider font-bold"
-                    placeholder="e.g. BSC-CS"
-                    value={courseForm.code}
-                    onChange={e => setCourseForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
-                    required
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Degree code (jaise <span className="text-white font-mono font-bold">BSC-CS</span>) jo sabhi semesters ke liye fix rahega.
-                  </p>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Duration (Years)</label>
-                  <select
-                    className="form-input"
-                    value={courseForm.duration_years}
-                    onChange={e => setCourseForm(p => ({ ...p, duration_years: Number(e.target.value) }))}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Division Section *</label>
+              <input
+                type="text"
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-mono uppercase font-bold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                placeholder="e.g. A, B, C"
+                maxLength={4}
+                value={divisionForm.division_name}
+                onChange={e => setDivisionForm(p => ({ ...p, division_name: e.target.value.toUpperCase() }))}
+                required
+              />
+              <div className="flex gap-1.5 mt-1.5">
+                {['A', 'B', 'C', 'D'].map(sec => (
+                  <button
+                    key={sec}
+                    type="button"
+                    onClick={() => setDivisionForm(p => ({ ...p, division_name: sec }))}
+                    className={`text-[10px] px-2 py-0.5 rounded font-mono border transition-all cursor-pointer ${
+                      divisionForm.division_name === sec
+                        ? 'bg-brand/10 border-brand text-brand font-bold'
+                        : 'bg-bg border-line text-muted'
+                    }`}
                   >
-                    <option value="1">1 Year (2 Semesters)</option>
-                    <option value="2">2 Years (4 Semesters)</option>
-                    <option value="3">3 Years (6 Semesters)</option>
-                    <option value="4">4 Years (8 Semesters)</option>
-                    <option value="5">5 Years (10 Semesters)</option>
-                  </select>
-                  <p className="text-[11px] text-slate-400 mt-1">Total degree duration</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowCourseModal(false)}
-                  className="btn btn-secondary flex-1 py-2.5 text-xs text-slate-300 border border-slate-700 hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingCourse}
-                  className="btn btn-primary flex-1 py-2.5 text-xs font-semibold bg-gradient-brand shadow-lg hover:shadow-sky-500/25"
-                >
-                  {savingCourse ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> Saving...
-                    </span>
-                  ) : (
-                    'Create Course'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════
-          MODAL 2: ADD DIVISION
-      ══════════════════════════════════════════════════════════════════ */}
-      {showDivisionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-          <div className="card w-full max-w-lg relative bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl overflow-hidden p-6 sm:p-7">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-brand" />
-
-            <button
-              onClick={() => setShowDivisionModal(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X size={18} />
-            </button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-11 h-11 rounded-xl bg-gradient-brand flex items-center justify-center text-white shadow-lg shadow-sky-900/30">
-                <Layers size={22} />
-              </div>
-              <div>
-                <h3 className="text-white font-bold text-lg">Add Academic Division</h3>
-                <p className="text-slate-400 text-xs">Create class sections (e.g., FY Div A) for lectures and attendance</p>
+                    Div {sec}
+                  </button>
+                ))}
               </div>
             </div>
-
-            <form onSubmit={handleCreateDivision} className="space-y-4">
-              <div className="form-group">
-                <label className="form-label">Parent Degree Course *</label>
-                <select
-                  className="form-input"
-                  value={divisionForm.course_id}
-                  onChange={e => setDivisionForm(p => ({ ...p, course_id: e.target.value }))}
-                  required
-                >
-                  <option value="">-- Select Degree Course --</option>
-                  {courses.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.code})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="form-group">
-                  <label className="form-label">Year / Academic Level *</label>
-                  <input
-                    type="text"
-                    className="form-input font-bold"
-                    placeholder="e.g. FY, SY, TY, Sem 1"
-                    value={divisionForm.name}
-                    onChange={e => setDivisionForm(p => ({ ...p, name: e.target.value.toUpperCase() }))}
-                    required
-                  />
-                  <div className="flex gap-1.5 mt-2">
-                    {['FY', 'SY', 'TY'].map(lvl => (
-                      <button
-                        key={lvl}
-                        type="button"
-                        onClick={() => setDivisionForm(p => ({ ...p, name: lvl }))}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono border transition-all ${
-                          divisionForm.name === lvl
-                            ? 'bg-brand-accent/20 border-brand-accent text-brand-accent font-bold'
-                            : 'bg-slate-800 border-slate-700 text-slate-400'
-                        }`}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Division Section *</label>
-                  <input
-                    type="text"
-                    className="form-input font-mono uppercase font-bold"
-                    placeholder="e.g. A, B, C"
-                    maxLength={4}
-                    value={divisionForm.division_name}
-                    onChange={e => setDivisionForm(p => ({ ...p, division_name: e.target.value.toUpperCase() }))}
-                    required
-                  />
-                  <div className="flex gap-1.5 mt-2">
-                    {['A', 'B', 'C', 'D'].map(sec => (
-                      <button
-                        key={sec}
-                        type="button"
-                        onClick={() => setDivisionForm(p => ({ ...p, division_name: sec }))}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono border transition-all ${
-                          divisionForm.division_name === sec
-                            ? 'bg-brand-accent/20 border-brand-accent text-brand-accent font-bold'
-                            : 'bg-slate-800 border-slate-700 text-slate-400'
-                        }`}
-                      >
-                        Div {sec}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Preview Card */}
-              {divisionForm.name && divisionForm.division_name && (
-                <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60 flex items-center justify-between text-xs">
-                  <span className="text-slate-400 font-medium">Resulting Division:</span>
-                  <span className="text-brand-accent font-bold">
-                    {courses.find(c => c.id === divisionForm.course_id)?.code || 'Course'} · {divisionForm.name} - Division {divisionForm.division_name}
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowDivisionModal(false)}
-                  className="btn btn-secondary flex-1 py-2.5 text-xs text-slate-300 border border-slate-700 hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingDivision}
-                  className="btn btn-primary flex-1 py-2.5 text-xs font-semibold bg-gradient-brand"
-                >
-                  {savingDivision ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> Saving...
-                    </span>
-                  ) : (
-                    'Create Division'
-                  )}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
 
-      {/* ══════════════════════════════════════════════════════════════════
-          MODAL 3: ADD SUBJECT (With Course Short Form + 1-2 Digits Builder)
-      ══════════════════════════════════════════════════════════════════ */}
-      {showSubjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-          <div className="card w-full max-w-xl relative bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl max-h-[92vh] overflow-y-auto p-6 sm:p-7">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-brand" />
-
-            <button
-              onClick={() => setShowSubjectModal(false)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X size={18} />
-            </button>
-
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-11 h-11 rounded-xl bg-gradient-brand flex items-center justify-center text-white shadow-lg shadow-sky-900/30">
-                <BookOpen size={22} />
-              </div>
-              <div>
-                <h3 className="text-white font-bold text-lg">Add Curriculum Subject</h3>
-                <p className="text-slate-400 text-xs">Subject Code format: [Course Short Form] + [1 to 2 Digits] (e.g. CS-01, CS-02)</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateSubject} className="space-y-4">
-              {/* Select Course First */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="form-group">
-                  <label className="form-label">Degree Course *</label>
-                  <select
-                    className="form-input"
-                    value={subjectForm.course_id}
-                    onChange={e => {
-                      const cid = e.target.value
-                      const matchedDivs = divisions.filter(d => d.course_id === cid)
-                      setSubjectForm(p => ({
-                        ...p,
-                        course_id: cid,
-                        division_id: matchedDivs[0]?.id || ''
-                      }))
-                    }}
-                    required
-                  >
-                    <option value="">-- Select Course --</option>
-                    {courses.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Select Target Division */}
-                <div className="form-group">
-                  <label className="form-label">Assigned Division / Scope *</label>
-                  <select
-                    className="form-input"
-                    value={subjectForm.division_id}
-                    onChange={e => setSubjectForm(p => ({ ...p, division_id: e.target.value }))}
-                    required
-                  >
-                    <option value="">-- Select Division --</option>
-                    {subjectForm.course_id && (
-                      <option value="ALL_IN_COURSE" className="font-bold text-brand-accent">
-                        ✨ Apply to ALL Divisions in Course
-                      </option>
-                    )}
-                    {divisionsForSelectedCourse.map(d => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} - Division {d.division_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* SMDL Official Timetable Quick Fill for B.Sc. CS */}
-              {courses.find(c => c.id === subjectForm.course_id)?.code === 'BSC-CS' && (
-                <div className="p-3.5 bg-slate-800/80 rounded-xl border border-sky-800/50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles size={13} /> Official Timetable Subjects (1-Click Fill):
-                    </span>
-                    <span className="text-[10px] text-slate-400">NEP Sem-1</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                    {OFFICIAL_CS_TIMETABLE_SUBJECTS.map(ts => (
-                      <button
-                        key={ts.code}
-                        type="button"
-                        onClick={() => setSubjectForm(p => ({ ...p, name: ts.name, code: ts.code }))}
-                        className={`text-[11px] p-2 rounded-lg border text-left transition-all ${
-                          subjectForm.code === ts.code
-                            ? 'bg-sky-500/25 border-sky-400 text-sky-200 font-bold shadow-sm'
-                            : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between font-mono">
-                          <span className="font-bold text-brand-accent">{ts.code}</span>
-                          <span className="text-[9px] px-1.5 py-0.2 bg-slate-800 text-slate-400 rounded">
-                            {ts.tag}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-300 truncate mt-0.5">{ts.name}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Subject Code Builder (Course Short Form + 1-2 Digits Number) */}
-              <div className="p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/60">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
-                    <Hash size={12} className="text-brand-accent" /> Subject Code Options Builder:
-                  </label>
-                  {nextAvailableCode && (
-                    <button
-                      type="button"
-                      onClick={() => setSubjectForm(p => ({ ...p, code: nextAvailableCode }))}
-                      className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-700 hover:bg-sky-900 transition-colors font-mono"
-                    >
-                      ⚡ Next Free: {nextAvailableCode}
-                    </button>
-                  )}
-                </div>
-
-                {/* Number selector pills (01 to 20) */}
-                <div className="mb-3">
-                  <p className="text-[10px] text-slate-400 mb-1.5">
-                    Course prefix: <span className="font-mono text-brand-accent font-bold">{getCoursePrefix(courses.find(c => c.id === subjectForm.course_id))}</span> + pick numeric number (01–20):
-                  </p>
-                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
-                    {Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0')).map(num => {
-                      const prefix = getCoursePrefix(courses.find(c => c.id === subjectForm.course_id))
-                      const targetCode = `${prefix}${num}`
-                      const isUsed = existingCodesInSelectedCourse.has(targetCode)
-                      const isSelected = subjectForm.code === targetCode
-                      return (
-                        <button
-                          key={num}
-                          type="button"
-                          onClick={() => setSubjectForm(p => ({ ...p, code: targetCode }))}
-                          className={`text-[11px] font-mono px-2 py-0.5 rounded transition-all border ${
-                            isSelected
-                              ? 'bg-sky-500/30 border-sky-400 text-sky-200 font-bold'
-                              : isUsed
-                              ? 'bg-slate-900/60 border-slate-800 text-slate-500 hover:border-slate-700'
-                              : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:border-sky-500 hover:text-white'
-                          }`}
-                          title={isUsed ? `${targetCode} (already used)` : `${targetCode} (available)`}
-                        >
-                          {num} {isUsed && <span className="text-[8px] text-slate-500">●</span>}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                      Final Subject Code *
-                    </label>
-                    <input
-                      type="text"
-                      className="form-input font-mono uppercase tracking-wider font-bold"
-                      placeholder="e.g. CS-01"
-                      value={subjectForm.code}
-                      onChange={e => setSubjectForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                      Code Status Preview
-                    </label>
-                    <div className="p-2 rounded-xl bg-slate-900 border border-slate-700/80 flex items-center justify-between text-xs font-mono h-[42px]">
-                      <span className="text-brand-accent font-bold">{subjectForm.code || 'None'}</span>
-                      {subjectForm.code && (
-                        <span className={`text-[10px] px-2 py-0.5 rounded ${
-                          existingCodesInSelectedCourse.has(subjectForm.code)
-                            ? 'bg-amber-500/20 text-amber-300'
-                            : 'bg-emerald-500/20 text-emerald-300'
-                        }`}>
-                          {existingCodesInSelectedCourse.has(subjectForm.code) ? 'Already in use' : 'Available'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Subject Full Name *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Data Structures & Algorithms (DSA)"
-                  value={subjectForm.name}
-                  onChange={e => setSubjectForm(p => ({ ...p, name: e.target.value }))}
-                  required
-                />
-              </div>
-
-              <div className="flex items-center gap-3 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowSubjectModal(false)}
-                  className="btn btn-secondary flex-1 py-2.5 text-xs text-slate-300 border border-slate-700 hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingSubject}
-                  className="btn btn-primary flex-1 py-2.5 text-xs font-semibold bg-gradient-brand shadow-lg hover:shadow-sky-500/25"
-                >
-                  {savingSubject ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 size={14} className="animate-spin" /> Saving...
-                    </span>
-                  ) : (
-                    'Add Subject'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════════
-          MODAL 4: COURSE CURRICULUM & SUBJECT MANAGEMENT DRAWER
-      ══════════════════════════════════════════════════════════════════ */}
-      {selectedCourseForCurriculum && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-          <div className="card w-full max-w-3xl relative bg-slate-900 border border-slate-700/80 shadow-2xl rounded-2xl max-h-[90vh] flex flex-col p-6 sm:p-7 overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-brand" />
-
-            <button
-              onClick={() => setSelectedCourseForCurriculum(null)}
-              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X size={18} />
-            </button>
-
-            {/* Header */}
-            <div className="flex items-start gap-3.5 mb-4 pb-4 border-b border-slate-800">
-              <div className="w-12 h-12 rounded-xl bg-gradient-brand flex items-center justify-center text-white shadow-lg shadow-primary-900/30 flex-shrink-0">
-                <BookMarked size={24} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="badge badge-info text-xs font-mono font-bold tracking-wider">{selectedCourseForCurriculum.code}</span>
-                  <span className="text-slate-400 text-xs font-medium">{selectedCourseForCurriculum.duration_years || 3} Years · {(selectedCourseForCurriculum.duration_years || 3) * 2} Semesters</span>
-                </div>
-                <h3 className="text-white font-bold text-xl mt-1">{selectedCourseForCurriculum.name}</h3>
-                <p className="text-slate-400 text-xs">Curriculum subjects & division mapping for lecture scheduling & attendance</p>
-              </div>
-            </div>
-
-            {/* Permanent Code Info Strip */}
-            <div className="p-3 bg-sky-950/40 border border-sky-800/40 rounded-xl mb-4 flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-slate-400">Fixed Course Code:</span>
-                <span className="font-mono text-brand-accent font-bold text-sm bg-sky-900/50 px-2 py-0.5 rounded border border-sky-700/50">
-                  {selectedCourseForCurriculum.code}
-                </span>
-                <span className="text-slate-400 text-[11px] hidden sm:inline">
-                  (Permanent for all semesters: Sem 1 to Sem {(selectedCourseForCurriculum.duration_years || 3) * 2})
-                </span>
-              </div>
-              <span className="badge bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold">
-                Permanent Degree Code
+          {/* Live Preview */}
+          {divisionForm.name && divisionForm.division_name && (
+            <div className="p-3 bg-bg rounded-lg border border-line flex items-center justify-between text-xs">
+              <span className="text-muted font-medium">Resulting Identifier:</span>
+              <span className="text-brand font-bold">
+                {courses.find(c => c.id === divisionForm.course_id)?.code || 'Course'} · {divisionForm.name} - Division {divisionForm.division_name}
               </span>
             </div>
+          )}
 
-            {/* Scrollable Content Body */}
-            <div className="flex-1 overflow-y-auto space-y-6 pr-1">
-              {/* Quick Add Subject Box inside this Course */}
-              <div className="p-4 rounded-xl bg-slate-800/70 border border-slate-700/60">
-                <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-2.5 flex items-center gap-1.5 text-brand-accent">
-                  <Plus size={14} /> Add New Subject to {selectedCourseForCurriculum.code}
-                </h4>
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowDivisionModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" size="sm" disabled={savingDivision}>
+              {savingDivision ? 'Creating...' : 'Create Division'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
-                {/* SMDL Timetable Presets for B.Sc. CS */}
-                {selectedCourseForCurriculum.code === 'BSC-CS' && (
-                  <div className="p-2.5 bg-slate-900/80 rounded-lg border border-sky-800/40 mb-3">
-                    <p className="text-[11px] font-bold text-sky-400 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                      <Sparkles size={12} /> Official Timetable Subjects (Click to Load):
-                    </p>
-                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
-                      {OFFICIAL_CS_TIMETABLE_SUBJECTS.map(ts => (
-                        <button
-                          key={ts.code}
-                          type="button"
-                          onClick={() => setQuickSubjectForm(p => ({ ...p, name: ts.name, code: ts.code }))}
-                          className={`text-[10px] px-2 py-0.5 rounded border font-mono transition-all ${
-                            quickSubjectForm.code === ts.code
-                              ? 'bg-sky-500/20 border-sky-400 text-sky-300 font-bold'
-                              : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500 hover:text-white'
-                          }`}
-                          title={`${ts.name} (${ts.faculty})`}
-                        >
-                          {ts.code} ({ts.tag})
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL 3: ADD SUBJECT
+      ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={showSubjectModal}
+        onClose={() => setShowSubjectModal(false)}
+        title="Add Curriculum Subject"
+        description="Format: Course Prefix + 2 Digits (e.g. CS-01, CS-02)"
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleCreateSubject} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Degree Program *</label>
+              <select
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                value={subjectForm.course_id}
+                onChange={e => {
+                  const cid = e.target.value
+                  const matchedDivs = divisions.filter(d => d.course_id === cid)
+                  setSubjectForm(p => ({
+                    ...p,
+                    course_id: cid,
+                    division_id: matchedDivs[0]?.id || ''
+                  }))
+                }}
+                required
+              >
+                <option value="">-- Select Course --</option>
+                {courses.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Assigned Scope / Division *</label>
+              <select
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                value={subjectForm.division_id}
+                onChange={e => setSubjectForm(p => ({ ...p, division_id: e.target.value }))}
+                required
+              >
+                <option value="">-- Select Division --</option>
+                {subjectForm.course_id && (
+                  <option value="ALL_IN_COURSE" className="font-bold text-brand">
+                    ✨ Apply to ALL Divisions in Course
+                  </option>
                 )}
+                {divisionsForSelectedCourse.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} - Division {d.division_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-                <form onSubmit={handleQuickAddSubjectToCourse} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                  <div className="sm:col-span-4">
-                    <label className="form-label text-[11px]">Assigned Division *</label>
-                    <select
-                      className="form-input !py-1.5 text-xs"
-                      value={quickSubjectForm.division_id}
-                      onChange={e => setQuickSubjectForm(p => ({ ...p, division_id: e.target.value }))}
-                      required
-                    >
-                      <option value="">Select Division</option>
-                      {divisions
-                        .filter(d => d.course_id === selectedCourseForCurriculum.id)
-                        .map(d => (
-                          <option key={d.id} value={d.id}>
-                            {d.name} - Div {d.division_name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div className="sm:col-span-4">
-                    <label className="form-label text-[11px]">Subject Name *</label>
-                    <input
-                      type="text"
-                      className="form-input !py-1.5 text-xs"
-                      placeholder="e.g. Applied Mathematics"
-                      value={quickSubjectForm.name}
-                      onChange={e => setQuickSubjectForm(p => ({ ...p, name: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="form-label text-[11px]">Code (e.g. CS-15) *</label>
-                    <input
-                      type="text"
-                      className="form-input !py-1.5 text-xs font-mono uppercase"
-                      placeholder="e.g. CS-15"
-                      value={quickSubjectForm.code}
-                      onChange={e => setQuickSubjectForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
-                      required
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <button
-                      type="submit"
-                      disabled={savingQuickSubject}
-                      className="btn btn-primary w-full !py-2 text-xs font-semibold"
-                    >
-                      {savingQuickSubject ? <Loader2 size={13} className="animate-spin" /> : 'Save'}
-                    </button>
-                  </div>
-                </form>
+          {/* SMDL Official Timetable Presets for B.Sc. CS */}
+          {courses.find(c => c.id === subjectForm.course_id)?.code === 'BSC-CS' && (
+            <div className="p-3 bg-bg rounded-lg border border-line">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-brand uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={12} /> Official Timetable Subjects (1-Click Fill):
+                </span>
+                <span className="text-[10px] text-muted">NEP Sem-1</span>
               </div>
-
-              {/* Subject Breakdown by Division */}
-              <div>
-                <h4 className="text-white text-sm font-semibold mb-3 flex items-center justify-between">
-                  <span>Course Curriculum Subjects</span>
-                  <span className="text-xs text-slate-400 font-normal">
-                    Total: {subjects.filter(s => s.divisions?.course_id === selectedCourseForCurriculum.id).length} Subjects
-                  </span>
-                </h4>
-
-                <div className="space-y-4">
-                  {divisions
-                    .filter(d => d.course_id === selectedCourseForCurriculum.id)
-                    .map(div => {
-                      const divSubjects = subjects.filter(s => s.division_id === div.id)
-                      return (
-                        <div key={div.id} className="p-3.5 bg-slate-900/60 rounded-xl border border-slate-800">
-                          <div className="flex items-center justify-between mb-2.5">
-                            <span className="badge badge-info text-xs">
-                              {div.name} - Division {div.division_name}
-                            </span>
-                            <span className="text-slate-400 text-xs font-medium">
-                              {divSubjects.length} {divSubjects.length === 1 ? 'subject' : 'subjects'}
-                            </span>
-                          </div>
-
-                          {divSubjects.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {divSubjects.map(sub => (
-                                <div
-                                  key={sub.id}
-                                  className="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/60 border border-slate-700/40 text-xs"
-                                >
-                                  <div>
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <p className="text-white font-medium">{sub.name}</p>
-                                      {OFFICIAL_CS_TIMETABLE_SUBJECTS.find(x => x.code === sub.code)?.type && (
-                                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-semibold uppercase ${
-                                          OFFICIAL_CS_TIMETABLE_SUBJECTS.find(x => x.code === sub.code)?.type === 'Practical'
-                                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                            : OFFICIAL_CS_TIMETABLE_SUBJECTS.find(x => x.code === sub.code)?.type === 'Elective'
-                                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                            : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                                        }`}>
-                                          {OFFICIAL_CS_TIMETABLE_SUBJECTS.find(x => x.code === sub.code)?.type}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                      <span className="font-mono text-brand-accent text-[11px] font-bold">{sub.code}</span>
-                                      {OFFICIAL_CS_TIMETABLE_SUBJECTS.find(x => x.code === sub.code)?.faculty && (
-                                        <span className="text-[10px] text-slate-400 bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-700/60">
-                                          Faculty: {OFFICIAL_CS_TIMETABLE_SUBJECTS.find(x => x.code === sub.code)?.faculty}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={() => handleDeleteSubject(sub.id, sub.name)}
-                                    className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-red-500/10 transition-colors"
-                                    title="Delete subject"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-slate-500 text-xs italic py-2">
-                              No subjects added yet for {div.name} Div {div.division_name}. Use the form above to add one.
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-
-                  {divisions.filter(d => d.course_id === selectedCourseForCurriculum.id).length === 0 && (
-                    <div className="text-center py-8 text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
-                      No divisions configured for this course yet. Please create a division (e.g., FY Div A) first.
+              <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-1">
+                {OFFICIAL_CS_TIMETABLE_SUBJECTS.map(ts => (
+                  <button
+                    key={ts.code}
+                    type="button"
+                    onClick={() => setSubjectForm(p => ({ ...p, name: ts.name, code: ts.code }))}
+                    className={`text-[11px] p-2 rounded-lg border text-left transition-all cursor-pointer ${
+                      subjectForm.code === ts.code
+                        ? 'bg-brand/10 border-brand text-ink font-bold shadow-2xs'
+                        : 'bg-surface border-line text-muted hover:text-ink'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-mono">
+                      <span className="font-bold text-brand">{ts.code}</span>
+                      <span className="text-[9px] px-1 py-0.2 bg-bg text-muted rounded">
+                        {ts.tag}
+                      </span>
                     </div>
+                    <p className="text-[10px] text-muted truncate mt-0.5">{ts.name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Code Builder */}
+          <div className="p-3 bg-bg rounded-lg border border-line space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-ink uppercase tracking-wider flex items-center gap-1">
+                <Hash size={12} className="text-brand" /> Subject Code Options Builder:
+              </span>
+              {nextAvailableCode && (
+                <button
+                  type="button"
+                  onClick={() => setSubjectForm(p => ({ ...p, code: nextAvailableCode }))}
+                  className="text-[10px] px-2 py-0.5 rounded bg-brand/10 text-brand border border-brand/20 font-mono font-semibold cursor-pointer"
+                >
+                  ⚡ Next Free: {nextAvailableCode}
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+              {Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, '0')).map(num => {
+                const prefix = getCoursePrefix(courses.find(c => c.id === subjectForm.course_id))
+                const targetCode = `${prefix}${num}`
+                const isUsed = existingCodesInSelectedCourse.has(targetCode)
+                const isSelected = subjectForm.code === targetCode
+                return (
+                  <button
+                    key={num}
+                    type="button"
+                    onClick={() => setSubjectForm(p => ({ ...p, code: targetCode }))}
+                    className={`text-[11px] font-mono px-2 py-0.5 rounded transition-all border cursor-pointer ${
+                      isSelected
+                        ? 'bg-brand text-white border-brand font-bold'
+                        : isUsed
+                        ? 'bg-bg/40 border-line text-muted/60'
+                        : 'bg-surface border-line text-ink hover:border-brand'
+                    }`}
+                  >
+                    {num} {isUsed && <span className="text-[8px] text-muted">●</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label className="text-[11px] font-semibold text-ink block mb-1">
+                  Final Subject Code *
+                </label>
+                <input
+                  type="text"
+                  className="w-full text-xs p-2 rounded-lg border border-line bg-surface text-ink font-mono uppercase tracking-wider font-bold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                  placeholder="e.g. CS-01"
+                  value={subjectForm.code}
+                  onChange={e => setSubjectForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-ink block mb-1">
+                  Availability Status
+                </label>
+                <div className="p-2 rounded-lg bg-surface border border-line flex items-center justify-between text-xs font-mono h-[38px]">
+                  <span className="text-brand font-bold">{subjectForm.code || 'None'}</span>
+                  {subjectForm.code && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                      existingCodesInSelectedCourse.has(subjectForm.code)
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}>
+                      {existingCodesInSelectedCourse.has(subjectForm.code) ? 'In use' : 'Available'}
+                    </span>
                   )}
                 </div>
               </div>
             </div>
-
-            {/* Modal Footer */}
-            <div className="pt-4 mt-2 border-t border-slate-800 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSelectedCourseForCurriculum(null)}
-                className="btn btn-secondary py-2 text-xs"
-              >
-                Close Curriculum View
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Subject Title *</label>
+            <input
+              type="text"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+              placeholder="e.g. Data Structures & Algorithms (DSA)"
+              value={subjectForm.name}
+              onChange={e => setSubjectForm(p => ({ ...p, name: e.target.value }))}
+              required
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowSubjectModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" size="sm" disabled={savingSubject}>
+              {savingSubject ? 'Adding...' : 'Add Subject'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* ══════════════════════════════════════════════════════════════════
-          MODAL 4: ADD/EDIT TIMETABLE SLOT (With Double-Booking Conflict Check)
+          MODAL 4: COURSE CURRICULUM DRAWER
       ══════════════════════════════════════════════════════════════════ */}
-      {showSlotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fade-in">
-          <div className="card w-full max-w-lg relative bg-slate-900/95 border border-slate-700/80 shadow-2xl rounded-2xl overflow-hidden p-6 sm:p-7">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-brand" />
-            <button
-              onClick={() => setShowSlotModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
-            >
-              <X size={18} />
-            </button>
+      <Modal
+        isOpen={Boolean(selectedCourseForCurriculum)}
+        onClose={() => setSelectedCourseForCurriculum(null)}
+        title={selectedCourseForCurriculum ? `${selectedCourseForCurriculum.name} (${selectedCourseForCurriculum.code})` : 'Curriculum'}
+        description="Course syllabus subjects and class division mapping"
+        maxWidth="max-w-3xl"
+      >
+        {selectedCourseForCurriculum && (
+          <div className="space-y-5">
+            {/* Quick Add Subject Box */}
+            <div className="p-4 rounded-xl bg-bg border border-line space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-brand flex items-center gap-1.5">
+                <Plus size={14} /> Quick Add Subject to {selectedCourseForCurriculum.code}
+              </h4>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-xl bg-brand-accent/15 text-brand-accent">
-                <Calendar size={22} />
-              </div>
-              <div>
-                <h3 className="text-white font-bold text-lg">
-                  {slotForm.id ? 'Edit Timetable Slot' : 'Add Timetable Slot'}
-                </h3>
-                <p className="text-slate-400 text-xs">
-                  Schedule lecture slot for this division with faculty and classroom
-                </p>
+              <form onSubmit={handleQuickAddSubjectToCourse} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                <div className="sm:col-span-4 space-y-1">
+                  <label className="text-[11px] font-semibold text-ink">Division *</label>
+                  <select
+                    className="w-full text-xs p-2 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                    value={quickSubjectForm.division_id}
+                    onChange={e => setQuickSubjectForm(p => ({ ...p, division_id: e.target.value }))}
+                    required
+                  >
+                    <option value="">Select Division</option>
+                    {divisions
+                      .filter(d => d.course_id === selectedCourseForCurriculum.id)
+                      .map(d => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} - Div {d.division_name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-4 space-y-1">
+                  <label className="text-[11px] font-semibold text-ink">Subject Name *</label>
+                  <input
+                    type="text"
+                    className="w-full text-xs p-2 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                    placeholder="e.g. Applied Math"
+                    value={quickSubjectForm.name}
+                    onChange={e => setQuickSubjectForm(p => ({ ...p, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2 space-y-1">
+                  <label className="text-[11px] font-semibold text-ink">Code *</label>
+                  <input
+                    type="text"
+                    className="w-full text-xs p-2 rounded-lg border border-line bg-surface text-ink font-mono uppercase font-bold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                    placeholder="e.g. CS-15"
+                    value={quickSubjectForm.code}
+                    onChange={e => setQuickSubjectForm(p => ({ ...p, code: e.target.value.toUpperCase() }))}
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="sm"
+                    disabled={savingQuickSubject}
+                    className="w-full"
+                  >
+                    {savingQuickSubject ? 'Saving...' : 'Add'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+
+            {/* Subject Breakdown per Division */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted">
+                Curriculum Subjects by Division ({subjects.filter(s => s.divisions?.course_id === selectedCourseForCurriculum.id).length} Total)
+              </h4>
+
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {divisions
+                  .filter(d => d.course_id === selectedCourseForCurriculum.id)
+                  .map(div => {
+                    const divSubjects = subjects.filter(s => s.division_id === div.id)
+                    return (
+                      <div key={div.id} className="p-3.5 bg-surface rounded-xl border border-line">
+                        <div className="flex items-center justify-between mb-2.5">
+                          <Badge variant="brand">{div.name} - Division {div.division_name}</Badge>
+                          <span className="text-muted text-xs font-mono font-medium">
+                            {divSubjects.length} subjects
+                          </span>
+                        </div>
+
+                        {divSubjects.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {divSubjects.map(sub => (
+                              <div
+                                key={sub.id}
+                                className="flex items-center justify-between p-2.5 rounded-lg bg-bg border border-line text-xs"
+                              >
+                                <div className="min-w-0 pr-2">
+                                  <p className="font-semibold text-ink truncate leading-tight">{sub.name}</p>
+                                  <span className="font-mono text-brand font-bold text-[11px]">{sub.code}</span>
+                                </div>
+                                <button
+                                  onClick={() => handleDeleteSubject(sub.id, sub.name)}
+                                  className="text-muted hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
+                                  title="Delete subject"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-muted text-xs italic py-1">
+                            No subjects registered for this division yet.
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
               </div>
             </div>
 
-            {conflictError && (
-              <div className="p-3 mb-4 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs flex items-start gap-2">
-                <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
-                <span>{conflictError}</span>
-              </div>
-            )}
+            <div className="flex justify-end pt-3 border-t border-line">
+              <Button variant="outline" size="sm" onClick={() => setSelectedCourseForCurriculum(null)}>
+                Close Curriculum
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
-            <form onSubmit={handleSaveSlot} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="form-label">Day of Week:</label>
-                  <select
-                    className="form-input"
-                    value={slotForm.day_of_week}
-                    onChange={e => setSlotForm({ ...slotForm, day_of_week: e.target.value })}
-                  >
-                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL 5: ADD / EDIT TIMETABLE SLOT
+      ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={showSlotModal}
+        onClose={() => setShowSlotModal(false)}
+        title={slotForm.id ? 'Edit Timetable Slot' : 'Add Timetable Slot'}
+        description="Schedule division classroom lecture slot with faculty and room assignment"
+        maxWidth="max-w-lg"
+      >
+        <div className="space-y-4">
+          {conflictError && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <span>{conflictError}</span>
+            </div>
+          )}
 
-                <div className="form-group">
-                  <label className="form-label">Classroom / Room Number:</label>
-                  <input
-                    type="text"
-                    required
-                    className="form-input"
-                    placeholder="e.g. Room 101 or Lab 202"
-                    value={slotForm.room_number}
-                    onChange={e => setSlotForm({ ...slotForm, room_number: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-group">
-                  <label className="form-label">Start Time:</label>
-                  <input
-                    type="time"
-                    step="1"
-                    required
-                    className="form-input"
-                    value={slotForm.start_time}
-                    onChange={e => setSlotForm({ ...slotForm, start_time: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">End Time:</label>
-                  <input
-                    type="time"
-                    step="1"
-                    required
-                    className="form-input"
-                    value={slotForm.end_time}
-                    onChange={e => setSlotForm({ ...slotForm, end_time: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Curriculum Subject:</label>
+          <form onSubmit={handleSaveSlot} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-ink">Day of Week:</label>
                 <select
-                  required
-                  className="form-input"
-                  value={slotForm.subject_id}
-                  onChange={e => setSlotForm({ ...slotForm, subject_id: e.target.value })}
+                  className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                  value={slotForm.day_of_week}
+                  onChange={e => setSlotForm({ ...slotForm, day_of_week: e.target.value })}
                 >
-                  <option value="">-- Choose Subject --</option>
-                  {subjects
-                    .filter(s => !s.division_id || s.division_id === timetableDivId)
-                    .map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.code ? `[${s.code}] ` : ''}{s.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Assigned Faculty (Teacher):</label>
-                <select
-                  className="form-input"
-                  value={slotForm.teacher_id}
-                  onChange={e => setSlotForm({ ...slotForm, teacher_id: e.target.value })}
-                >
-                  <option value="">-- Optional / Assigned Faculty --</option>
-                  {teachersList.map(t => (
-                    <option key={t.id} value={t.id}>
-                      {t.user?.full_name || t.teacher_id} ({t.department || 'Faculty'})
-                    </option>
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => (
+                    <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-ink">Classroom / Room Number:</label>
                 <input
-                  type="checkbox"
-                  id="slot_is_lab"
-                  checked={slotForm.is_lab}
-                  onChange={e => setSlotForm({ ...slotForm, is_lab: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-brand-accent focus:ring-0 cursor-pointer"
+                  type="text"
+                  required
+                  className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                  placeholder="e.g. Room 101 or Lab 202"
+                  value={slotForm.room_number}
+                  onChange={e => setSlotForm({ ...slotForm, room_number: e.target.value })}
                 />
-                <label htmlFor="slot_is_lab" className="text-slate-300 text-xs cursor-pointer select-none">
-                  Practical / Lab Session (hands-on)
-                </label>
               </div>
+            </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowSlotModal(false)}
-                  className="btn btn-secondary btn-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingSlot}
-                  className="btn btn-primary btn-sm flex items-center gap-1.5 shadow-md"
-                >
-                  {savingSlot ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                  {slotForm.id ? 'Save Changes' : 'Add to Timetable'}
-                </button>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-ink">Start Time:</label>
+                <input
+                  type="time"
+                  step="1"
+                  required
+                  className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                  value={slotForm.start_time}
+                  onChange={e => setSlotForm({ ...slotForm, start_time: e.target.value })}
+                />
               </div>
-            </form>
-          </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-ink">End Time:</label>
+                <input
+                  type="time"
+                  step="1"
+                  required
+                  className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                  value={slotForm.end_time}
+                  onChange={e => setSlotForm({ ...slotForm, end_time: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Curriculum Subject:</label>
+              <select
+                required
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                value={slotForm.subject_id}
+                onChange={e => setSlotForm({ ...slotForm, subject_id: e.target.value })}
+              >
+                <option value="">-- Choose Subject --</option>
+                {subjects
+                  .filter(s => !s.division_id || s.division_id === timetableDivId)
+                  .map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.code ? `[${s.code}] ` : ''}{s.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Assigned Faculty (Teacher):</label>
+              <select
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                value={slotForm.teacher_id}
+                onChange={e => setSlotForm({ ...slotForm, teacher_id: e.target.value })}
+              >
+                <option value="">-- Optional / Assigned Faculty --</option>
+                {teachersList.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.user?.full_name || t.teacher_id} ({t.department || 'Faculty'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="slot_is_lab"
+                checked={slotForm.is_lab}
+                onChange={e => setSlotForm({ ...slotForm, is_lab: e.target.checked })}
+                className="w-4 h-4 rounded border-line text-brand focus:ring-0 cursor-pointer"
+              />
+              <label htmlFor="slot_is_lab" className="text-ink text-xs cursor-pointer select-none">
+                Practical / Lab Session (hands-on)
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowSlotModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" size="sm" disabled={savingSlot}>
+                {savingSlot ? 'Saving...' : slotForm.id ? 'Save Changes' : 'Add to Timetable'}
+              </Button>
+            </div>
+          </form>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }
-

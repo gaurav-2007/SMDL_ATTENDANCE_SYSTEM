@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, ShieldCheck, Mail, AlertCircle, GraduationCap, ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react'
+import { Clock, ShieldCheck, Mail, AlertCircle, GraduationCap, ArrowLeft, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
+import { Card, Badge, Button } from '../../components/ui'
 
 export default function PendingApproval() {
   const { user, logout, refreshUser } = useAuth()
@@ -36,92 +37,85 @@ export default function PendingApproval() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-dark bg-dot-pattern flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-yellow-500/5 rounded-full blur-3xl" />
-      </div>
-
-      <div className="relative w-full max-w-md animate-slide-up">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-yellow-500/15 border border-yellow-500/30 mb-4 animate-pulse">
-            <Clock size={36} className="text-yellow-400" />
+    <div className="min-h-screen bg-bg text-ink flex items-center justify-center p-4 py-8 relative antialiased">
+      <div className="w-full max-w-md animate-fade-in space-y-6">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-grace/15 border border-grace/30 text-grace shadow-xs mx-auto">
+            <Clock className="w-7 h-7" />
           </div>
-          <h1 className="text-3xl font-bold text-white">Account Pending</h1>
-          <p className="text-brand-muted mt-2 text-sm">Waiting for admin approval</p>
+          <div>
+            <h1 className="text-2xl font-bold font-display text-ink tracking-tight">Account Pending Approval</h1>
+            <p className="text-xs text-muted mt-0.5">Faculty verification required by college administration</p>
+          </div>
         </div>
 
-        <div className="card text-center">
-          <div className="bg-yellow-500/10 border border-yellow-500/25 rounded-2xl p-6 mb-6">
-            <ShieldCheck size={36} className="text-yellow-400 mx-auto mb-3" />
-            <p className="text-white font-semibold text-lg">
-              Your account is awaiting administrator approval
+        <Card className="p-6 sm:p-7 text-center shadow-sm space-y-5">
+          <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-xl p-5 text-center space-y-2">
+            <ShieldCheck className="w-8 h-8 text-grace mx-auto" />
+            <p className="text-sm font-semibold text-ink">
+              Your teacher credentials are being reviewed
             </p>
-            <div className="mt-3 inline-flex items-center gap-2 bg-brand-dark/80 rounded-lg px-4 py-2">
-              <span className="text-brand-muted text-xs">Account Status:</span>
-              <span className="text-yellow-400 text-sm font-bold bg-yellow-500/15 px-2 py-0.5 rounded-full">
-                PENDING
-              </span>
+            <div className="inline-flex items-center gap-2 pt-1">
+              <Badge variant="grace" size="md">
+                Status: Pending Verification
+              </Badge>
             </div>
           </div>
 
-          <div className="space-y-3 text-left mb-6">
+          <div className="space-y-3 text-left text-xs bg-bg border border-line rounded-lg p-3.5">
             {user && (
               <>
-                <div className="flex items-center gap-3 text-sm">
-                  <GraduationCap size={16} className="text-brand-accent flex-shrink-0" />
+                <div className="flex items-center gap-3">
+                  <GraduationCap className="w-4 h-4 text-brand shrink-0" />
                   <div>
-                    <p className="text-brand-muted text-xs">Registered as</p>
-                    <p className="text-white font-medium">Teacher — {user.email}</p>
+                    <span className="text-muted block text-[11px]">Registered Account:</span>
+                    <span className="font-semibold text-ink">Faculty — {user.email}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-sm">
-                  <Mail size={16} className="text-brand-accent flex-shrink-0" />
+                <div className="flex items-center gap-3 pt-1 border-t border-line/60">
+                  <Mail className="w-4 h-4 text-brand shrink-0" />
                   <div>
-                    <p className="text-brand-muted text-xs">What happens next</p>
-                    <p className="text-white">An admin will review your registration and approve or reject it.</p>
+                    <span className="text-muted block text-[11px]">Next Step:</span>
+                    <span className="text-ink">The principal or head admin will verify your department and activate your login.</span>
                   </div>
                 </div>
               </>
             )}
           </div>
 
-          <div className="bg-brand-dark/60 rounded-xl p-4 mb-6 border border-brand-border">
-            <div className="flex items-start gap-3">
-              <AlertCircle size={18} className="text-brand-muted flex-shrink-0 mt-0.5" />
-              <p className="text-brand-muted text-xs leading-relaxed">
-                Please contact the college administrator if you believe this is taking longer than expected.
-                Do not create multiple accounts.
-              </p>
-            </div>
+          <p className="text-[11px] text-muted leading-relaxed">
+            Please allow up to 24 hours during working college days. You do not need to register again.
+          </p>
+
+          <div className="space-y-2 pt-2">
+            <Button
+              id="check-approval-status-btn"
+              variant="primary"
+              size="md"
+              onClick={checkApprovalStatus}
+              disabled={checking}
+              loading={checking}
+              className="w-full font-semibold shadow-xs"
+            >
+              <RefreshCw className="w-4 h-4 mr-1.5" />
+              <span>Check Approval Status</span>
+            </Button>
+
+            <Button
+              id="pending-go-login-btn"
+              variant="outline"
+              size="md"
+              onClick={() => {
+                logout()
+                navigate('/login', { replace: true })
+              }}
+              className="w-full"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1.5" />
+              <span>Back to Login</span>
+            </Button>
           </div>
-
-          {/* Check Status Button */}
-          <button
-            id="check-approval-status-btn"
-            type="button"
-            onClick={checkApprovalStatus}
-            disabled={checking}
-            className="btn-primary w-full mb-3"
-          >
-            {checking ? (
-              <><RefreshCw size={16} className="animate-spin" /> Checking...</>
-            ) : (
-              <><CheckCircle size={16} /> Check Approval Status</>
-            )}
-          </button>
-
-          <button
-            type="button"
-            id="pending-go-login-btn"
-            onClick={() => {
-              logout()
-              navigate('/login', { replace: true })
-            }}
-            className="btn-secondary w-full"
-          >
-            <ArrowLeft size={16} /> Go to Login
-          </button>
-        </div>
+        </Card>
       </div>
     </div>
   )

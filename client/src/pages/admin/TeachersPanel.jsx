@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
 import {
   UserCheck, UserX, Clock, RefreshCw, Search, Filter,
-  ShieldAlert, ShieldOff, AlertCircle, BookOpen, CheckSquare, Square, Check, X
+  ShieldAlert, ShieldOff, AlertCircle, BookOpen, Check, X,
+  GraduationCap, Mail, Building2, Hash, Layers
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
+import {
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
+  Badge, Button, Input, Modal, Skeleton, EmptyState
+} from '../../components/ui'
 
 export default function TeachersPanel() {
   const [teachers, setTeachers] = useState([])
@@ -168,258 +173,483 @@ export default function TeachersPanel() {
     REJECTED: teachers.filter(t => ['REJECTED', 'DISABLED'].includes(t.status || t.account_status)).length,
   }
 
+  function renderStatusBadge(tStatus) {
+    if (tStatus === 'ACTIVE') {
+      return <Badge variant="present" dot>Active</Badge>
+    }
+    if (tStatus === 'PENDING') {
+      return <Badge variant="grace" pulseDot>Pending Approval</Badge>
+    }
+    if (tStatus === 'SUSPENDED') {
+      return <Badge variant="grace">Suspended</Badge>
+    }
+    if (tStatus === 'DISABLED') {
+      return <Badge variant="absent">Disabled</Badge>
+    }
+    if (tStatus === 'REJECTED') {
+      return <Badge variant="absent">Rejected</Badge>
+    }
+    return <Badge variant="neutral">{tStatus || 'Unknown'}</Badge>
+  }
+
   return (
-    <div className="animate-fade-in">
-      <div className="page-header flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6 animate-fade-in pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="page-title">Teacher Management & Access Control</h2>
-          <p className="page-subtitle">Approve, suspend, disable accounts with immediate global session revocation</p>
+          <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
+            Faculty Directory & Access Control
+          </h1>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">
+            Authorize accounts, assign curriculum subjects, and manage security session states
+          </p>
         </div>
-        <button id="refresh-teachers-btn" onClick={fetchTeachers} className="btn-secondary btn-sm gap-1">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Filter tabs */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'].map(s => (
-          <button
-            key={s}
-            id={`filter-${s.toLowerCase()}`}
-            onClick={() => setFilter(s)}
-            className={`btn btn-sm ${filter === s ? 'btn-primary' : 'btn-secondary'}`}
+        <div className="flex items-center gap-2">
+          <Button
+            id="refresh-teachers-btn"
+            variant="outline"
+            size="sm"
+            onClick={fetchTeachers}
+            className="gap-1.5"
           >
-            {s} <span className="ml-1 opacity-70">({counts[s]})</span>
-          </button>
-        ))}
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-5">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
-        <input
-          id="teacher-search"
-          type="text"
-          placeholder="Search by name, email, employee ID or department..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="input pl-9"
-        />
-      </div>
+      {/* Filter Tabs & Search Controls */}
+      <Card className="p-4 sm:p-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          {/* Segmented Filter Pills */}
+          <div className="flex flex-wrap gap-1.5 p-1 bg-bg border border-line rounded-lg">
+            {['ALL', 'PENDING', 'ACTIVE', 'SUSPENDED', 'REJECTED'].map(s => {
+              const isActive = filter === s
+              return (
+                <button
+                  key={s}
+                  id={`filter-${s.toLowerCase()}`}
+                  onClick={() => setFilter(s)}
+                  type="button"
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                      : 'text-muted hover:text-ink hover:bg-surface/50'
+                  }`}
+                >
+                  {s.charAt(0) + s.slice(1).toLowerCase()}
+                  <span className={`ml-1.5 text-[11px] px-1.5 py-0.2 rounded-full ${
+                    isActive ? 'bg-brand/10 text-brand' : 'text-muted'
+                  }`}>
+                    {counts[s]}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
 
-      {/* Table */}
-      <div className="card p-0 overflow-hidden">
+          {/* Search Box */}
+          <div className="w-full md:w-80">
+            <Input
+              id="teacher-search"
+              type="text"
+              placeholder="Search faculty by name, email, ID..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              icon={Search}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Teachers Content Area */}
+      <Card className="overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="spinner w-8 h-8 border-4" />
+          <div className="p-6 space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-2">
-            <Filter size={36} className="text-brand-border" />
-            <p className="text-brand-muted">No teachers found</p>
-          </div>
+          <EmptyState
+            icon={Filter}
+            title="No faculty members found"
+            description={search ? `No results match "${search}". Try adjusting your filters.` : 'No teachers registered under this status category.'}
+            action={
+              search ? (
+                <Button variant="outline" size="sm" onClick={() => setSearch('')}>
+                  Clear search query
+                </Button>
+              ) : null
+            }
+          />
         ) : (
-          <div className="table-wrapper">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Faculty / Email</th>
-                  <th>Employee ID</th>
-                  <th>Department</th>
-                  <th>Assigned Subjects</th>
-                  <th>Account Status</th>
-                  <th>Registered</th>
-                  <th className="text-right">Access Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((t, i) => {
-                  const tStatus = t.status || t.account_status
-                  const empId = t.employee_id || t.profile?.employee_id || '—'
-                  const dept = t.department || t.profile?.department || '—'
-                  const regDate = t.registered_at || t.profile?.registration_submitted_at
-                  const assignedList = t.assigned_subjects || []
-                  return (
-                    <tr key={t.id || t.email}>
-                      <td className="text-brand-muted">{i + 1}</td>
-                      <td>
-                        <p className="text-white font-medium">{t.name || t.full_name}</p>
-                        <p className="text-brand-muted text-xs">{t.email}</p>
-                      </td>
-                      <td className="font-mono text-sm">{empId}</td>
-                      <td>{dept}</td>
-                      <td>
-                        {assignedList.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 max-w-[220px]">
-                            {assignedList.map(s => (
-                              <span
-                                key={s.id}
-                                className="text-[11px] bg-brand-dark/80 text-brand-accent px-1.5 py-0.5 rounded border border-brand-accent/20"
-                                title={`${s.name} (${s.code || ''}) - ${s.division?.name || ''}`}
-                              >
-                                {s.code || s.name}
-                              </span>
-                            ))}
+          <div>
+            {/* Desktop Table View (>= 1024px) */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
+                    <th className="py-3 px-4 w-12 text-center">#</th>
+                    <th className="py-3 px-4">Faculty Member</th>
+                    <th className="py-3 px-4">Employee ID</th>
+                    <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">Assigned Subjects</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Registered</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {filtered.map((t, i) => {
+                    const tStatus = t.status || t.account_status
+                    const empId = t.employee_id || t.profile?.employee_id || '—'
+                    const dept = t.department || t.profile?.department || '—'
+                    const regDate = t.registered_at || t.profile?.registration_submitted_at
+                    const assignedList = t.assigned_subjects || []
+                    const initial = (t.name || t.full_name || 'F').charAt(0).toUpperCase()
+
+                    return (
+                      <tr key={t.id || t.email} className="hover:bg-bg/40 transition-colors">
+                        <td className="py-3.5 px-4 text-center text-xs text-muted font-mono">
+                          {i + 1}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-brand/10 text-brand font-semibold text-xs flex items-center justify-center shrink-0">
+                              {initial}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-ink leading-tight truncate">
+                                {t.name || t.full_name}
+                              </p>
+                              <p className="text-xs text-muted truncate mt-0.5">{t.email}</p>
+                            </div>
                           </div>
-                        ) : (
-                          <span className="text-brand-muted text-xs italic">No subjects assigned</span>
-                        )}
-                      </td>
-                      <td>
-                        {tStatus === 'ACTIVE' && <span className="badge-active">Active</span>}
-                        {tStatus === 'PENDING' && <span className="badge-pending">Pending Approval</span>}
-                        {tStatus === 'SUSPENDED' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                            Suspended
-                          </span>
-                        )}
-                        {(tStatus === 'REJECTED' || tStatus === 'DISABLED') && (
-                          <span className="badge-rejected">{tStatus === 'DISABLED' ? 'Disabled' : 'Rejected'}</span>
-                        )}
-                      </td>
-                      <td className="text-brand-muted text-xs">
-                        {regDate ? new Date(regDate).toLocaleDateString('en-IN') : '—'}
-                      </td>
-                      <td>
-                        <div className="flex items-center justify-end gap-1.5">
-                          {tStatus === 'PENDING' && (
-                            <>
-                              <button
-                                id={`approve-${t.id}`}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-xs text-ink">
+                          {empId}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-ink font-medium">
+                          {dept}
+                        </td>
+                        <td className="py-3.5 px-4 max-w-[240px]">
+                          {assignedList.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 max-w-[240px]">
+                              {assignedList.map(s => (
+                                <span
+                                  key={s.id}
+                                  className="text-[11px] font-mono bg-bg border border-line text-ink px-1.5 py-0.5 rounded shadow-2xs"
+                                  title={`${s.name} (${s.code || ''}) - ${s.division?.name || ''}`}
+                                >
+                                  {s.code || s.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted italic">None assigned</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {renderStatusBadge(tStatus)}
+                        </td>
+                        <td className="py-3.5 px-4 text-xs text-muted">
+                          {regDate ? new Date(regDate).toLocaleDateString('en-IN') : '—'}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {tStatus === 'PENDING' && (
+                              <>
+                                <Button
+                                  id={`approve-${t.id}`}
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => {
+                                    setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                    setModalSubjSearch('')
+                                  }}
+                                  disabled={actingId === t.id}
+                                  className="bg-green-600 hover:bg-green-700 text-white gap-1"
+                                >
+                                  {actingId === t.id ? <RefreshCw size={12} className="animate-spin" /> : <UserCheck size={14} />}
+                                  Approve
+                                </Button>
+                                <Button
+                                  id={`reject-${t.id}`}
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => { setActionModal({ type: 'reject', teacher: t }); setModalReason('') }}
+                                  disabled={actingId === t.id}
+                                  className="gap-1"
+                                >
+                                  <UserX size={14} /> Reject
+                                </Button>
+                              </>
+                            )}
+
+                            {tStatus === 'ACTIVE' && (
+                              <>
+                                <Button
+                                  id={`subjects-${t.id}`}
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSubjectModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                    setModalSubjSearch('')
+                                  }}
+                                  className="gap-1 text-xs"
+                                >
+                                  <BookOpen size={13} className="text-brand" /> Subjects
+                                </Button>
+                                <Button
+                                  id={`suspend-${t.id}`}
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => { setActionModal({ type: 'suspend', teacher: t }); setModalReason('') }}
+                                  disabled={actingId === t.id}
+                                  className="gap-1 text-xs text-amber-700 hover:bg-amber-50 border-amber-200"
+                                >
+                                  <ShieldAlert size={13} /> Suspend
+                                </Button>
+                                <Button
+                                  id={`disable-${t.id}`}
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => { setActionModal({ type: 'disable', teacher: t }); setModalReason('') }}
+                                  disabled={actingId === t.id}
+                                  className="gap-1 text-xs text-red-600 hover:bg-red-50"
+                                >
+                                  <ShieldOff size={13} /> Disable
+                                </Button>
+                              </>
+                            )}
+
+                            {tStatus === 'SUSPENDED' && (
+                              <Button
+                                id={`reapprove-${t.id}`}
+                                variant="outline"
+                                size="sm"
                                 onClick={() => {
                                   setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
                                   setModalSubjSearch('')
                                 }}
                                 disabled={actingId === t.id}
-                                className="btn-success btn-sm"
-                                title="Approve and assign subjects"
+                                className="gap-1 text-green-700 border-green-300 hover:bg-green-50"
                               >
-                                {actingId === t.id ? <div className="spinner w-3 h-3" /> : <UserCheck size={14} />}
-                                Approve
-                              </button>
-                              <button
-                                id={`reject-${t.id}`}
-                                onClick={() => { setActionModal({ type: 'reject', teacher: t }); setModalReason('') }}
-                                disabled={actingId === t.id}
-                                className="btn-danger btn-sm"
-                              >
-                                <UserX size={14} /> Reject
-                              </button>
-                            </>
-                          )}
-                          {tStatus === 'ACTIVE' && (
-                            <>
-                              <button
-                                id={`subjects-${t.id}`}
+                                <UserCheck size={14} /> Reactivate
+                              </Button>
+                            )}
+
+                            {(tStatus === 'REJECTED' || tStatus === 'DISABLED') && (
+                              <Button
+                                id={`reapprove-${t.id}`}
+                                variant="outline"
+                                size="sm"
                                 onClick={() => {
-                                  setSubjectModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                                  setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
                                   setModalSubjSearch('')
                                 }}
-                                className="btn-secondary btn-sm !text-sky-400 !border-sky-500/30 hover:!bg-sky-500/10"
-                                title="Assign / update subjects"
-                              >
-                                <BookOpen size={14} /> Subjects
-                              </button>
-                              <button
-                                id={`suspend-${t.id}`}
-                                onClick={() => { setActionModal({ type: 'suspend', teacher: t }); setModalReason('') }}
                                 disabled={actingId === t.id}
-                                className="btn-secondary btn-sm !text-amber-400 !border-amber-500/30 hover:!bg-amber-500/10"
-                                title="Temporary freeze + kill session"
+                                className="gap-1 text-xs"
                               >
-                                <ShieldAlert size={14} /> Suspend
-                              </button>
-                              <button
-                                id={`disable-${t.id}`}
-                                onClick={() => { setActionModal({ type: 'disable', teacher: t }); setModalReason('') }}
-                                disabled={actingId === t.id}
-                                className="btn-danger btn-sm"
-                                title="Permanent deactivation + kill session"
-                              >
-                                <ShieldOff size={14} /> Disable
-                              </button>
-                            </>
-                          )}
-                          {tStatus === 'SUSPENDED' && (
-                            <button
-                              id={`reapprove-${t.id}`}
-                              onClick={() => {
-                                setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
-                                setModalSubjSearch('')
-                              }}
-                              disabled={actingId === t.id}
-                              className="btn-success btn-sm"
-                            >
-                              <UserCheck size={14} /> Reactivate
-                            </button>
-                          )}
-                          {(tStatus === 'REJECTED' || tStatus === 'DISABLED') && (
-                            <button
-                              id={`reapprove-${t.id}`}
-                              onClick={() => {
-                                setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
-                                setModalSubjSearch('')
-                              }}
-                              disabled={actingId === t.id}
-                              className="btn-secondary btn-sm"
-                            >
-                              <UserCheck size={14} /> Restore
-                            </button>
-                          )}
+                                <UserCheck size={14} /> Restore
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile / Tablet Responsive Cards (< 1024px) */}
+            <div className="lg:hidden divide-y divide-line">
+              {filtered.map((t, i) => {
+                const tStatus = t.status || t.account_status
+                const empId = t.employee_id || t.profile?.employee_id || '—'
+                const dept = t.department || t.profile?.department || '—'
+                const assignedList = t.assigned_subjects || []
+                const initial = (t.name || t.full_name || 'F').charAt(0).toUpperCase()
+
+                return (
+                  <div key={t.id || t.email} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-brand/10 text-brand font-semibold text-sm flex items-center justify-center shrink-0">
+                          {initial}
                         </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                        <div>
+                          <p className="font-semibold text-ink text-sm">
+                            {t.name || t.full_name}
+                          </p>
+                          <p className="text-xs text-muted truncate max-w-[200px]">{t.email}</p>
+                        </div>
+                      </div>
+                      <div>
+                        {renderStatusBadge(tStatus)}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-bg/50 p-2.5 rounded-lg border border-line">
+                      <div>
+                        <span className="text-muted block text-[11px]">Employee ID</span>
+                        <span className="font-mono font-medium text-ink">{empId}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted block text-[11px]">Department</span>
+                        <span className="font-medium text-ink truncate block">{dept}</span>
+                      </div>
+                    </div>
+
+                    {assignedList.length > 0 && (
+                      <div>
+                        <span className="text-[11px] text-muted block mb-1">Assigned Subjects ({assignedList.length}):</span>
+                        <div className="flex flex-wrap gap-1">
+                          {assignedList.map(s => (
+                            <span
+                              key={s.id}
+                              className="text-[11px] font-mono bg-bg border border-line text-ink px-1.5 py-0.5 rounded"
+                            >
+                              {s.code || s.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Mobile Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-line/60">
+                      {tStatus === 'PENDING' && (
+                        <>
+                          <Button
+                            id={`approve-mobile-${t.id}`}
+                            variant="primary"
+                            size="sm"
+                            onClick={() => {
+                              setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                              setModalSubjSearch('')
+                            }}
+                            disabled={actingId === t.id}
+                            className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <UserCheck size={14} /> Approve
+                          </Button>
+                          <Button
+                            id={`reject-mobile-${t.id}`}
+                            variant="danger"
+                            size="sm"
+                            onClick={() => { setActionModal({ type: 'reject', teacher: t }); setModalReason('') }}
+                            disabled={actingId === t.id}
+                            className="flex-1"
+                          >
+                            <UserX size={14} /> Reject
+                          </Button>
+                        </>
+                      )}
+
+                      {tStatus === 'ACTIVE' && (
+                        <>
+                          <Button
+                            id={`subjects-mobile-${t.id}`}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSubjectModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                              setModalSubjSearch('')
+                            }}
+                            className="flex-1"
+                          >
+                            <BookOpen size={13} className="text-brand" /> Subjects
+                          </Button>
+                          <Button
+                            id={`suspend-mobile-${t.id}`}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setActionModal({ type: 'suspend', teacher: t }); setModalReason('') }}
+                            disabled={actingId === t.id}
+                            className="text-amber-700 border-amber-200"
+                          >
+                            <ShieldAlert size={13} />
+                          </Button>
+                          <Button
+                            id={`disable-mobile-${t.id}`}
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setActionModal({ type: 'disable', teacher: t }); setModalReason('') }}
+                            disabled={actingId === t.id}
+                            className="text-red-600"
+                          >
+                            <ShieldOff size={13} />
+                          </Button>
+                        </>
+                      )}
+
+                      {tStatus === 'SUSPENDED' && (
+                        <Button
+                          id={`reapprove-mobile-${t.id}`}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                            setModalSubjSearch('')
+                          }}
+                          disabled={actingId === t.id}
+                          className="w-full text-green-700 border-green-300"
+                        >
+                          <UserCheck size={14} /> Reactivate Account
+                        </Button>
+                      )}
+
+                      {(tStatus === 'REJECTED' || tStatus === 'DISABLED') && (
+                        <Button
+                          id={`reapprove-mobile-${t.id}`}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setApproveModal({ teacher: t, selectedIds: t.assigned_subject_ids || [] })
+                            setModalSubjSearch('')
+                          }}
+                          disabled={actingId === t.id}
+                          className="w-full"
+                        >
+                          <UserCheck size={14} /> Restore Account
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* APPROVE & ASSIGN SUBJECTS MODAL */}
-      {approveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="card w-full max-w-xl border-brand-border/80 bg-brand-surface shadow-2xl animate-scale-up max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-brand-border/60">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-green-500/15 text-green-400">
-                  <UserCheck size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold text-base">Approve Faculty & Assign Subjects</h3>
-                  <p className="text-brand-muted text-xs">
-                    {approveModal.teacher.name || approveModal.teacher.full_name} ({approveModal.teacher.email})
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setApproveModal(null)}
-                className="text-brand-muted hover:text-white p-1 rounded-lg"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="text-brand-muted text-xs mt-3 mb-2">
-              Select the subjects this faculty member is authorized to teach. The teacher will ONLY be able to conduct lectures and take attendance for these selected subjects.
+      <Modal
+        isOpen={Boolean(approveModal)}
+        onClose={() => setApproveModal(null)}
+        title="Approve Faculty & Assign Subjects"
+        description={approveModal ? `${approveModal.teacher.name || approveModal.teacher.full_name} (${approveModal.teacher.email})` : ''}
+        maxWidth="max-w-xl"
+      >
+        {approveModal && (
+          <div className="space-y-4">
+            <p className="text-xs text-muted">
+              Select the curriculum subjects this faculty member is authorized to teach. The teacher will only be able to launch attendance sessions for authorized subjects.
             </p>
 
-            <div className="relative mb-3">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
-              <input
-                type="text"
-                placeholder="Filter subjects by name or code..."
-                value={modalSubjSearch}
-                onChange={e => setModalSubjSearch(e.target.value)}
-                className="input input-sm pl-8 text-xs"
-              />
-            </div>
+            <Input
+              type="text"
+              placeholder="Filter subjects by name or code..."
+              value={modalSubjSearch}
+              onChange={e => setModalSubjSearch(e.target.value)}
+              icon={Search}
+            />
 
-            <div className="overflow-y-auto flex-1 border border-brand-border/50 rounded-xl p-2 space-y-1.5 bg-brand-dark/40 max-h-60">
+            <div className="overflow-y-auto max-h-60 border border-line rounded-lg p-2 space-y-1.5 bg-bg/50">
               {allSubjects
                 .filter(s => {
                   const q = modalSubjSearch.toLowerCase()
@@ -432,13 +662,13 @@ export default function TeachersPanel() {
                   return (
                     <label
                       key={s.id}
-                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                      className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all border ${
                         isChecked
-                          ? 'bg-brand-accent/15 border-brand-accent/40 text-white'
-                          : 'bg-transparent border-transparent hover:bg-white/5 text-slate-300'
+                          ? 'bg-brand/10 border-brand/30 text-ink'
+                          : 'bg-surface border-line hover:bg-bg/60 text-muted'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-3">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -449,89 +679,68 @@ export default function TeachersPanel() {
                               setApproveModal(prev => ({ ...prev, selectedIds: prev.selectedIds.filter(id => id !== s.id) }))
                             }
                           }}
-                          className="checkbox checkbox-sm accent-brand-accent"
+                          className="h-4 w-4 rounded border-line text-brand focus:ring-brand/30 cursor-pointer"
                         />
                         <div>
-                          <p className="text-xs font-semibold">{s.name}</p>
-                          <p className="text-[11px] text-brand-muted font-mono">{s.code} {divLabel ? `• ${divLabel}` : ''} {courseLabel ? `(${courseLabel})` : ''}</p>
+                          <p className={`text-xs font-semibold ${isChecked ? 'text-ink' : 'text-ink/80'}`}>{s.name}</p>
+                          <p className="text-[11px] text-muted font-mono">{s.code} {divLabel ? `• ${divLabel}` : ''} {courseLabel ? `(${courseLabel})` : ''}</p>
                         </div>
                       </div>
-                      {isChecked && <Check size={14} className="text-brand-accent" />}
+                      {isChecked && <Check size={16} className="text-brand shrink-0" />}
                     </label>
                   )
                 })}
               {allSubjects.length === 0 && (
-                <p className="text-center text-xs text-brand-muted py-4">No subjects found in academic database.</p>
+                <p className="text-center text-xs text-muted py-6">No subjects found in academic database.</p>
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-brand-border/60 mt-3">
-              <span className="text-xs text-brand-accent font-medium">
+            <div className="flex items-center justify-between pt-3 border-t border-line">
+              <span className="text-xs font-semibold text-brand">
                 {approveModal.selectedIds.length} subjects selected
               </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setApproveModal(null)}
-                  className="btn-secondary btn-sm"
-                >
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setApproveModal(null)}>
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleApproveSubmit}
                   disabled={actingId === approveModal.teacher.id}
-                  className="btn-success btn-sm"
+                  className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   {actingId === approveModal.teacher.id ? 'Activating...' : 'Approve & Assign'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* MANAGE / EDIT SUBJECTS MODAL (FOR ACTIVE TEACHERS) */}
-      {subjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="card w-full max-w-xl border-brand-border/80 bg-brand-surface shadow-2xl animate-scale-up max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-brand-border/60">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-sky-500/15 text-sky-400">
-                  <BookOpen size={20} />
-                </div>
-                <div>
-                  <h3 className="text-white font-bold text-base">Assign / Update Subjects</h3>
-                  <p className="text-brand-muted text-xs">
-                    Faculty: {subjectModal.teacher.name || subjectModal.teacher.full_name} ({subjectModal.teacher.email})
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSubjectModal(null)}
-                className="text-brand-muted hover:text-white p-1 rounded-lg"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <p className="text-brand-muted text-xs mt-3 mb-2">
+      {/* MANAGE / EDIT SUBJECTS MODAL */}
+      <Modal
+        isOpen={Boolean(subjectModal)}
+        onClose={() => setSubjectModal(null)}
+        title="Assign / Update Subjects"
+        description={subjectModal ? `Faculty: ${subjectModal.teacher.name || subjectModal.teacher.full_name} (${subjectModal.teacher.email})` : ''}
+        maxWidth="max-w-xl"
+      >
+        {subjectModal && (
+          <div className="space-y-4">
+            <p className="text-xs text-muted">
               Update authorized subjects for this teacher. The teacher will only see lectures and take attendance for these assigned subjects.
             </p>
 
-            <div className="relative mb-3">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" />
-              <input
-                type="text"
-                placeholder="Filter subjects by name or code..."
-                value={modalSubjSearch}
-                onChange={e => setModalSubjSearch(e.target.value)}
-                className="input input-sm pl-8 text-xs"
-              />
-            </div>
+            <Input
+              type="text"
+              placeholder="Filter subjects by name or code..."
+              value={modalSubjSearch}
+              onChange={e => setModalSubjSearch(e.target.value)}
+              icon={Search}
+            />
 
-            <div className="overflow-y-auto flex-1 border border-brand-border/50 rounded-xl p-2 space-y-1.5 bg-brand-dark/40 max-h-60">
+            <div className="overflow-y-auto max-h-60 border border-line rounded-lg p-2 space-y-1.5 bg-bg/50">
               {allSubjects
                 .filter(s => {
                   const q = modalSubjSearch.toLowerCase()
@@ -544,13 +753,13 @@ export default function TeachersPanel() {
                   return (
                     <label
                       key={s.id}
-                      className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all border ${
+                      className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all border ${
                         isChecked
-                          ? 'bg-sky-500/15 border-sky-500/40 text-white'
-                          : 'bg-transparent border-transparent hover:bg-white/5 text-slate-300'
+                          ? 'bg-brand/10 border-brand/30 text-ink'
+                          : 'bg-surface border-line hover:bg-bg/60 text-muted'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-3">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -561,108 +770,103 @@ export default function TeachersPanel() {
                               setSubjectModal(prev => ({ ...prev, selectedIds: prev.selectedIds.filter(id => id !== s.id) }))
                             }
                           }}
-                          className="checkbox checkbox-sm accent-sky-400"
+                          className="h-4 w-4 rounded border-line text-brand focus:ring-brand/30 cursor-pointer"
                         />
                         <div>
-                          <p className="text-xs font-semibold">{s.name}</p>
-                          <p className="text-[11px] text-brand-muted font-mono">{s.code} {divLabel ? `• ${divLabel}` : ''} {courseLabel ? `(${courseLabel})` : ''}</p>
+                          <p className={`text-xs font-semibold ${isChecked ? 'text-ink' : 'text-ink/80'}`}>{s.name}</p>
+                          <p className="text-[11px] text-muted font-mono">{s.code} {divLabel ? `• ${divLabel}` : ''} {courseLabel ? `(${courseLabel})` : ''}</p>
                         </div>
                       </div>
-                      {isChecked && <Check size={14} className="text-sky-400" />}
+                      {isChecked && <Check size={16} className="text-brand shrink-0" />}
                     </label>
                   )
                 })}
               {allSubjects.length === 0 && (
-                <p className="text-center text-xs text-brand-muted py-4">No subjects found in academic database.</p>
+                <p className="text-center text-xs text-muted py-6">No subjects found in academic database.</p>
               )}
             </div>
 
-            <div className="flex items-center justify-between pt-4 border-t border-brand-border/60 mt-3">
-              <span className="text-xs text-sky-400 font-medium">
+            <div className="flex items-center justify-between pt-3 border-t border-line">
+              <span className="text-xs font-semibold text-brand">
                 {subjectModal.selectedIds.length} subjects currently assigned
               </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSubjectModal(null)}
-                  className="btn-secondary btn-sm"
-                >
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setSubjectModal(null)}>
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleSaveSubjects}
                   disabled={savingSubjects}
-                  className="btn-primary btn-sm"
                 >
                   {savingSubjects ? 'Saving...' : 'Save Assignments'}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Action Dialog Modal (Suspend / Disable / Reject) */}
-      {actionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-          <div className="card w-full max-w-md border-brand-border/80 bg-brand-surface shadow-2xl animate-scale-up">
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`p-2.5 rounded-xl ${actionModal.type === 'suspend' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
-                {actionModal.type === 'suspend' ? <ShieldAlert size={22} /> : <ShieldOff size={22} />}
+      <Modal
+        isOpen={Boolean(actionModal)}
+        onClose={() => setActionModal(null)}
+        title={`${actionModal?.type ? actionModal.type.charAt(0).toUpperCase() + actionModal.type.slice(1) : ''} Faculty Account`}
+        description={actionModal ? `${actionModal.teacher.name || actionModal.teacher.full_name} (${actionModal.teacher.email})` : ''}
+        maxWidth="max-w-md"
+      >
+        {actionModal && (
+          <form onSubmit={handleModalSubmit} className="space-y-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-bg border border-line">
+              <div className={`p-2 rounded-lg shrink-0 ${
+                actionModal.type === 'suspend' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+              }`}>
+                {actionModal.type === 'suspend' ? <ShieldAlert size={20} /> : <ShieldOff size={20} />}
               </div>
-              <div>
-                <h3 className="text-white font-bold text-lg capitalize">{actionModal.type} Faculty Account</h3>
-                <p className="text-brand-muted text-xs">
-                  {actionModal.teacher.name || actionModal.teacher.full_name} ({actionModal.teacher.email})
-                </p>
-              </div>
+              <p className="text-xs text-muted">
+                {actionModal.type === 'suspend'
+                  ? 'This will immediately freeze access and terminate the teacher’s active login sessions across all devices.'
+                  : 'This will deactivate the teacher account and immediately revoke their access tokens.'}
+              </p>
             </div>
 
-            <p className="text-brand-muted text-sm mb-4">
-              {actionModal.type === 'suspend'
-                ? 'This will immediately freeze access and terminate the teacher’s active login sessions across all devices.'
-                : 'This will deactivate the teacher account and immediately revoke their access tokens.'}
-            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-ink">
+                Audit Reason (Required):
+              </label>
+              <textarea
+                required
+                rows={3}
+                className="w-full text-xs p-3 rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none resize-none"
+                placeholder={`Reason for ${actionModal.type} (e.g. End of contract, Administrative review, etc.)`}
+                value={modalReason}
+                onChange={e => setModalReason(e.target.value)}
+              />
+            </div>
 
-            <form onSubmit={handleModalSubmit} className="space-y-4">
-              <div className="form-group">
-                <label className="form-label">Audit Reason (Required):</label>
-                <textarea
-                  required
-                  rows={3}
-                  className="form-input resize-none"
-                  placeholder={`Reason for ${actionModal.type} (e.g. End of contract, Administrative review, etc.)`}
-                  value={modalReason}
-                  onChange={e => setModalReason(e.target.value)}
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setActionModal(null)}
-                  className="btn-secondary btn-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={actingId === actionModal.teacher.id}
-                  className={`btn-sm font-semibold ${
-                    actionModal.type === 'suspend'
-                      ? 'bg-amber-500 hover:bg-amber-400 text-black'
-                      : 'btn-danger'
-                  }`}
-                >
-                  {actingId === actionModal.teacher.id ? 'Processing...' : `Confirm ${actionModal.type}`}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setActionModal(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant={actionModal.type === 'suspend' ? 'primary' : 'danger'}
+                size="sm"
+                disabled={actingId === actionModal.teacher.id}
+                className={actionModal.type === 'suspend' ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}
+              >
+                {actingId === actionModal.teacher.id ? 'Processing...' : `Confirm ${actionModal.type}`}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   )
 }
-

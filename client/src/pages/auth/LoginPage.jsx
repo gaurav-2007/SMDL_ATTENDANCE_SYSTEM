@@ -9,7 +9,6 @@ import {
   UserPlus,
   BookOpen,
   ShieldCheck,
-  Check,
   Mail,
   ArrowLeft,
   RotateCw,
@@ -17,14 +16,15 @@ import {
   AlertCircle,
   Edit3,
   Wifi,
-  Settings,
-  Server
+  Server,
+  KeyRound
 } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import { Capacitor } from '@capacitor/core'
 import { useAuth } from '../../context/AuthContext'
 import api, { getBaseURL, setCustomApiUrl, normalizeApiUrl, isPrivateLanHost } from '../../lib/api'
+import { Button, Input, Select, Card, Badge, Modal, Tabs } from '../../components/ui'
 
 const DEFAULT_COURSES = [
   { id: '80acc4c6-829f-40a4-ab0b-6cd44032fffc', name: 'B.Sc. Computer Science', code: 'BSC-CS', department: 'Computer Science' },
@@ -161,14 +161,17 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
 
-  // If already logged in, redirect declaratively
-  if (user) {
-    if (user.role === 'teacher' && user.account_status === 'PENDING') {
-      return <Navigate to="/pending-approval" replace />
+  // If already logged in, redirect safely via useEffect
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'teacher' && user.account_status === 'PENDING') {
+        navigate('/pending-approval', { replace: true })
+      } else {
+        const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
+        navigate(roleMap[user.role] || '/', { replace: true })
+      }
     }
-    const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
-    return <Navigate to={roleMap[user.role] || '/'} replace />
-  }
+  }, [user, navigate])
 
   // Fetch live courses on mount
   useEffect(() => {
@@ -510,33 +513,43 @@ export default function LoginPage() {
     ? `${selectedCourse.code.replace('BSC-', '')}-2026-001`
     : 'CS-2024-001'
 
-  return (
-    <div className="min-h-screen bg-brand-dark bg-dot-pattern flex items-center justify-center p-4 py-8 relative overflow-hidden">
-      {/* Glow background */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary-700/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-brand-accent/10 rounded-full blur-3xl" />
-      </div>
+  const roleTabs = [
+    { id: 'student', label: 'Student', icon: BookOpen },
+    { id: 'teacher', label: 'Faculty', icon: UserPlus },
+    { id: 'admin', label: 'Admin', icon: ShieldCheck },
+  ]
 
-      <div className="relative w-full max-w-lg animate-slide-up">
-        {/* Header */}
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-brand shadow-xl shadow-primary-900/50 mb-3 transition-transform hover:scale-105">
+  const modeTabs = [
+    { id: 'login', label: 'Sign In' },
+    { id: 'create', label: 'Create Account' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-bg text-ink flex flex-col justify-center items-center p-4 py-8 sm:py-12 relative">
+      <div className="w-full max-w-md space-y-6">
+
+        {/* ── HEADER & BRANDING ── */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand/10 border border-brand/20 text-brand shadow-xs">
             {otpStep ? (
-              <ShieldCheck size={32} className="text-white" />
+              <ShieldCheck className="w-6 h-6" />
             ) : (
-              <GraduationCap size={32} className="text-white" />
+              <GraduationCap className="w-6 h-6" />
             )}
           </div>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight">
-            {otpStep ? 'Email Verification' : 'SMDL Attendance'}
-          </h1>
-          <p className="text-brand-muted mt-1 text-sm font-medium">SES&apos;s S. M. Dadasaheb Limaye College, Kalamboli</p>
+          <div>
+            <h1 className="text-2xl font-bold font-display text-ink tracking-tight">
+              {otpStep ? 'Email Verification' : 'SMDL Attendance System'}
+            </h1>
+            <p className="text-xs text-muted mt-0.5">
+              SES&apos;s S. M. Dadasaheb Limaye College, Kalamboli
+            </p>
+          </div>
         </div>
 
         {/* ── INLINE OTP VERIFICATION STEP ── */}
         {otpStep ? (
-          <div className="card shadow-2xl border-brand-border/90 p-6 sm:p-8 animate-slide-up">
+          <Card className="p-6 sm:p-7 space-y-5 animate-slide-up">
             <button
               type="button"
               id="back-to-form-btn"
@@ -544,39 +557,41 @@ export default function LoginPage() {
                 setOtpStep(false)
                 setOtpError('')
               }}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-muted hover:text-white transition-colors mb-4"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-ink transition-colors"
             >
-              <ArrowLeft size={14} /> Back to Edit Details
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Edit Details
             </button>
 
-            <div className="bg-brand-dark/70 border border-brand-border rounded-2xl p-4 text-center mb-6">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary-600/20 border border-primary-500/30 text-primary-400 mb-2">
-                <Mail size={22} />
+            <div className="bg-bg border border-line rounded-lg p-4 text-center space-y-2">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-brand/10 text-brand">
+                <Mail className="w-5 h-5" />
               </div>
-              <p className="text-xs text-brand-muted">A 6-digit verification code has been sent to</p>
-              <div className="flex items-center justify-center gap-2 mt-1">
-                <span className="text-base font-bold text-white tracking-wide">{otpEmail}</span>
-                <button
-                  type="button"
-                  onClick={() => setOtpStep(false)}
-                  title="Change email"
-                  className="text-brand-accent hover:text-sky-300 p-1"
-                >
-                  <Edit3 size={14} />
-                </button>
+              <div>
+                <p className="text-xs text-muted">A 6-digit verification code has been sent to</p>
+                <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                  <span className="text-sm font-semibold font-mono text-ink">{otpEmail}</span>
+                  <button
+                    type="button"
+                    onClick={() => setOtpStep(false)}
+                    title="Change email"
+                    className="text-brand hover:opacity-80 p-0.5"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-              <p className="text-[11px] text-brand-muted mt-1.5">
-                Role: <span className="capitalize font-semibold text-sky-400">{otpRole}</span> &bull; Valid for 10 minutes
-              </p>
+              <Badge variant="brand" size="sm">
+                Role: <span className="capitalize ml-1">{otpRole}</span> &bull; 10 min validity
+              </Badge>
             </div>
 
-            <form onSubmit={handleVerifyAndRegister} className="space-y-6">
-              <div>
-                <label className="label text-center block mb-3 font-semibold text-white">
-                  Enter 6-Digit Verification Code
+            <form onSubmit={handleVerifyAndRegister} className="space-y-5">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted text-center">
+                  Enter 6-Digit Code
                 </label>
 
-                <div className="flex justify-center gap-2 sm:gap-3">
+                <div className="flex justify-center gap-2 sm:gap-2.5">
                   {otpDigits.map((digit, index) => (
                     <input
                       key={index}
@@ -590,29 +605,29 @@ export default function LoginPage() {
                       onChange={e => handleOtpChange(index, e.target.value)}
                       onKeyDown={e => handleOtpKeyDown(index, e)}
                       autoComplete="one-time-code"
-                      className={`w-11 h-13 sm:w-13 sm:h-15 text-center text-xl sm:text-2xl font-bold font-mono rounded-xl bg-brand-dark/80 border text-white transition-all shadow-inner focus:outline-none ${
+                      className={`w-11 h-12 text-center text-xl font-bold font-mono rounded-lg bg-surface border text-ink transition-colors duration-150 focus:outline-none ${
                         otpError
-                          ? 'border-brand-danger focus:ring-2 focus:ring-brand-danger/40'
+                          ? 'border-absent focus:ring-2 focus:ring-absent/20'
                           : digit
-                          ? 'border-primary-500 bg-primary-950/20 text-sky-300 ring-1 ring-primary-500/50'
-                          : 'border-brand-border focus:border-brand-accent focus:ring-2 focus:ring-brand-accent/30'
+                          ? 'border-brand ring-1 ring-brand/30'
+                          : 'border-line focus:border-brand focus:ring-2 focus:ring-brand/20'
                       }`}
                     />
                   ))}
                 </div>
 
                 {otpError && (
-                  <p className="text-brand-danger text-xs text-center mt-2.5 flex items-center justify-center gap-1 font-medium">
-                    <AlertCircle size={14} /> {otpError}
+                  <p className="text-xs text-absent text-center flex items-center justify-center gap-1 font-medium mt-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {otpError}
                   </p>
                 )}
               </div>
 
               <div className="text-center text-xs">
                 {resendTimer > 0 ? (
-                  <span className="text-brand-muted">
-                    Didn&apos;t get the code? Resend in{' '}
-                    <span className="text-white font-mono font-semibold">{resendTimer}s</span>
+                  <span className="text-muted">
+                    Didn&apos;t receive code? Resend in{' '}
+                    <span className="font-mono font-semibold text-ink">{resendTimer}s</span>
                   </span>
                 ) : (
                   <button
@@ -620,104 +635,80 @@ export default function LoginPage() {
                     id="resend-otp-btn"
                     disabled={otpLoading}
                     onClick={handleResendOtp}
-                    className="inline-flex items-center gap-1.5 text-brand-accent hover:underline font-semibold"
+                    className="inline-flex items-center gap-1.5 text-brand hover:underline font-semibold"
                   >
-                    <RotateCw size={13} className={otpLoading ? 'animate-spin' : ''} />
+                    <RotateCw className={`w-3.5 h-3.5 ${otpLoading ? 'animate-spin' : ''}`} />
                     Resend Verification Code
                   </button>
                 )}
               </div>
 
-              <button
+              <Button
                 id="verify-otp-submit-btn"
                 type="submit"
+                variant="primary"
+                size="lg"
+                loading={otpLoading}
                 disabled={otpLoading || otpDigits.join('').length !== 6}
-                className="btn-primary w-full btn-lg font-bold shadow-lg shadow-primary-900/40"
+                className="w-full"
               >
-                {otpLoading ? (
-                  <>
-                    <div className="spinner w-4 h-4 border-2" />
-                    <span>Verifying Code...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={18} />
-                    <span>Verify &amp; Complete Registration</span>
-                  </>
-                )}
-              </button>
+                <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                Verify &amp; Create Account
+              </Button>
             </form>
 
-            <div className="divider mt-6" />
-            <p className="text-center text-xs text-brand-muted">
-              Check your Gmail inbox and Spam/Junk folder for the OTP code.
+            <p className="text-center text-[11px] text-muted border-t border-line pt-4">
+              Check your inbox and Spam/Junk folder for the OTP message.
             </p>
-          </div>
+          </Card>
         ) : (
-          <>
-            {/* Role Selection Tabs */}
-            <div className="flex gap-2 mb-4 bg-brand-card/90 backdrop-blur-md border border-brand-border rounded-2xl p-1.5 shadow-lg">
-              {[
-                { key: 'student', label: 'Student', icon: BookOpen },
-                { key: 'teacher', label: 'Faculty', icon: UserPlus },
-                { key: 'admin', label: 'Admin', icon: ShieldCheck },
-              ].map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  type="button"
-                  id={`tab-role-${key}`}
-                  onClick={() => {
-                    setActiveRole(key)
-                    setErrors({})
-                    setLoginForm({ identifier: '', password: '' })
-                  }}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                    activeRole === key
-                      ? 'bg-gradient-brand text-white shadow-md'
-                      : 'text-brand-muted hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon size={16} />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
+          <div className="space-y-4">
+            {/* Role Switcher Tabs */}
+            <Tabs
+              tabs={roleTabs}
+              activeTab={activeRole}
+              onChange={key => {
+                setActiveRole(key)
+                setErrors({})
+                setLoginForm({ identifier: '', password: '' })
+              }}
+              fullWidth
+            />
 
-            {/* Card Body */}
-            <div className="card shadow-2xl border-brand-border/80">
+            {/* Main Surface Card */}
+            <Card className="p-6 sm:p-7 space-y-5">
 
               {/* ═══════════════════ STUDENT WORKFLOW ═══════════════════ */}
               {activeRole === 'student' && (
-                <div className="space-y-5">
-                  {/* STEP 1: Choose Branch (Department) */}
-                  <div className="bg-brand-dark/70 border border-brand-accent/30 rounded-2xl p-4 space-y-3">
+                <div className="space-y-4">
+                  {/* Step 1: Department / Course Selection */}
+                  <div className="bg-bg border border-line rounded-lg p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-brand-accent font-semibold text-sm">
-                        <Building2 size={18} />
-                        <span>Step 1: Choose Branch (Department)</span>
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+                        <Building2 className="w-3.5 h-3.5 text-brand" />
+                        <span>Step 1: Select Academic Branch</span>
                       </div>
-                      <span className="badge badge-primary text-xs font-mono font-bold">
+                      <Badge variant="brand" size="sm">
                         {selectedCourse.code || 'BRANCH'}
-                      </span>
+                      </Badge>
                     </div>
 
-                    <select
+                    <Select
                       id="student-branch-select"
                       value={selectedCourseId}
                       onChange={e => {
                         setSelectedCourseId(e.target.value)
                         setErrors({})
                       }}
-                      className="input font-semibold text-sm text-white bg-slate-900 border-brand-accent/40 focus:border-brand-accent"
                     >
                       {courses.map(c => (
                         <option key={c.id} value={c.id}>
                           {c.name} ({c.code || 'Dept'})
                         </option>
                       ))}
-                    </select>
+                    </Select>
 
-                    {/* Quick Branch Switch Chips */}
+                    {/* Quick Course Chips */}
                     <div className="flex flex-wrap gap-1.5 pt-0.5">
                       {courses.map(c => (
                         <button
@@ -728,10 +719,10 @@ export default function LoginPage() {
                             setSelectedCourseId(c.id)
                             setErrors({})
                           }}
-                          className={`text-xs px-3 py-1 rounded-lg font-medium transition-all ${
+                          className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
                             selectedCourseId === c.id
-                              ? 'bg-brand-accent text-brand-dark font-bold shadow-md scale-105'
-                              : 'bg-slate-800/80 text-brand-muted hover:text-white hover:bg-slate-700'
+                              ? 'bg-brand text-white font-semibold'
+                              : 'bg-surface border border-line text-muted hover:text-ink hover:border-brand/40'
                           }`}
                         >
                           {c.code || c.name}
@@ -740,111 +731,83 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* STEP 2: Sub-tabs: Sign In vs Create Account */}
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between border-b border-brand-border/60 pb-2">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-brand-muted">
-                        Step 2: Access Your Branch
-                      </div>
-                      <div className="flex gap-1 bg-brand-dark/60 p-1 rounded-xl border border-brand-border/40">
-                        <button
-                          type="button"
-                          id="student-subtab-login"
-                          onClick={() => {
-                            setStudentMode('login')
-                            setErrors({})
-                          }}
-                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                            studentMode === 'login'
-                              ? 'bg-brand-accent text-brand-dark shadow-sm'
-                              : 'text-brand-muted hover:text-white'
-                          }`}
-                        >
-                          Sign In
-                        </button>
-                        <button
-                          type="button"
-                          id="student-subtab-create"
-                          onClick={() => {
-                            setStudentMode('create')
-                            setErrors({})
-                          }}
-                          className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                            studentMode === 'create'
-                              ? 'bg-brand-accent text-brand-dark shadow-sm'
-                              : 'text-brand-muted hover:text-white'
-                          }`}
-                        >
-                          Create Account
-                        </button>
-                      </div>
+                  {/* Step 2: Mode Toggle (Sign In vs Create Account) */}
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center justify-between border-b border-line pb-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+                        Step 2: Access Portal
+                      </span>
+                      <Tabs
+                        tabs={modeTabs}
+                        activeTab={studentMode}
+                        onChange={m => {
+                          setStudentMode(m)
+                          setErrors({})
+                        }}
+                      />
                     </div>
 
-                    {/* ── Mode A: Student Sign In ── */}
+                    {/* Mode A: Student Sign In */}
                     {studentMode === 'login' && (
                       <form onSubmit={handleLoginSubmit} noValidate className="space-y-4">
-                        <div>
-                          <label htmlFor="student-login-identifier" className="label">
-                            Student Roll No. or Email
-                          </label>
-                          <input
-                            id="student-login-identifier"
-                            type="text"
-                            autoComplete="username"
-                            placeholder={`e.g. ${rollPlaceholder} or student@smdl.ac.in`}
-                            value={loginForm.identifier}
-                            onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))}
-                            className={`input ${errors.identifier ? 'input-error' : ''}`}
-                          />
-                          {errors.identifier && <p className="text-brand-danger text-xs mt-1">{errors.identifier}</p>}
-                        </div>
+                        <Input
+                          id="student-login-identifier"
+                          label="Roll Number or Email"
+                          autoComplete="username"
+                          placeholder={`e.g. ${rollPlaceholder} or student@smdl.ac.in`}
+                          value={loginForm.identifier}
+                          onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))}
+                          error={errors.identifier}
+                          required
+                        />
 
-                        <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label htmlFor="student-login-password" className="label mb-0">Password</label>
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label htmlFor="student-login-password" className="block text-xs font-semibold uppercase tracking-wider text-muted">
+                              Password <span className="text-absent">*</span>
+                            </label>
                             <Link
                               to="/forgot-password"
-                              className="text-xs text-brand-accent hover:underline font-medium"
+                              className="text-xs text-brand hover:underline font-medium"
                             >
                               Forgot Password?
                             </Link>
                           </div>
-                          <div className="relative">
-                            <input
-                              id="student-login-password"
-                              type={showPassword ? 'text' : 'password'}
-                              autoComplete="current-password"
-                              placeholder="••••••••"
-                              value={loginForm.password}
-                              onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
-                              className={`input pr-11 ${errors.password ? 'input-error' : ''}`}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword(s => !s)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white transition-colors"
-                            >
-                              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                          </div>
-                          {errors.password && <p className="text-brand-danger text-xs mt-1">{errors.password}</p>}
+                          <Input
+                            id="student-login-password"
+                            type={showPassword ? 'text' : 'password'}
+                            autoComplete="current-password"
+                            placeholder="••••••••"
+                            value={loginForm.password}
+                            onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
+                            error={errors.password}
+                            rightElement={
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword(s => !s)}
+                                className="text-muted hover:text-ink transition-colors p-1"
+                              >
+                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            }
+                            required
+                          />
                         </div>
 
-                        <button
+                        <Button
                           id="student-login-btn"
                           type="submit"
-                          disabled={loading}
-                          className="btn-primary w-full btn-lg mt-2"
+                          variant="primary"
+                          size="md"
+                          loading={loading}
+                          className="w-full mt-2"
                         >
-                          {loading ? (
-                            <><div className="spinner w-4 h-4 border-2" /> Signing in...</>
-                          ) : (
-                            <><LogIn size={18} /> Sign In to {selectedCourse.code || 'Student'}</>
-                          )}
-                        </button>
+                          <LogIn className="w-4 h-4" />
+                          Sign In to {selectedCourse.code || 'Student'}
+                        </Button>
 
                         <div className="text-center pt-2">
-                          <p className="text-xs text-brand-muted">
+                          <p className="text-xs text-muted">
                             Don&apos;t have an account yet?{' '}
                             <button
                               type="button"
@@ -853,171 +816,150 @@ export default function LoginPage() {
                                 setStudentMode('create')
                                 setErrors({})
                               }}
-                              className="text-brand-accent hover:underline font-semibold"
+                              className="text-brand hover:underline font-semibold"
                             >
-                              Create {selectedCourse.code || 'Student'} Account
+                              Register here
                             </button>
                           </p>
                         </div>
                       </form>
                     )}
 
-                    {/* ── Mode B: Student Create Account (with Real Email OTP) ── */}
+                    {/* Mode B: Student Quick Registration */}
                     {studentMode === 'create' && (
                       <form onSubmit={handleStudentProceedToOtp} noValidate className="space-y-3.5">
-                        <div className="bg-brand-accent/10 border border-brand-accent/25 rounded-xl px-3 py-2 flex items-center justify-between text-xs">
-                          <span className="text-white font-medium">
-                            Registering for: <span className="text-brand-accent font-bold">{selectedCourse.name}</span>
+                        <div className="bg-bg border border-line rounded-lg px-3 py-2 flex items-center justify-between text-xs">
+                          <span className="text-muted">
+                            Registering for: <strong className="text-ink">{selectedCourse.name}</strong>
                           </span>
                           <button
                             type="button"
                             onClick={() => document.getElementById('student-branch-select')?.focus()}
-                            className="text-[11px] text-brand-accent underline hover:text-white"
+                            className="text-brand hover:underline font-medium"
                           >
                             Change
                           </button>
                         </div>
 
-                        <div>
-                          <label htmlFor="reg-quick-fullname" className="label">Full Name</label>
-                          <input
-                            id="reg-quick-fullname"
-                            type="text"
-                            placeholder="e.g. Rahul Sharma"
-                            value={regForm.full_name}
-                            onChange={e => setRegForm(p => ({ ...p, full_name: e.target.value }))}
-                            className={`input ${errors.full_name ? 'input-error' : ''}`}
-                          />
-                          {errors.full_name && <p className="text-brand-danger text-xs mt-1">{errors.full_name}</p>}
-                        </div>
+                        <Input
+                          id="reg-quick-fullname"
+                          label="Full Name"
+                          placeholder="e.g. Rahul Sharma"
+                          value={regForm.full_name}
+                          onChange={e => setRegForm(p => ({ ...p, full_name: e.target.value }))}
+                          error={errors.full_name}
+                          required
+                        />
 
                         <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label htmlFor="reg-quick-roll" className="label">Roll No</label>
-                            <input
-                              id="reg-quick-roll"
-                              type="text"
-                              placeholder={rollPlaceholder}
-                              value={regForm.roll_number}
-                              onChange={e => setRegForm(p => ({ ...p, roll_number: e.target.value }))}
-                              className={`input ${errors.roll_number ? 'input-error' : ''}`}
-                            />
-                            {errors.roll_number && <p className="text-brand-danger text-xs mt-1">{errors.roll_number}</p>}
-                          </div>
+                          <Input
+                            id="reg-quick-roll"
+                            label="Roll No"
+                            placeholder={rollPlaceholder}
+                            value={regForm.roll_number}
+                            onChange={e => setRegForm(p => ({ ...p, roll_number: e.target.value }))}
+                            error={errors.roll_number}
+                            required
+                          />
 
-                          <div>
-                            <label htmlFor="reg-quick-class" className="label">Class</label>
-                            <select
-                              id="reg-quick-class"
-                              value={regForm.class}
-                              onChange={e => setRegForm(p => ({ ...p, class: e.target.value }))}
-                              className="input"
-                            >
-                              <option value="FY">FY</option>
-                              <option value="SY">SY</option>
-                              <option value="TY">TY</option>
-                            </select>
-                          </div>
+                          <Select
+                            id="reg-quick-class"
+                            label="Class"
+                            value={regForm.class}
+                            onChange={e => setRegForm(p => ({ ...p, class: e.target.value }))}
+                          >
+                            <option value="FY">FY</option>
+                            <option value="SY">SY</option>
+                            <option value="TY">TY</option>
+                          </Select>
 
-                          <div>
-                            <label htmlFor="reg-quick-div" className="label">Division</label>
-                            <select
-                              id="reg-quick-div"
-                              value={regForm.division}
-                              onChange={e => setRegForm(p => ({ ...p, division: e.target.value }))}
-                              className="input"
-                            >
-                              <option value="A">Div A</option>
-                              <option value="B">Div B</option>
-                              <option value="C">Div C</option>
-                            </select>
-                          </div>
+                          <Select
+                            id="reg-quick-div"
+                            label="Division"
+                            value={regForm.division}
+                            onChange={e => setRegForm(p => ({ ...p, division: e.target.value }))}
+                          >
+                            <option value="A">Div A</option>
+                            <option value="B">Div B</option>
+                            <option value="C">Div C</option>
+                          </Select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label htmlFor="reg-quick-email" className="label">Gmail / Email Address</label>
-                            <input
-                              id="reg-quick-email"
-                              type="email"
-                              placeholder="name@gmail.com"
-                              value={regForm.email}
-                              onChange={e => setRegForm(p => ({ ...p, email: e.target.value }))}
-                              className={`input ${errors.email ? 'input-error' : ''}`}
-                            />
-                            {errors.email && <p className="text-brand-danger text-xs mt-1">{errors.email}</p>}
-                          </div>
+                          <Input
+                            id="reg-quick-email"
+                            label="Email Address"
+                            type="email"
+                            placeholder="name@gmail.com"
+                            value={regForm.email}
+                            onChange={e => setRegForm(p => ({ ...p, email: e.target.value }))}
+                            error={errors.email}
+                            required
+                          />
 
-                          <div>
-                            <label htmlFor="reg-quick-phone" className="label">Mobile</label>
-                            <input
-                              id="reg-quick-phone"
-                              type="tel"
-                              placeholder="10-digit number"
-                              value={regForm.phone}
-                              onChange={e => setRegForm(p => ({ ...p, phone: e.target.value }))}
-                              className={`input ${errors.phone ? 'input-error' : ''}`}
-                            />
-                            {errors.phone && <p className="text-brand-danger text-xs mt-1">{errors.phone}</p>}
-                          </div>
+                          <Input
+                            id="reg-quick-phone"
+                            label="Mobile Phone"
+                            type="tel"
+                            placeholder="10-digit number"
+                            value={regForm.phone}
+                            onChange={e => setRegForm(p => ({ ...p, phone: e.target.value }))}
+                            error={errors.phone}
+                            required
+                          />
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label htmlFor="reg-quick-pwd" className="label">Password</label>
-                            <input
-                              id="reg-quick-pwd"
-                              type={showPassword ? 'text' : 'password'}
-                              placeholder="Min 8 chars"
-                              value={regForm.password}
-                              onChange={e => setRegForm(p => ({ ...p, password: e.target.value }))}
-                              className={`input ${errors.password ? 'input-error' : ''}`}
-                            />
-                            {errors.password && <p className="text-brand-danger text-xs mt-1">{errors.password}</p>}
-                          </div>
+                          <Input
+                            id="reg-quick-pwd"
+                            label="Password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Min 8 chars"
+                            value={regForm.password}
+                            onChange={e => setRegForm(p => ({ ...p, password: e.target.value }))}
+                            error={errors.password}
+                            required
+                          />
 
-                          <div>
-                            <label htmlFor="reg-quick-confirm" className="label">Confirm</label>
-                            <input
-                              id="reg-quick-confirm"
-                              type={showPassword ? 'text' : 'password'}
-                              placeholder="Repeat"
-                              value={regForm.confirm_password}
-                              onChange={e => setRegForm(p => ({ ...p, confirm_password: e.target.value }))}
-                              className={`input ${errors.confirm_password ? 'input-error' : ''}`}
-                            />
-                            {errors.confirm_password && <p className="text-brand-danger text-xs mt-1">{errors.confirm_password}</p>}
-                          </div>
+                          <Input
+                            id="reg-quick-confirm"
+                            label="Confirm"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder="Repeat"
+                            value={regForm.confirm_password}
+                            onChange={e => setRegForm(p => ({ ...p, confirm_password: e.target.value }))}
+                            error={errors.confirm_password}
+                            required
+                          />
                         </div>
 
-                        <div className="bg-sky-500/10 border border-sky-500/20 rounded-xl p-2.5 text-xs text-sky-300 flex items-center gap-2">
-                          <Mail size={16} className="shrink-0 text-sky-400" />
-                          <span>We will send a 6-digit OTP verification code to your Gmail address.</span>
+                        <div className="bg-bg border border-line rounded-lg p-2.5 text-xs text-muted flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-brand shrink-0" />
+                          <span>We will send a 6-digit verification code to your email.</span>
                         </div>
 
-                        <button
+                        <Button
                           id="student-create-account-btn"
                           type="submit"
-                          disabled={loading}
-                          className="btn-primary w-full btn-lg mt-2 group"
+                          variant="primary"
+                          size="md"
+                          loading={loading}
+                          className="w-full mt-2"
                         >
-                          {loading ? (
-                            <><div className="spinner w-4 h-4 border-2" /> Sending OTP to Gmail...</>
-                          ) : (
-                            <><Mail size={18} className="transition-transform group-hover:scale-110" /> Verify Email &amp; Create Account</>
-                          )}
-                        </button>
+                          <Mail className="w-4 h-4" />
+                          Verify Email &amp; Create Account
+                        </Button>
 
                         <div className="text-center pt-1">
-                          <p className="text-xs text-brand-muted">
-                            Already have an account?{' '}
+                          <p className="text-xs text-muted">
+                            Already registered?{' '}
                             <button
                               type="button"
                               onClick={() => {
                                 setStudentMode('login')
                                 setErrors({})
                               }}
-                              className="text-brand-accent hover:underline font-semibold"
+                              className="text-brand hover:underline font-semibold"
                             >
                               Sign In here
                             </button>
@@ -1032,262 +974,214 @@ export default function LoginPage() {
               {/* ═══════════════════ FACULTY / TEACHER WORKFLOW ═══════════════════ */}
               {activeRole === 'teacher' && (
                 <div className="space-y-4">
-                  {/* Teacher Subtabs: Sign In vs Create Account */}
-                  <div className="flex items-center justify-between border-b border-brand-border/60 pb-2">
-                    <div className="text-xs font-semibold uppercase tracking-wider text-brand-muted">
+                  <div className="flex items-center justify-between border-b border-line pb-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted">
                       Faculty Portal Access
-                    </div>
-                    <div className="flex gap-1 bg-brand-dark/60 p-1 rounded-xl border border-brand-border/40">
-                      <button
-                        type="button"
-                        id="teacher-subtab-login"
-                        onClick={() => {
-                          setTeacherMode('login')
-                          setErrors({})
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                          teacherMode === 'login'
-                            ? 'bg-brand-accent text-brand-dark shadow-sm'
-                            : 'text-brand-muted hover:text-white'
-                        }`}
-                      >
-                        Sign In
-                      </button>
-                      <button
-                        type="button"
-                        id="teacher-subtab-create"
-                        onClick={() => {
-                          setTeacherMode('create')
-                          setErrors({})
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                          teacherMode === 'create'
-                            ? 'bg-brand-accent text-brand-dark shadow-sm'
-                            : 'text-brand-muted hover:text-white'
-                        }`}
-                      >
-                        Create Account
-                      </button>
-                    </div>
+                    </span>
+                    <Tabs
+                      tabs={modeTabs}
+                      activeTab={teacherMode}
+                      onChange={m => {
+                        setTeacherMode(m)
+                        setErrors({})
+                      }}
+                    />
                   </div>
 
-                  {/* ── Mode A: Teacher Sign In ── */}
+                  {/* Mode A: Teacher Sign In */}
                   {teacherMode === 'login' && (
                     <form onSubmit={handleLoginSubmit} noValidate className="space-y-4">
-                      <div className="text-xs text-brand-muted bg-brand-dark/50 p-3 rounded-xl border border-brand-border/60">
+                      <div className="text-xs text-muted bg-bg p-3 rounded-lg border border-line">
                         👨‍🏫 Faculty Portal: Login with your registered email or Employee ID.
                       </div>
 
-                      <div>
-                        <label htmlFor="teacher-login-id" className="label">Email or Employee ID</label>
-                        <input
-                          id="teacher-login-id"
-                          type="text"
-                          placeholder="e.g. TCH-1001 or faculty@smdl.ac.in"
-                          value={loginForm.identifier}
-                          onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))}
-                          className={`input ${errors.identifier ? 'input-error' : ''}`}
-                        />
-                        {errors.identifier && <p className="text-brand-danger text-xs mt-1">{errors.identifier}</p>}
-                      </div>
+                      <Input
+                        id="teacher-login-id"
+                        label="Email or Employee ID"
+                        type="text"
+                        placeholder="e.g. TCH-1001 or faculty@smdl.ac.in"
+                        value={loginForm.identifier}
+                        onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))}
+                        error={errors.identifier}
+                        required
+                      />
 
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label htmlFor="teacher-login-pwd" className="label mb-0">Password</label>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <label htmlFor="teacher-login-pwd" className="block text-xs font-semibold uppercase tracking-wider text-muted">
+                            Password <span className="text-absent">*</span>
+                          </label>
                           <Link
                             to="/forgot-password"
-                            className="text-xs text-brand-accent hover:underline font-medium"
+                            className="text-xs text-brand hover:underline font-medium"
                           >
                             Forgot Password?
                           </Link>
                         </div>
-                        <div className="relative">
-                          <input
-                            id="teacher-login-pwd"
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="••••••••"
-                            value={loginForm.password}
-                            onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
-                            className={`input pr-11 ${errors.password ? 'input-error' : ''}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(s => !s)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white transition-colors"
-                          >
-                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                        {errors.password && <p className="text-brand-danger text-xs mt-1">{errors.password}</p>}
+                        <Input
+                          id="teacher-login-pwd"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="••••••••"
+                          value={loginForm.password}
+                          onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
+                          error={errors.password}
+                          rightElement={
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(s => !s)}
+                              className="text-muted hover:text-ink transition-colors p-1"
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          }
+                          required
+                        />
                       </div>
 
-                      <button
+                      <Button
                         id="teacher-login-btn"
                         type="submit"
-                        disabled={loading}
-                        className="btn-primary w-full btn-lg"
+                        variant="primary"
+                        size="md"
+                        loading={loading}
+                        className="w-full"
                       >
-                        {loading ? (
-                          <><div className="spinner w-4 h-4 border-2" /> Signing in...</>
-                        ) : (
-                          <><LogIn size={18} /> Sign In as Faculty</>
-                        )}
-                      </button>
+                        <LogIn className="w-4 h-4" />
+                        Sign In as Faculty
+                      </Button>
 
-                      <div className="divider mt-4" />
-                      <p className="text-center text-xs text-brand-muted">
-                        New Faculty Member?{' '}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTeacherMode('create')
-                            setErrors({})
-                          }}
-                          className="text-brand-accent hover:underline font-semibold"
-                        >
-                          Register / Create Faculty Account
-                        </button>
-                      </p>
+                      <div className="text-center pt-2 border-t border-line">
+                        <p className="text-xs text-muted">
+                          New faculty member?{' '}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeacherMode('create')
+                              setErrors({})
+                            }}
+                            className="text-brand hover:underline font-semibold"
+                          >
+                            Register Faculty Account
+                          </button>
+                        </p>
+                      </div>
                     </form>
                   )}
 
-                  {/* ── Mode B: Teacher Create Account (with Real Email OTP) ── */}
+                  {/* Mode B: Teacher Registration */}
                   {teacherMode === 'create' && (
                     <form onSubmit={handleTeacherProceedToOtp} noValidate className="space-y-3.5">
-                      <div>
-                        <label htmlFor="teacher-reg-fullname" className="label">Full Name</label>
-                        <input
-                          id="teacher-reg-fullname"
-                          type="text"
-                          placeholder="e.g. Prof. Girish Kumbhar"
-                          value={teacherRegForm.full_name}
-                          onChange={e => setTeacherRegForm(p => ({ ...p, full_name: e.target.value }))}
-                          className={`input ${errors.full_name ? 'input-error' : ''}`}
+                      <Input
+                        id="teacher-reg-fullname"
+                        label="Full Name"
+                        placeholder="e.g. Prof. Girish Kumbhar"
+                        value={teacherRegForm.full_name}
+                        onChange={e => setTeacherRegForm(p => ({ ...p, full_name: e.target.value }))}
+                        error={errors.full_name}
+                        required
+                      />
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          id="teacher-reg-empid"
+                          label="Employee ID"
+                          placeholder="TCH-1001"
+                          value={teacherRegForm.employee_id}
+                          onChange={e => setTeacherRegForm(p => ({ ...p, employee_id: e.target.value }))}
+                          error={errors.employee_id}
+                          required
                         />
-                        {errors.full_name && <p className="text-brand-danger text-xs mt-1">{errors.full_name}</p>}
+
+                        <Select
+                          id="teacher-reg-dept"
+                          label="Department"
+                          value={teacherRegForm.department}
+                          onChange={e => setTeacherRegForm(p => ({ ...p, department: e.target.value }))}
+                          error={errors.department}
+                          required
+                        >
+                          <option value="">Select Dept</option>
+                          {TEACHER_DEPARTMENTS.map(d => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </Select>
                       </div>
+
+                      <Input
+                        id="teacher-reg-desig"
+                        label="Designation (optional)"
+                        placeholder="e.g. Assistant Professor / HOD"
+                        value={teacherRegForm.designation}
+                        onChange={e => setTeacherRegForm(p => ({ ...p, designation: e.target.value }))}
+                      />
 
                       <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label htmlFor="teacher-reg-empid" className="label">Employee ID</label>
-                          <input
-                            id="teacher-reg-empid"
-                            type="text"
-                            placeholder="TCH-1001"
-                            value={teacherRegForm.employee_id}
-                            onChange={e => setTeacherRegForm(p => ({ ...p, employee_id: e.target.value }))}
-                            className={`input ${errors.employee_id ? 'input-error' : ''}`}
-                          />
-                          {errors.employee_id && <p className="text-brand-danger text-xs mt-1">{errors.employee_id}</p>}
-                        </div>
+                        <Input
+                          id="teacher-reg-email"
+                          label="Email Address"
+                          type="email"
+                          placeholder="faculty@gmail.com"
+                          value={teacherRegForm.email}
+                          onChange={e => setTeacherRegForm(p => ({ ...p, email: e.target.value }))}
+                          error={errors.email}
+                          required
+                        />
 
-                        <div>
-                          <label htmlFor="teacher-reg-dept" className="label">Department</label>
-                          <select
-                            id="teacher-reg-dept"
-                            value={teacherRegForm.department}
-                            onChange={e => setTeacherRegForm(p => ({ ...p, department: e.target.value }))}
-                            className={`input ${errors.department ? 'input-error' : ''}`}
-                          >
-                            <option value="">Select Dept</option>
-                            {TEACHER_DEPARTMENTS.map(d => (
-                              <option key={d} value={d}>{d}</option>
-                            ))}
-                          </select>
-                          {errors.department && <p className="text-brand-danger text-xs mt-1">{errors.department}</p>}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label htmlFor="teacher-reg-desig" className="label">
-                          Designation <span className="text-brand-muted text-xs">(optional)</span>
-                        </label>
-                        <input
-                          id="teacher-reg-desig"
-                          type="text"
-                          placeholder="e.g. Assistant Professor / HOD"
-                          value={teacherRegForm.designation}
-                          onChange={e => setTeacherRegForm(p => ({ ...p, designation: e.target.value }))}
-                          className="input"
+                        <Input
+                          id="teacher-reg-phone"
+                          label="Mobile Phone"
+                          type="tel"
+                          placeholder="9876543210"
+                          value={teacherRegForm.phone}
+                          onChange={e => setTeacherRegForm(p => ({ ...p, phone: e.target.value }))}
+                          error={errors.phone}
+                          required
                         />
                       </div>
 
                       <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label htmlFor="teacher-reg-email" className="label">Gmail / Email</label>
-                          <input
-                            id="teacher-reg-email"
-                            type="email"
-                            placeholder="faculty@gmail.com"
-                            value={teacherRegForm.email}
-                            onChange={e => setTeacherRegForm(p => ({ ...p, email: e.target.value }))}
-                            className={`input ${errors.email ? 'input-error' : ''}`}
-                          />
-                          {errors.email && <p className="text-brand-danger text-xs mt-1">{errors.email}</p>}
-                        </div>
+                        <Input
+                          id="teacher-reg-pwd"
+                          label="Password"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Min 8 chars"
+                          value={teacherRegForm.password}
+                          onChange={e => setTeacherRegForm(p => ({ ...p, password: e.target.value }))}
+                          error={errors.password}
+                          required
+                        />
 
-                        <div>
-                          <label htmlFor="teacher-reg-phone" className="label">Phone</label>
-                          <input
-                            id="teacher-reg-phone"
-                            type="tel"
-                            placeholder="9876543210"
-                            value={teacherRegForm.phone}
-                            onChange={e => setTeacherRegForm(p => ({ ...p, phone: e.target.value }))}
-                            className={`input ${errors.phone ? 'input-error' : ''}`}
-                          />
-                          {errors.phone && <p className="text-brand-danger text-xs mt-1">{errors.phone}</p>}
-                        </div>
+                        <Input
+                          id="teacher-reg-confirm"
+                          label="Confirm Password"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Repeat"
+                          value={teacherRegForm.confirm_password}
+                          onChange={e => setTeacherRegForm(p => ({ ...p, confirm_password: e.target.value }))}
+                          error={errors.confirm_password}
+                          required
+                        />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label htmlFor="teacher-reg-pwd" className="label">Password</label>
-                          <input
-                            id="teacher-reg-pwd"
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="Min 8 chars"
-                            value={teacherRegForm.password}
-                            onChange={e => setTeacherRegForm(p => ({ ...p, password: e.target.value }))}
-                            className={`input ${errors.password ? 'input-error' : ''}`}
-                          />
-                          {errors.password && <p className="text-brand-danger text-xs mt-1">{errors.password}</p>}
-                        </div>
-
-                        <div>
-                          <label htmlFor="teacher-reg-confirm" className="label">Confirm</label>
-                          <input
-                            id="teacher-reg-confirm"
-                            type={showPassword ? 'text' : 'password'}
-                            placeholder="Repeat"
-                            value={teacherRegForm.confirm_password}
-                            onChange={e => setTeacherRegForm(p => ({ ...p, confirm_password: e.target.value }))}
-                            className={`input ${errors.confirm_password ? 'input-error' : ''}`}
-                          />
-                          {errors.confirm_password && <p className="text-brand-danger text-xs mt-1">{errors.confirm_password}</p>}
-                        </div>
-                      </div>
-
-                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-xs text-amber-300 flex items-start gap-2">
-                        <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+                      <div className="bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900/60 rounded-lg p-2.5 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                         <span>Teacher registration requires email verification and admin approval before login.</span>
                       </div>
 
-                      <button
+                      <Button
                         id="teacher-create-account-btn"
                         type="submit"
-                        disabled={loading}
-                        className="btn-primary w-full btn-lg mt-2 group"
+                        variant="primary"
+                        size="md"
+                        loading={loading}
+                        className="w-full mt-2"
                       >
-                        {loading ? (
-                          <><div className="spinner w-4 h-4 border-2" /> Sending OTP to Gmail...</>
-                        ) : (
-                          <><Mail size={18} className="transition-transform group-hover:scale-110" /> Verify Email &amp; Submit Application</>
-                        )}
-                      </button>
+                        <Mail className="w-4 h-4" />
+                        Verify Email &amp; Submit Application
+                      </Button>
 
                       <div className="text-center pt-1">
-                        <p className="text-xs text-brand-muted">
+                        <p className="text-xs text-muted">
                           Already registered?{' '}
                           <button
                             type="button"
@@ -1295,7 +1189,7 @@ export default function LoginPage() {
                               setTeacherMode('login')
                               setErrors({})
                             }}
-                            className="text-brand-accent hover:underline font-semibold"
+                            className="text-brand hover:underline font-semibold"
                           >
                             Sign In here
                           </button>
@@ -1309,66 +1203,65 @@ export default function LoginPage() {
               {/* ═══════════════════ ADMIN WORKFLOW ═══════════════════ */}
               {activeRole === 'admin' && (
                 <form onSubmit={handleLoginSubmit} noValidate className="space-y-4">
-                  <div className="text-xs text-brand-muted bg-brand-dark/50 p-3 rounded-xl border border-brand-border/60">
+                  <div className="text-xs text-muted bg-bg p-3 rounded-lg border border-line">
                     🛡️ Administrator Portal: Full control over timetable, classes &amp; records.
                   </div>
 
-                  <div>
-                    <label htmlFor="admin-login-email" className="label">Admin Email</label>
-                    <input
-                      id="admin-login-email"
-                      type="email"
-                      placeholder="admin@smdl.ac.in"
-                      value={loginForm.identifier}
-                      onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))}
-                      className={`input ${errors.identifier ? 'input-error' : ''}`}
+                  <Input
+                    id="admin-login-email"
+                    label="Admin Email"
+                    type="email"
+                    placeholder="admin@smdl.ac.in"
+                    value={loginForm.identifier}
+                    onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))}
+                    error={errors.identifier}
+                    required
+                  />
+
+                  <div className="space-y-1">
+                    <label htmlFor="admin-login-pwd" className="block text-xs font-semibold uppercase tracking-wider text-muted">
+                      Password <span className="text-absent">*</span>
+                    </label>
+                    <Input
+                      id="admin-login-pwd"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      value={loginForm.password}
+                      onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
+                      error={errors.password}
+                      rightElement={
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(s => !s)}
+                          className="text-muted hover:text-ink transition-colors p-1"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      }
+                      required
                     />
-                    {errors.identifier && <p className="text-brand-danger text-xs mt-1">{errors.identifier}</p>}
                   </div>
 
-                  <div>
-                    <label htmlFor="admin-login-pwd" className="label">Password</label>
-                    <div className="relative">
-                      <input
-                        id="admin-login-pwd"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
-                        value={loginForm.password}
-                        onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
-                        className={`input pr-11 ${errors.password ? 'input-error' : ''}`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(s => !s)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted hover:text-white transition-colors"
-                      >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                    {errors.password && <p className="text-brand-danger text-xs mt-1">{errors.password}</p>}
-                  </div>
-
-                  <button
+                  <Button
                     id="admin-login-btn"
                     type="submit"
-                    disabled={loading}
-                    className="btn-primary w-full btn-lg"
+                    variant="primary"
+                    size="md"
+                    loading={loading}
+                    className="w-full"
                   >
-                    {loading ? (
-                      <><div className="spinner w-4 h-4 border-2" /> Authenticating...</>
-                    ) : (
-                      <><LogIn size={18} /> Sign In to Admin Console</>
-                    )}
-                  </button>
+                    <LogIn className="w-4 h-4" />
+                    Sign In to Admin Console
+                  </Button>
                 </form>
               )}
 
-            </div>
-          </>
+            </Card>
+          </div>
         )}
 
-        {/* Server IP Indicator & Config Button */}
-        <div className="mt-4 flex flex-col items-center justify-center text-xs text-brand-muted">
+        {/* ── SERVER CONNECTION FOOTER BADGE ── */}
+        <div className="flex justify-center">
           <button
             type="button"
             id="server-config-btn"
@@ -1376,73 +1269,68 @@ export default function LoginPage() {
               setServerUrlInput(getBaseURL() || '')
               setShowServerModal(true)
             }}
-            className="inline-flex items-center gap-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 rounded-full px-3.5 py-1.5 transition-all text-slate-300"
+            className="inline-flex items-center gap-2 bg-surface hover:bg-bg border border-line rounded-full px-3.5 py-1.5 transition-colors text-xs text-muted shadow-xs cursor-pointer"
           >
-            <Wifi size={13} className={getBaseURL() ? "text-emerald-400 animate-pulse" : "text-amber-400"} />
-            <span>Server: <span className="font-mono text-emerald-400 font-semibold">{getBaseURL() || 'Not Configured'}</span></span>
-            <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-primary-400 font-medium">
-              {getBaseURL() ? 'Change' : 'Configure'}
+            <Wifi className={`w-3.5 h-3.5 shrink-0 ${getBaseURL() ? "text-present animate-pulse" : "text-grace"}`} />
+            <span>
+              Server: <span className="font-mono text-ink font-semibold">{getBaseURL() || 'Not Configured'}</span>
+            </span>
+            <span className="text-[10px] bg-bg border border-line px-1.5 py-0.5 rounded text-brand font-medium">
+              {getBaseURL() ? 'Settings' : 'Configure'}
             </span>
           </button>
         </div>
 
-        {/* Server Settings Modal */}
-        {showServerModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-            <div className="card w-full max-w-md p-6 bg-slate-900 border-slate-700 shadow-2xl relative">
-              <div className="flex items-center gap-2 mb-4 text-white">
-                <Server size={20} className="text-primary-400" />
-                <h3 className="text-lg font-bold">Server Configuration</h3>
-              </div>
-              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                Enter your backend API URL (e.g. your Laptop/Server IP on the same Wi-Fi network).
-              </p>
+        {/* ── SERVER SETTINGS MODAL / BOTTOM-SHEET ── */}
+        <Modal
+          isOpen={showServerModal}
+          onClose={() => setShowServerModal(false)}
+          title="Server Configuration"
+          description="Enter your backend API URL (e.g. your Laptop/Server IP on the same Wi-Fi network)."
+        >
+          <div className="space-y-4">
+            <Input
+              label="Backend API URL"
+              type="text"
+              id="server-url-input"
+              value={serverUrlInput}
+              onChange={e => setServerUrlInput(e.target.value)}
+              placeholder="http://10.226.108.19:5000/api"
+              helperText="Example: http://10.226.108.19:5000/api or https://api.smdl.edu.in/api"
+              icon={Server}
+            />
 
-              <div className="mb-4">
-                <label className="label text-xs">Backend API URL</label>
-                <input
-                  type="text"
-                  id="server-url-input"
-                  value={serverUrlInput}
-                  onChange={(e) => setServerUrlInput(e.target.value)}
-                  placeholder="http://10.226.108.19:5000/api"
-                  className="input font-mono text-sm w-full"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Example: http://10.226.108.19:5000/api or https://api.smdl.edu.in/api
-                </p>
-              </div>
-
-              <div className="flex gap-2 justify-end pt-2">
-                <button
-                  type="button"
-                  id="cancel-server-btn"
-                  onClick={() => setShowServerModal(false)}
-                  className="btn-secondary text-xs px-3 py-2"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  id="reset-server-btn"
-                  onClick={handleResetDefaultServer}
-                  className="btn-secondary text-xs px-3 py-2 text-amber-400 hover:text-amber-300"
-                >
-                  Reset Default
-                </button>
-                <button
-                  type="button"
-                  id="test-save-server-btn"
-                  disabled={testingServer}
-                  onClick={() => testAndSaveServerUrl(serverUrlInput)}
-                  className="btn-primary text-xs px-4 py-2"
-                >
-                  {testingServer ? 'Connecting...' : 'Test & Save'}
-                </button>
-              </div>
+            <div className="flex gap-2 justify-end pt-2 border-t border-line">
+              <Button
+                variant="ghost"
+                size="sm"
+                id="cancel-server-btn"
+                onClick={() => setShowServerModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                id="reset-server-btn"
+                onClick={handleResetDefaultServer}
+              >
+                Reset Default
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                id="test-save-server-btn"
+                loading={testingServer}
+                disabled={testingServer}
+                onClick={() => testAndSaveServerUrl(serverUrlInput)}
+              >
+                {testingServer ? 'Connecting...' : 'Test & Save'}
+              </Button>
             </div>
           </div>
-        )}
+        </Modal>
+
       </div>
     </div>
   )
