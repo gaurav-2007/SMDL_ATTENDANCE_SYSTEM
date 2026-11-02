@@ -11,6 +11,7 @@ import {
   Calendar,
   X,
   Volume2,
+  Sparkles,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -33,109 +34,109 @@ function formatRelativeTime(dateStr) {
   if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
+  const diffDays = Math.floor(diffDays / 24);
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays}d ago`;
   return past.toLocaleDateString();
 }
 
-// Category visual styling configuration
+// Category visual styling configuration with vibrant, high-contrast colors
 const CATEGORY_STYLES = {
   LECTURE_STARTING: {
     icon: Clock,
-    color: 'text-sky-400 bg-sky-950/40 border-sky-800/40',
+    color: 'text-sky-600 bg-sky-50 border-sky-200 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-800/50',
     badge: 'Class Reminder',
-    badgeClass: 'badge-info',
+    badgeClass: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
   },
   LECTURE_CANCELLED: {
     icon: AlertTriangle,
-    color: 'text-rose-400 bg-rose-950/40 border-rose-800/40',
+    color: 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/50',
     badge: 'Cancelled',
-    badgeClass: 'badge-danger',
+    badgeClass: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   },
   LECTURE_RESCHEDULED: {
     icon: Calendar,
-    color: 'text-amber-400 bg-amber-950/40 border-amber-800/40',
+    color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/50',
     badge: 'Rescheduled',
-    badgeClass: 'badge-warning',
+    badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   },
   LOW_ATTENDANCE: {
     icon: AlertTriangle,
-    color: 'text-rose-400 bg-rose-950/40 border-rose-800/40',
+    color: 'text-red-600 bg-red-50 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800/50',
     badge: 'Low Attendance',
-    badgeClass: 'badge-danger',
+    badgeClass: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
   },
   ANNOUNCEMENT: {
     icon: Bell,
-    color: 'text-amber-400 bg-amber-950/40 border-amber-800/40',
+    color: 'text-purple-600 bg-purple-50 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800/50',
     badge: 'Notice',
-    badgeClass: 'badge-warning',
+    badgeClass: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   },
   ATTENDANCE_MARKED: {
     icon: CheckCircle,
-    color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
-    badge: 'Attendance',
-    badgeClass: 'badge-active',
+    color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/50',
+    badge: 'Present Marked',
+    badgeClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   },
   ATTENDANCE_CORRECTED: {
     icon: CheckCircle,
-    color: 'text-sky-400 bg-sky-950/40 border-sky-800/40',
-    badge: 'Corrected',
-    badgeClass: 'badge-info',
+    color: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800/50',
+    badge: 'Attendance Updated',
+    badgeClass: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   },
   ATTENDANCE_REMOVED: {
     icon: AlertTriangle,
-    color: 'text-rose-400 bg-rose-950/40 border-rose-800/40',
-    badge: 'Removed',
-    badgeClass: 'badge-danger',
+    color: 'text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800/50',
+    badge: 'Record Removed',
+    badgeClass: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   },
   PASSWORD_CHANGED: {
     icon: ShieldAlert,
-    color: 'text-red-400 bg-red-950/40 border-red-800/40',
+    color: 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/50',
     badge: 'Security Alert',
-    badgeClass: 'badge-danger',
+    badgeClass: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   },
   PASSWORD_RESET: {
     icon: ShieldAlert,
-    color: 'text-amber-400 bg-amber-950/40 border-amber-800/40',
+    color: 'text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/50',
     badge: 'Password Reset',
-    badgeClass: 'badge-warning',
+    badgeClass: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   },
   SECURITY_ALERT: {
     icon: ShieldAlert,
-    color: 'text-rose-400 bg-rose-950/40 border-rose-800/40',
+    color: 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/50',
     badge: 'Security Alert',
-    badgeClass: 'badge-danger',
+    badgeClass: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   },
   NEW_STUDY_MATERIAL: {
     icon: BookOpen,
-    color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
+    color: 'text-teal-600 bg-teal-50 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-800/50',
     badge: 'Study Material',
-    badgeClass: 'badge-active',
+    badgeClass: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
   },
   STUDY_MATERIAL: {
     icon: BookOpen,
-    color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
+    color: 'text-teal-600 bg-teal-50 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-800/50',
     badge: 'Study Material',
-    badgeClass: 'badge-active',
+    badgeClass: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
   },
   TEACHER_APPROVED: {
     icon: CheckCircle,
-    color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/40',
+    color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/50',
     badge: 'Account Approved',
-    badgeClass: 'badge-active',
+    badgeClass: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
   },
   TEACHER_REJECTED: {
     icon: AlertTriangle,
-    color: 'text-rose-400 bg-rose-950/40 border-rose-800/40',
+    color: 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/50',
     badge: 'Account Update',
-    badgeClass: 'badge-danger',
+    badgeClass: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   },
   DEFAULT: {
     icon: Bell,
-    color: 'text-slate-400 bg-slate-900 border-slate-700',
+    color: 'text-indigo-600 bg-indigo-50 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-800/50',
     badge: 'System',
-    badgeClass: 'badge-neutral',
+    badgeClass: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
   },
 };
 
@@ -149,6 +150,7 @@ export default function NotificationCenter() {
   const [loading, setLoading] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [pushStatus, setPushStatus] = useState('default'); // 'default' | 'granted' | 'denied'
+  const [hidePushBanner, setHidePushBanner] = useState(false);
   const drawerRef = useRef(null);
 
   // Fetch notifications from API
@@ -161,7 +163,7 @@ export default function NotificationCenter() {
         params: { limit: 40, filter: activeTab === 'unread' ? 'unread' : 'all' },
       });
 
-      if (data.data) {
+      if (data?.data) {
         setNotifications(data.data.notifications || []);
         setUnreadCount(data.data.unread_count || 0);
       }
@@ -197,10 +199,12 @@ export default function NotificationCenter() {
               setUnreadCount((c) => c + 1);
               toast((t) => (
                 <div className="flex items-start gap-2.5">
-                  <Bell size={18} className="text-brand-accent shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs font-bold text-white">{payload.new.title}</p>
-                    <p className="text-xs text-brand-muted mt-0.5">{payload.new.message}</p>
+                  <div className="w-6 h-6 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                    <Bell size={14} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-ink leading-snug">{payload.new.title}</p>
+                    <p className="text-xs text-muted mt-0.5 leading-relaxed">{payload.new.message}</p>
                   </div>
                 </div>
               ), { id: payload.new.id });
@@ -221,10 +225,10 @@ export default function NotificationCenter() {
       const body = fcmPayload.notification?.body || '';
       toast(
         <div className="flex items-start gap-2">
-          <Volume2 size={16} className="text-sky-400 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-xs font-bold text-white">{title}</p>
-            <p className="text-xs text-brand-muted">{body}</p>
+          <Volume2 size={16} className="text-sky-600 mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-ink">{title}</p>
+            <p className="text-xs text-muted">{body}</p>
           </div>
         </div>
       );
@@ -266,7 +270,7 @@ export default function NotificationCenter() {
         prev.map((n) => (n.id === notifId ? { ...n, is_read: true } : n))
       );
       setUnreadCount((c) => Math.max(0, c - 1));
-    } catch (err) {
+    } catch (_err) {
       toast.error('Failed to update notification');
     }
   }
@@ -279,7 +283,7 @@ export default function NotificationCenter() {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setUnreadCount(0);
       toast.success('All notifications marked as read');
-    } catch (err) {
+    } catch (_err) {
       toast.error('Failed to mark all as read');
     }
   }
@@ -289,7 +293,7 @@ export default function NotificationCenter() {
     const res = await requestWebPushPermission();
     if (res.granted) {
       setPushStatus('granted');
-      toast.success('Browser push notifications enabled!');
+      toast.success('Browser notifications enabled!');
     } else if (res.reason) {
       toast.error(res.reason);
     }
@@ -301,19 +305,22 @@ export default function NotificationCenter() {
 
   return (
     <div className="relative">
-      {/* 🔔 Notification Bell Button */}
+      {/* 🔔 Notification Bell Button — Always clearly visible & high-contrast */}
       <button
         id="notifications-bell-btn"
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         title="Notifications"
-        className={`btn-icon btn-ghost relative transition-colors ${
-          isOpen ? 'bg-white/10 text-white' : 'text-brand-muted hover:text-white'
+        aria-label="Open notifications"
+        className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center border transition-all duration-150 cursor-pointer ${
+          isOpen
+            ? 'bg-brand/10 border-brand/40 text-brand shadow-xs ring-2 ring-brand/20'
+            : 'bg-surface border-line text-ink/75 hover:text-ink hover:bg-bg hover:border-line/80 shadow-xs'
         }`}
       >
-        <Bell size={19} className={unreadCount > 0 ? 'text-white' : ''} />
+        <Bell className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform ${unreadCount > 0 ? 'text-brand' : 'currentColor'}`} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-brand-danger px-1 text-[11px] font-extrabold text-white shadow-lg animate-pulse">
+          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] sm:h-5 sm:min-w-[20px] items-center justify-center rounded-full bg-gradient-to-r from-rose-500 to-pink-500 px-1 text-[10px] font-extrabold text-white shadow-sm ring-2 ring-surface animate-pulse">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -321,185 +328,208 @@ export default function NotificationCenter() {
 
       {/* 📬 Slide-Out Notification Drawer / Dropdown */}
       {isOpen && (
-        <div
-          ref={drawerRef}
-          className="absolute right-0 top-full mt-3 w-80 sm:w-96 bg-brand-card border border-brand-border rounded-2xl shadow-2xl overflow-hidden z-50 animate-slide-up flex flex-col max-h-[85vh]"
-        >
-          {/* Top Header */}
-          <div className="flex items-center justify-between p-4 border-b border-brand-border bg-slate-900/80 backdrop-blur-md">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-white tracking-wide">Notifications</h3>
-              {unreadCount > 0 && (
-                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-brand-accent/20 text-brand-accent border border-brand-accent/30 font-mono">
-                  {unreadCount} new
-                </span>
-              )}
-            </div>
+        <>
+          {/* Mobile backdrop so user can easily tap outside and won't get cramped */}
+          <div
+            className="fixed inset-0 bg-black/30 backdrop-blur-xs z-40 sm:hidden animate-fade-in"
+            onClick={() => setIsOpen(false)}
+            aria-hidden="true"
+          />
 
-            <div className="flex items-center gap-1">
-              {unreadCount > 0 && (
+          <div
+            ref={drawerRef}
+            className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-16 sm:top-full sm:mt-2 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-surface border border-line rounded-2xl shadow-2xl overflow-hidden z-50 animate-slide-up sm:animate-fade-in flex flex-col max-h-[82vh] sm:max-h-[85vh]"
+          >
+            {/* Top Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface/95 backdrop-blur-md shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+                  <Bell className="w-3.5 h-3.5" />
+                </div>
+                <h3 className="text-sm font-bold font-display text-ink tracking-tight truncate">Notifications</h3>
+                {unreadCount > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 dark:bg-rose-950/40 dark:border-rose-800/40 dark:text-rose-400 font-mono shrink-0">
+                    {unreadCount} new
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0">
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    id="mark-all-read-btn"
+                    onClick={handleMarkAllAsRead}
+                    title="Mark all as read"
+                    className="p-1.5 rounded-lg text-muted hover:text-brand hover:bg-brand/10 transition-colors cursor-pointer"
+                  >
+                    <CheckCheck size={16} />
+                  </button>
+                )}
                 <button
                   type="button"
-                  id="mark-all-read-btn"
-                  onClick={handleMarkAllAsRead}
-                  title="Mark all as read"
-                  className="p-1.5 rounded-lg text-brand-muted hover:text-brand-accent hover:bg-brand-accent/10 transition-colors"
+                  id="open-preferences-btn"
+                  onClick={() => setPrefsOpen(true)}
+                  title="Notification preferences"
+                  className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-bg transition-colors cursor-pointer"
                 >
-                  <CheckCheck size={16} />
+                  <Settings size={16} />
                 </button>
-              )}
-              <button
-                type="button"
-                id="open-preferences-btn"
-                onClick={() => setPrefsOpen(true)}
-                title="Notification preferences"
-                className="p-1.5 rounded-lg text-brand-muted hover:text-white hover:bg-white/5 transition-colors"
-              >
-                <Settings size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="p-1.5 rounded-lg text-brand-muted hover:text-white hover:bg-white/5 transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Optional Web Push Enable Prompt banner */}
-          {pushStatus === 'default' && (
-            <div className="bg-sky-950/50 border-b border-sky-800/40 p-3 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-sky-300">
-                <Bell size={14} className="shrink-0 text-sky-400" />
-                <span>Enable desktop notifications for live alerts?</span>
+                <button
+                  type="button"
+                  onClick={() => setIsOpen(false)}
+                  className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-bg transition-colors cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleEnablePush}
-                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500 text-brand-dark hover:bg-sky-400 transition-colors shrink-0 shadow"
-              >
-                Enable
-              </button>
             </div>
-          )}
 
-          {/* Filter Sub-Tabs */}
-          <div className="flex items-center gap-2 p-2 border-b border-brand-border/60 bg-slate-900/40">
-            <button
-              type="button"
-              id="notif-tab-all"
-              onClick={() => setActiveTab('all')}
-              className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                activeTab === 'all'
-                  ? 'bg-brand-accent text-brand-dark shadow-sm'
-                  : 'text-brand-muted hover:text-white'
-              }`}
-            >
-              All ({notifications.length})
-            </button>
-            <button
-              type="button"
-              id="notif-tab-unread"
-              onClick={() => setActiveTab('unread')}
-              className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                activeTab === 'unread'
-                  ? 'bg-brand-accent text-brand-dark shadow-sm'
-                  : 'text-brand-muted hover:text-white'
-              }`}
-            >
-              Unread ({unreadCount})
-            </button>
-          </div>
-
-          {/* Notification List Body */}
-          <div className="flex-1 overflow-y-auto divide-y divide-brand-border/40">
-            {loading ? (
-              <div className="py-16 flex flex-col items-center justify-center gap-2.5">
-                <div className="spinner w-5 h-5 border-2" />
-                <span className="text-xs text-brand-muted font-medium">Checking updates...</span>
-              </div>
-            ) : displayedNotifications.length === 0 ? (
-              <div className="py-16 px-4 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-brand-border flex items-center justify-center mx-auto mb-3 text-brand-muted">
-                  <Bell size={22} className="opacity-40" />
+            {/* Optional Web Push Prompt banner */}
+            {pushStatus === 'default' && !hidePushBanner && (
+              <div className="bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-800/40 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 min-w-0 text-xs text-sky-800 dark:text-sky-200">
+                  <Bell size={13} className="shrink-0 text-sky-600 dark:text-sky-400" />
+                  <span className="truncate text-[11px]">Enable browser notifications for alerts?</span>
                 </div>
-                <p className="text-sm font-bold text-white">No new notifications</p>
-                <p className="text-xs text-brand-muted mt-1">
-                  {activeTab === 'unread'
-                    ? "You're all caught up! No unread messages."
-                    : 'Class updates, reminders and notices will appear here.'}
-                </p>
-              </div>
-            ) : (
-              displayedNotifications.map((notif) => {
-                const style = CATEGORY_STYLES[notif.type] || CATEGORY_STYLES.DEFAULT;
-                const Icon = style.icon;
-
-                return (
-                  <div
-                    key={notif.id}
-                    onClick={() => {
-                      if (!notif.is_read) handleMarkAsRead(notif.id);
-                      setIsOpen(false);
-                      const targetUrl = getNotificationUrl(notif, user?.role);
-                      if (targetUrl) navigate(targetUrl);
-                    }}
-                    className={`p-3.5 flex items-start gap-3 transition-colors cursor-pointer group hover:bg-white/[0.04] ${
-                      !notif.is_read ? 'bg-primary-950/20' : ''
-                    }`}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleEnablePush}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-sky-600 text-white hover:bg-sky-700 transition-colors shadow-xs cursor-pointer"
                   >
-                    {/* Category Icon */}
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center border shrink-0 mt-0.5 ${style.color}`}>
-                      <Icon size={16} />
-                    </div>
+                    Enable
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHidePushBanner(true)}
+                    className="p-1 text-sky-600 hover:text-sky-800 cursor-pointer"
+                    aria-label="Dismiss banner"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </div>
+            )}
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded font-mono ${
-                          !notif.is_read ? 'bg-brand-accent/20 text-sky-300' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {style.badge}
-                        </span>
-                        <span className="text-[11px] text-brand-muted font-mono shrink-0">
-                          {formatRelativeTime(notif.created_at)}
-                        </span>
+            {/* Sub-Tabs: All / Unread with modern vibrant styling */}
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-line bg-bg/50 shrink-0">
+              <button
+                type="button"
+                id="notif-tab-all"
+                onClick={() => setActiveTab('all')}
+                className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                  activeTab === 'all'
+                    ? 'bg-brand text-white shadow-xs'
+                    : 'text-muted hover:text-ink hover:bg-surface'
+                }`}
+              >
+                All ({notifications.length})
+              </button>
+              <button
+                type="button"
+                id="notif-tab-unread"
+                onClick={() => setActiveTab('unread')}
+                className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                  activeTab === 'unread'
+                    ? 'bg-brand text-white shadow-xs'
+                    : 'text-muted hover:text-ink hover:bg-surface'
+                }`}
+              >
+                Unread ({unreadCount})
+              </button>
+            </div>
+
+            {/* Notification List Body with clean word wrap and proper padding */}
+            <div className="flex-1 overflow-y-auto divide-y divide-line/60 overscroll-contain">
+              {loading ? (
+                <div className="py-14 flex flex-col items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+                  <span className="text-xs text-muted font-medium">Checking updates...</span>
+                </div>
+              ) : displayedNotifications.length === 0 ? (
+                <div className="py-14 px-4 text-center">
+                  <div className="w-11 h-11 rounded-2xl bg-bg border border-line flex items-center justify-center mx-auto mb-2.5 text-muted">
+                    <Bell size={20} className="opacity-40" />
+                  </div>
+                  <p className="text-sm font-bold text-ink">No notifications</p>
+                  <p className="text-xs text-muted mt-1 max-w-[240px] mx-auto leading-relaxed">
+                    {activeTab === 'unread'
+                      ? "You're all caught up! No unread notices."
+                      : 'Class updates, reminders and notices will appear here.'}
+                  </p>
+                </div>
+              ) : (
+                displayedNotifications.map((notif) => {
+                  const style = CATEGORY_STYLES[notif.type] || CATEGORY_STYLES.DEFAULT;
+                  const Icon = style.icon;
+
+                  return (
+                    <div
+                      key={notif.id}
+                      onClick={() => {
+                        if (!notif.is_read) handleMarkAsRead(notif.id);
+                        setIsOpen(false);
+                        const targetUrl = getNotificationUrl(notif, user?.role);
+                        if (targetUrl) navigate(targetUrl);
+                      }}
+                      className={`p-3 sm:p-3.5 flex items-start gap-3 transition-colors cursor-pointer group ${
+                        !notif.is_read
+                          ? 'bg-brand/[0.04] hover:bg-brand/[0.08]'
+                          : 'hover:bg-bg/60'
+                      }`}
+                    >
+                      {/* Vibrant Category Icon */}
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center border shrink-0 mt-0.5 shadow-xs ${style.color}`}>
+                        <Icon className="w-4 h-4" />
                       </div>
 
-                      <h4 className={`text-xs font-bold leading-snug line-clamp-1 ${
-                        !notif.is_read ? 'text-white' : 'text-slate-300'
-                      }`}>
-                        {notif.title}
-                      </h4>
+                      {/* Content with no word overlap and clear spacing */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1.5 mb-1">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded font-mono ${style.badgeClass || 'bg-bg text-muted'}`}>
+                            {style.badge}
+                          </span>
+                          <span className="text-[11px] text-muted font-mono shrink-0">
+                            {formatRelativeTime(notif.created_at)}
+                          </span>
+                        </div>
 
-                      <p className="text-xs text-brand-muted mt-0.5 leading-relaxed line-clamp-2">
-                        {notif.message}
-                      </p>
+                        <h4 className={`text-xs font-semibold leading-snug break-words ${
+                          !notif.is_read ? 'text-ink font-bold' : 'text-ink/80'
+                        }`}>
+                          {notif.title}
+                        </h4>
+
+                        <p className="text-xs text-muted mt-0.5 leading-relaxed break-words line-clamp-2">
+                          {notif.message}
+                        </p>
+                      </div>
+
+                      {/* Glowing Unread indicator dot */}
+                      {!notif.is_read && (
+                        <span className="w-2 h-2 rounded-full bg-brand shrink-0 mt-2 shadow-[0_0_6px_rgba(79,70,229,0.7)]" />
+                      )}
                     </div>
+                  );
+                })
+              )}
+            </div>
 
-                    {/* Unread indicator dot */}
-                    {!notif.is_read && (
-                      <span className="w-2 h-2 rounded-full bg-brand-accent shrink-0 mt-2 shadow-[0_0_8px_rgba(56,189,248,0.8)]" />
-                    )}
-                  </div>
-                );
-              })
-            )}
+            {/* Drawer Footer */}
+            <div className="px-3 py-2.5 border-t border-line bg-surface text-center text-[11px] text-muted flex items-center justify-between shrink-0">
+              <span className="font-medium">SMDL Smart Attendance</span>
+              <button
+                type="button"
+                onClick={() => fetchNotifications(false)}
+                className="text-brand hover:underline font-semibold cursor-pointer"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
-
-          {/* Drawer Footer */}
-          <div className="p-3 border-t border-brand-border bg-slate-900/60 text-center text-[11px] text-brand-muted flex items-center justify-between">
-            <span>SMDL Smart Attendance</span>
-            <button
-              type="button"
-              onClick={() => fetchNotifications(false)}
-              className="text-brand-accent hover:underline font-semibold"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+        </>
       )}
 
       {/* Preferences Modal */}

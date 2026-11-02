@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, ShieldAlert, Bell, Clock, AlertTriangle, CheckCircle, BookOpen, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../lib/api';
+import { Button } from '../ui';
 
 export default function NotificationPreferencesModal({ isOpen, onClose }) {
   const [loading, setLoading] = useState(true);
@@ -58,97 +59,98 @@ export default function NotificationPreferencesModal({ isOpen, onClose }) {
       label: 'Lecture Start Reminders',
       desc: 'Automatic alert 10 minutes before your scheduled class starts.',
       icon: Clock,
-      color: 'text-sky-400 bg-sky-950/40 border-sky-800/50',
+      color: 'text-sky-600 bg-sky-50 border-sky-200 dark:bg-sky-950/40 dark:text-sky-400 dark:border-sky-800/40',
     },
     {
       key: 'announcements',
       label: 'Department & College Announcements',
       desc: 'Important notices broadcast by teachers and college administration.',
       icon: Bell,
-      color: 'text-amber-400 bg-amber-950/40 border-amber-800/50',
+      color: 'text-purple-600 bg-purple-50 border-purple-200 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-800/40',
     },
     {
       key: 'low_attendance',
       label: 'Low Attendance Warnings',
       desc: 'Timely weekly warning if subject attendance falls below 75%.',
       icon: AlertTriangle,
-      color: 'text-rose-400 bg-rose-950/40 border-rose-800/50',
+      color: 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/40',
     },
     {
       key: 'attendance_updates',
       label: 'Attendance Marking & Corrections',
-      desc: 'Confirmation when presence is recorded or modified by teacher.',
+      desc: 'Confirmation when presence is recorded or modified by faculty.',
       icon: CheckCircle,
-      color: 'text-emerald-400 bg-emerald-950/40 border-emerald-800/50',
+      color: 'text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/40',
     },
     {
       key: 'study_material',
       label: 'New Study Material & Notes',
       desc: 'Updates when syllabus notes or attachments are shared.',
       icon: BookOpen,
-      color: 'text-purple-400 bg-purple-950/40 border-purple-800/50',
+      color: 'text-teal-600 bg-teal-50 border-teal-200 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-800/40',
     },
     {
       key: 'security_alerts',
       label: 'Security & Password Alerts',
       desc: 'Immediate notifications for password changes and account recovery.',
       icon: ShieldAlert,
-      color: 'text-red-400 bg-red-950/40 border-red-800/50',
+      color: 'text-rose-600 bg-rose-50 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/40',
       locked: true,
     },
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-lg bg-brand-card border border-brand-border rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
+      <div className="w-full max-w-lg bg-surface border border-line rounded-2xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-brand-border bg-slate-900/60">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-line bg-surface shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center text-white shadow-md">
+            <div className="w-9 h-9 rounded-xl bg-brand/10 border border-brand/20 text-brand flex items-center justify-center shadow-xs">
               <Bell size={18} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white leading-snug">Notification Preferences</h3>
-              <p className="text-xs text-brand-muted">Choose which push and in-app alerts you receive</p>
+              <h3 className="text-base font-bold font-display text-ink leading-snug">Notification Preferences</h3>
+              <p className="text-xs text-muted">Choose which push and in-app alerts you receive</p>
             </div>
           </div>
           <button
             type="button"
             id="close-preferences-modal-btn"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-brand-muted hover:text-white hover:bg-white/5 transition-colors"
+            className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-bg transition-colors cursor-pointer"
+            aria-label="Close dialog"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-5 space-y-3.5 max-h-[65vh] overflow-y-auto">
+        <div className="p-4 sm:p-5 space-y-3 overflow-y-auto flex-1">
           {loading ? (
             <div className="py-12 flex flex-col items-center justify-center gap-3">
-              <div className="spinner w-6 h-6 border-2" />
-              <p className="text-xs text-brand-muted font-medium">Loading preferences...</p>
+              <div className="w-6 h-6 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+              <p className="text-xs text-muted font-medium">Loading preferences...</p>
             </div>
           ) : (
             categories.map(({ key, label, desc, icon: Icon, color, locked }) => (
               <div
                 key={key}
-                className="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-slate-900/50 border border-brand-border/60 hover:border-brand-border transition-colors"
+                className="flex items-start justify-between gap-3 p-3.5 rounded-xl bg-bg border border-line hover:border-brand/30 transition-colors"
               >
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shrink-0 mt-0.5 ${color}`}>
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shrink-0 mt-0.5 shadow-xs ${color}`}>
                     <Icon size={16} />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-white">{label}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs sm:text-sm font-semibold text-ink">{label}</span>
                       {locked && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-950/60 border border-amber-800/40 px-1.5 py-0.5 rounded">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
                           <Lock size={10} /> Mandatory
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-brand-muted mt-0.5 leading-relaxed">{desc}</p>
+                    <p className="text-xs text-muted mt-0.5 leading-relaxed break-words">{desc}</p>
                   </div>
                 </div>
 
@@ -164,10 +166,10 @@ export default function NotificationPreferencesModal({ isOpen, onClose }) {
                     }}
                     className="sr-only peer"
                   />
-                  <div className={`w-10 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all ${
+                  <div className={`w-10 h-5 bg-line rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all ${
                     locked
-                      ? 'peer-checked:bg-primary-600 opacity-60 cursor-not-allowed'
-                      : 'peer-checked:bg-brand-accent'
+                      ? 'peer-checked:bg-brand/60 opacity-60 cursor-not-allowed'
+                      : 'peer-checked:bg-brand'
                   }`} />
                 </label>
               </div>
@@ -176,30 +178,23 @@ export default function NotificationPreferencesModal({ isOpen, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 p-4 border-t border-brand-border bg-slate-900/80">
-          <button
-            type="button"
+        <div className="flex items-center justify-end gap-2.5 p-4 border-t border-line bg-surface shrink-0">
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-brand-muted hover:text-white hover:bg-white/5 transition-colors"
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
             id="save-preferences-btn"
             disabled={loading || saving}
             onClick={handleSave}
-            className="btn-primary py-2 px-5 text-xs font-bold"
           >
-            {saving ? (
-              <>
-                <div className="spinner w-3.5 h-3.5 border-2" />
-                <span>Saving...</span>
-              </>
-            ) : (
-              'Save Preferences'
-            )}
-          </button>
+            {saving ? 'Saving...' : 'Save Preferences'}
+          </Button>
         </div>
       </div>
     </div>
