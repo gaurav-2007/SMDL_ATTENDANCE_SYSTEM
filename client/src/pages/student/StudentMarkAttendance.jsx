@@ -190,11 +190,18 @@ export default function StudentMarkAttendance() {
     setSelfiePreview('')
     try {
       if (Capacitor.isNativePlatform()) {
-        const perm = await CapCamera.checkPermissions()
-        if (perm.camera !== 'granted') {
-          const req = await CapCamera.requestPermissions()
-          if (req.camera !== 'granted') {
-            throw new Error('Camera permission was not granted on this device')
+        try {
+          const perm = await CapCamera.checkPermissions({ permissions: ['camera'] })
+          if (perm.camera !== 'granted') {
+            const req = await CapCamera.requestPermissions({ permissions: ['camera'] })
+            if (req.camera !== 'granted') {
+              throw new Error('Camera permission was not granted on this device')
+            }
+          }
+        } catch (permErr) {
+          console.warn('[Camera] Native permission check warning:', permErr)
+          if (!permErr?.message?.includes('Missing the following permissions')) {
+            throw permErr
           }
         }
       }
