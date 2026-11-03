@@ -47,8 +47,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- Storage permissions required by Capacitor Camera Plugin -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <!-- Optional Hardware Feature Flags (allows installation across all Android devices) -->

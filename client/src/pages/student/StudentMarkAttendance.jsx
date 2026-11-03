@@ -232,12 +232,30 @@ export default function StudentMarkAttendance() {
         throw new Error('Camera not supported in this browser')
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 480 } },
-        audio: false,
-      })
-      streamRef.current = stream
-      setCameraOn(true)
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 480 } },
+          audio: false,
+        })
+        streamRef.current = stream
+        setCameraOn(true)
+      } catch (streamErr) {
+        if (Capacitor.isNativePlatform()) {
+          console.warn('[Camera] getUserMedia fallback to CapCamera.getPhoto:', streamErr)
+          const photo = await CapCamera.getPhoto({
+            quality: 85,
+            allowEditing: false,
+            resultType: CameraResultType.DataUrl,
+            source: CameraSource.Camera,
+            direction: 'front',
+          })
+          if (photo?.dataUrl) {
+            setSelfiePreview(photo.dataUrl)
+            return
+          }
+        }
+        throw streamErr
+      }
     } catch (err) {
       const msg = err?.message || 'Camera permission denied'
       setCameraError(msg)
