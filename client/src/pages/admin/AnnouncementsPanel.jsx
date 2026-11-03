@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
-import { openAttachment } from '../../utils/attachmentHelper'
+import { openAttachment, downloadAttachment } from '../../utils/attachmentHelper'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Button, Input, Modal, Skeleton, EmptyState
@@ -27,6 +27,7 @@ export default function AnnouncementsPanel() {
   const [courses, setCourses]             = useState([])
   const [loading, setLoading]             = useState(true)
   const [showForm, setShowForm]           = useState(false)
+  const [activeAttachment, setActiveAttachment] = useState(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
@@ -54,8 +55,8 @@ export default function AnnouncementsPanel() {
       await api.delete(`/announcements/${id}`)
       toast.success('Announcement deleted')
       fetchAll()
-    } catch {
-      toast.error('Delete failed')
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Delete failed')
     }
   }
 
@@ -148,12 +149,22 @@ export default function AnnouncementsPanel() {
                               key={i}
                               className="flex items-center gap-2.5 px-3 py-2 bg-bg border border-line rounded-lg max-w-sm hover:border-brand/40 transition-colors shadow-2xs"
                             >
-                              {att.file_type === 'IMAGE' ? (
+                              {att.file_type === 'IMAGE' || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i)) ? (
                                 <ImageIcon size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                               ) : (
                                 <FileText size={16} className="text-brand shrink-0" />
                               )}
-                              <span className="text-xs font-medium text-ink truncate flex-1" title={att.file_name}>
+                              <span
+                                onClick={() => {
+                                  if (att.file_type === 'IMAGE' || att.file_url?.startsWith('data:image/') || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i))) {
+                                    setActiveAttachment(att)
+                                  } else {
+                                    downloadAttachment(att.file_url, att.file_name)
+                                  }
+                                }}
+                                className="text-xs font-medium text-ink truncate flex-1 cursor-pointer hover:text-brand"
+                                title="Click to view attachment"
+                              >
                                 {att.file_name}
                               </span>
                               <Button
@@ -161,7 +172,8 @@ export default function AnnouncementsPanel() {
                                 size="sm"
                                 onClick={(e) => {
                                   e.preventDefault()
-                                  openAttachment(att.file_url)
+                                  e.stopPropagation()
+                                  downloadAttachment(att.file_url, att.file_name)
                                 }}
                                 className="!py-1 !px-2 text-[11px] gap-1 text-brand"
                                 title="Download attachment"
@@ -219,6 +231,57 @@ export default function AnnouncementsPanel() {
           onSuccess={() => { setShowForm(false); fetchAll() }}
         />
       )}
+
+      {/* Notice Attachment Lightbox Modal */}
+      <Modal
+        isOpen={Boolean(activeAttachment)}
+        onClose={() => setActiveAttachment(null)}
+        title={activeAttachment?.file_name || 'Notice Attachment'}
+        description="Official circular document / image attachment"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl overflow-hidden border border-line bg-black/5 max-h-[65vh] flex items-center justify-center p-2">
+            {activeAttachment?.file_url?.startsWith('data:image/') || activeAttachment?.file_type === 'IMAGE' || (activeAttachment?.file_name && activeAttachment.file_name.match(/\.(png|jpe?g|webp|gif)$/i)) ? (
+              <img
+                src={activeAttachment.file_url}
+                alt={activeAttachment.file_name}
+                className="max-h-[60vh] max-w-full object-contain rounded-lg shadow-sm"
+              />
+            ) : (
+              <div className="p-8 text-center space-y-2">
+                <FileText className="w-12 h-12 text-brand mx-auto" />
+                <p className="text-sm font-semibold text-ink">{activeAttachment?.file_name}</p>
+                <p className="text-xs text-muted">Tap Download below to save and open this file.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-muted font-mono truncate max-w-[200px]">
+              {activeAttachment?.file_name}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => downloadAttachment(activeAttachment.file_url, activeAttachment.file_name)}
+                className="gap-1.5 font-semibold"
+              >
+                <Download size={14} />
+                <span>Save / Download</span>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setActiveAttachment(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

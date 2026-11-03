@@ -9,7 +9,7 @@ import api from '../../lib/api'
 import toast from 'react-hot-toast'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Badge, Button, StatCard, Skeleton, EmptyState
+  Badge, Button, StatCard, Skeleton, EmptyState, Modal
 } from '../../components/ui'
 
 export default function ReportsPanel() {
@@ -20,14 +20,15 @@ export default function ReportsPanel() {
   const [period, setPeriod]     = useState('30')
   const [liveSummary, setLiveSummary] = useState(null)
   const [auditLogs, setAuditLogs] = useState([])
+  const [showRegisterModal, setShowRegisterModal] = useState(false)
 
   const fetchStats = useCallback(async () => {
     setLoading(true)
     try {
       const [ovRes, liveRes, audRes] = await Promise.allSettled([
         api.get(`/attendance/reports/overview?days=${period}`),
-        api.get('/admin/attendance/live-summary'),
-        api.get('/admin/attendance/audit-logs'),
+        api.get('/attendance/live-summary').catch(() => api.get('/admin/attendance/live-summary')),
+        api.get('/attendance/audit-logs').catch(() => api.get('/admin/attendance/audit-logs')),
       ])
 
       if (ovRes.status === 'fulfilled') {
@@ -49,7 +50,7 @@ export default function ReportsPanel() {
 
   useEffect(() => { fetchStats() }, [fetchStats])
 
-  function exportToCSV() {
+  async function exportToCSV() {
     if (!stats) return toast.error('No report data available to export')
 
     const headers = ['Sr No', 'Student Name', 'Course', 'Division', 'Lectures Attended', 'Total Lectures', 'Attendance %', 'Status']
@@ -76,109 +77,196 @@ export default function ReportsPanel() {
     ]
 
     const csvContent = '\uFEFF' + [...summaryRows.map(r => r.join(',')), ...rows.map(r => r.join(','))].join('\r\n')
+    const fileName = `SMDL_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+
+    // On mobile / Android: Try Native Share API so user can pick where to save (Downloads, Files, Google Drive, WhatsApp, Sheets)
+    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
+      try {
+        const fileObj = new File([blob], fileName, { type: 'text/csv' })
+        if (navigator.canShare({ files: [fileObj] })) {
+          await navigator.share({
+            files: [fileObj],
+            title: 'SMDL Attendance Defaulter Report (CSV)',
+            text: `SMDL College Attendance Report - Last ${period} Days`
+          })
+          toast.success('📊 CSV Report ready! Saved/shared to your chosen location.')
+          return
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        console.warn('Share error:', err.message)
+      }
+    }
+
+    // Standard Browser Anchor Download (Desktop Web & Android Fallback)
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `SMDL_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`)
+    link.setAttribute('download', fileName)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    toast.success('📊 Excel / CSV Report downloaded!')
+
+    toast.success('📊 CSV Report downloaded! Check your device Downloads folder.')
   }
 
-  function printOfficialPDF() {
-    if (!stats) return toast.error('No report data available')
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) return toast.error('Popup blocked. Allow popups to print report.')
-
+    function getRegisterHTML() {
+    if (!stats) return ''
     const defaulterRows = (lowAtt || []).map((s, idx) => `
       <tr>
         <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${idx + 1}</td>
         <td style="border:1px solid #cbd5e1;padding:8px;font-weight:600;">${s.name}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;">${s.course}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;">${s.division}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${s.attended}</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${s.total}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;">${s.course || 'BSc CS'}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;">${s.division || 'A'}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${s.attended ?? 0}</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;">${s.total ?? 0}</td>
         <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;color:#dc2626;font-weight:bold;">${(s.percentage || 0).toFixed(1)}%</td>
-        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;color:#dc2626;font-weight:600;">Defaulter</td>
+        <td style="border:1px solid #cbd5e1;padding:8px;text-align:center;color:#dc2626;font-weight:600;">Defaulter (&lt;75%)</td>
       </tr>
     `).join('')
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>SMDL Attendance Register - Official Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; color: #0f172a; margin: 30px; font-size: 13px; }
-          .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
-          .title { font-size: 18px; font-weight: bold; text-transform: uppercase; color: #0f172a; }
-          .subtitle { font-size: 13px; color: #475569; margin-top: 4px; }
-          .meta-grid { display: flex; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; margin-bottom: 20px; border-radius: 6px; }
-          .meta-item { font-size: 12px; }
-          .meta-item strong { color: #0f172a; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th { background: #0f172a; color: white; border: 1px solid #0f172a; padding: 8px; text-align: left; font-size: 12px; }
-          .footer { margin-top: 60px; display: flex; justify-content: space-between; text-align: center; }
-          .sig-line { width: 180px; border-top: 1px solid #333; padding-top: 6px; font-weight: bold; font-size: 11px; }
-          @media print {
-            body { margin: 15mm; }
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="title">SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE</div>
-          <div class="subtitle">Kalamboli, Navi Mumbai, Maharashtra · Smart Attendance & Academic System</div>
-          <div style="font-size:14px;font-weight:bold;margin-top:8px;color:#2563eb;">OFFICIAL ATTENDANCE DEFAULTER REGISTER (&lt; 75%)</div>
-        </div>
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMDL Attendance Register - Official Defaulter Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 24px; font-size: 13px; line-height: 1.4; }
+    .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+    .title { font-size: 18px; font-weight: bold; text-transform: uppercase; color: #0f172a; letter-spacing: 0.5px; }
+    .subtitle { font-size: 12px; color: #475569; margin-top: 4px; }
+    .tag { font-size: 13px; font-weight: bold; margin-top: 8px; color: #2563eb; }
+    .meta-grid { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; margin-bottom: 16px; border-radius: 6px; }
+    .meta-item { font-size: 12px; }
+    .meta-item strong { color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th { background: #0f172a; color: white; border: 1px solid #0f172a; padding: 8px; text-align: left; font-size: 12px; }
+    td { font-size: 12px; }
+    .footer { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; page-break-inside: avoid; }
+    .sig-line { width: 160px; border-top: 1px solid #333; padding-top: 6px; font-weight: bold; font-size: 11px; }
+    @media print {
+      body { margin: 10mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE</div>
+    <div class="subtitle">Kalamboli, Navi Mumbai, Maharashtra · Smart Attendance & Academic System</div>
+    <div class="tag">OFFICIAL ATTENDANCE DEFAULTER REGISTER (&lt; 75%)</div>
+  </div>
 
-        <div class="meta-grid">
-          <div class="meta-item"><strong>Report Period:</strong> Last ${period} Days</div>
-          <div class="meta-item"><strong>Generated On:</strong> ${new Date().toLocaleString('en-IN')}</div>
-          <div class="meta-item"><strong>Total Students:</strong> ${stats.total_students || 0}</div>
-          <div class="meta-item"><strong>Avg Attendance:</strong> ${stats.avg_attendance ? stats.avg_attendance.toFixed(1) + '%' : 'N/A'}</div>
-          <div class="meta-item"><strong style="color:#dc2626;">Defaulters:</strong> ${lowAtt.length}</div>
-        </div>
+  <div class="meta-grid">
+    <div class="meta-item"><strong>Report Period:</strong> Last ${period} Days</div>
+    <div class="meta-item"><strong>Generated On:</strong> ${new Date().toLocaleString('en-IN')}</div>
+    <div class="meta-item"><strong>Total Students:</strong> ${stats.total_students || 0}</div>
+    <div class="meta-item"><strong>Avg Attendance:</strong> ${stats.avg_attendance ? stats.avg_attendance.toFixed(1) + '%' : 'N/A'}</div>
+    <div class="meta-item"><strong style="color:#dc2626;">Defaulters:</strong> ${lowAtt.length}</div>
+  </div>
 
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Student Name</th>
-              <th>Course</th>
-              <th>Division</th>
-              <th>Attended</th>
-              <th>Total</th>
-              <th>Attendance %</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${defaulterRows || '<tr><td colspan="8" style="text-align:center;padding:20px;border:1px solid #cbd5e1;">No defaulters found in this period.</td></tr>'}
-          </tbody>
-        </table>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Student Name</th>
+        <th>Course</th>
+        <th>Division</th>
+        <th>Attended</th>
+        <th>Total</th>
+        <th>Attendance %</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${defaulterRows || '<tr><td colspan="8" style="text-align:center;padding:20px;border:1px solid #cbd5e1;color:#64748b;">No defaulters found in this period.</td></tr>'}
+    </tbody>
+  </table>
 
-        <div class="footer">
-          <div class="sig-line">Class In-Charge</div>
-          <div class="sig-line">HOD / Academic Dean</div>
-          <div class="sig-line">Principal</div>
-        </div>
+  <div class="footer">
+    <div class="sig-line">Class In-Charge</div>
+    <div class="sig-line">HOD / Academic Dean</div>
+    <div class="sig-line">Principal</div>
+  </div>
+</body>
+</html>`
+  }
 
-        <script>
-          window.onload = function() {
-            setTimeout(function() { window.print(); }, 400);
-          }
-        </script>
-      </body>
-      </html>
-    `
-    printWindow.document.open()
-    printWindow.document.write(html)
-    printWindow.document.close()
+  function triggerPrint() {
+    if (!stats) return toast.error('No report data available')
+    const html = getRegisterHTML()
+
+    try {
+      let iframe = document.getElementById('print-register-iframe')
+      if (iframe) iframe.remove()
+      iframe = document.createElement('iframe')
+      iframe.id = 'print-register-iframe'
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = '0'
+      document.body.appendChild(iframe)
+
+      const doc = iframe.contentWindow.document
+      doc.open()
+      doc.write(html)
+      doc.close()
+
+      iframe.contentWindow.focus()
+      setTimeout(() => {
+        try {
+          iframe.contentWindow.print()
+        } catch (e) {
+          console.warn('Iframe print fallback:', e)
+        }
+      }, 350)
+      toast.success('Opening print dialog...')
+    } catch (e) {
+      toast.error('Print unavailable on this device. Use Download HTML option.')
+    }
+  }
+
+  async function downloadHTMLReport() {
+    if (!stats) return toast.error('No report data available')
+    const html = getRegisterHTML()
+    const fileName = `SMDL_Attendance_Defaulter_Register_${new Date().toISOString().slice(0, 10)}.html`
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8;' })
+
+    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
+      try {
+        const fileObj = new File([blob], fileName, { type: 'text/html' })
+        if (navigator.canShare({ files: [fileObj] })) {
+          await navigator.share({
+            files: [fileObj],
+            title: 'SMDL Defaulter Register (HTML)',
+            text: 'SMDL Official Attendance Register'
+          })
+          toast.success('📄 Official Register shared/saved!')
+          return
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return
+      }
+    }
+
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', fileName)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast.success('📄 Official Register HTML downloaded to Downloads folder!')
+  }
+
+  function handlePrintRegisterClick() {
+    if (!stats) return toast.error('No report data available')
+    setShowRegisterModal(true)
   }
 
   return (
@@ -218,7 +306,7 @@ export default function ReportsPanel() {
             <span>Export CSV</span>
           </Button>
           <Button
-            onClick={printOfficialPDF}
+            onClick={handlePrintRegisterClick}
             variant="primary"
             size="sm"
             className="gap-1.5 text-xs"
@@ -314,26 +402,34 @@ export default function ReportsPanel() {
           {/* KPI Metrics */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard
+              title="Total Faculty"
               label="Total Faculty"
               value={stats?.total_teachers ?? '—'}
+              subtitle={`${stats?.active_teachers || 0} active accounts`}
               sub={`${stats?.active_teachers || 0} active accounts`}
               icon={Users}
             />
             <StatCard
+              title="Total Students"
               label="Total Students"
               value={stats?.total_students ?? '—'}
+              subtitle={`${stats?.active_students || 0} verified accounts`}
               sub={`${stats?.active_students || 0} verified accounts`}
               icon={Users}
             />
             <StatCard
+              title="Lectures Conducted"
               label="Lectures Conducted"
               value={stats?.completed_lectures ?? stats?.total_lectures ?? '—'}
+              subtitle="Completed sessions"
               sub="Completed sessions"
               icon={BookOpen}
             />
             <StatCard
+              title="Average Turnout"
               label="Average Turnout"
               value={stats?.avg_attendance != null ? `${stats.avg_attendance.toFixed(1)}%` : 'N/A'}
+              subtitle="Across all lectures"
               sub="Across all lectures"
               icon={BarChart2}
             />
@@ -520,10 +616,170 @@ export default function ReportsPanel() {
           )}
         </Card>
       )}
+
+      {/* Official Defaulter Register & Report Modal */}
+      <Modal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        title="Official Attendance Register & Defaulter Report"
+        description="SMDL College Official Academic Record (< 75% Requirement)"
+        size="xl"
+      >
+        <div className="space-y-4">
+          {/* Action Toolbar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-bg border border-line rounded-xl">
+            <div className="flex items-center gap-2">
+              <Badge variant="absent" size="sm">
+                {lowAtt.length} Defaulters Identified
+              </Badge>
+              <span className="text-xs text-muted">Range: Last {period} Days</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadHTMLReport}
+                className="gap-1.5 text-xs"
+                title="Download HTML Document"
+              >
+                <Download size={13} />
+                <span>Save HTML</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToCSV}
+                className="gap-1.5 text-xs text-emerald-600"
+                title="Export CSV"
+              >
+                <FileSpreadsheet size={13} />
+                <span>Export CSV</span>
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={triggerPrint}
+                className="gap-1.5 text-xs font-semibold"
+                title="Trigger System Print"
+              >
+                <Printer size={13} />
+                <span>Print / PDF</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Register Document Preview */}
+          <div className="border border-line rounded-xl p-4 sm:p-6 bg-surface shadow-xs space-y-4 max-h-[60vh] overflow-y-auto">
+            {/* College Header */}
+            <div className="text-center pb-3 border-b-2 border-line">
+              <h2 className="text-base sm:text-lg font-bold font-display text-ink uppercase tracking-wide">
+                SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE
+              </h2>
+              <p className="text-xs text-muted mt-0.5">
+                Kalamboli, Navi Mumbai, Maharashtra · Smart Attendance & Academic System
+              </p>
+              <p className="text-xs font-bold text-brand uppercase tracking-wider mt-2">
+                OFFICIAL ATTENDANCE DEFAULTER REGISTER (&lt; 75%)
+              </p>
+            </div>
+
+            {/* Meta Info Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-lg bg-bg border border-line text-xs">
+              <div>
+                <span className="text-muted block text-[11px]">Report Period:</span>
+                <span className="font-semibold text-ink">Last {period} Days</span>
+              </div>
+              <div>
+                <span className="text-muted block text-[11px]">Total Students:</span>
+                <span className="font-mono font-semibold text-ink">{stats?.total_students || 0}</span>
+              </div>
+              <div>
+                <span className="text-muted block text-[11px]">Average Turnout:</span>
+                <span className="font-mono font-semibold text-brand">
+                  {stats?.avg_attendance != null ? stats.avg_attendance.toFixed(1) + '%' : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted block text-[11px]">Total Defaulters:</span>
+                <span className="font-mono font-semibold text-red-600 dark:text-red-400">
+                  {lowAtt.length} Students
+                </span>
+              </div>
+            </div>
+
+            {/* Defaulter Table */}
+            <div className="overflow-x-auto rounded-lg border border-line">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-bg text-muted font-semibold uppercase tracking-wider border-b border-line">
+                    <th className="py-2.5 px-3 text-center">#</th>
+                    <th className="py-2.5 px-3">Student Name</th>
+                    <th className="py-2.5 px-3">Course</th>
+                    <th className="py-2.5 px-3">Division</th>
+                    <th className="py-2.5 px-3 text-center">Attended</th>
+                    <th className="py-2.5 px-3 text-center">Total</th>
+                    <th className="py-2.5 px-3 text-center">Attendance %</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {lowAtt.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-muted">
+                        No examination defaulters found below 75% threshold in this period.
+                      </td>
+                    </tr>
+                  ) : (
+                    lowAtt.map((s, idx) => (
+                      <tr key={s.student_id || idx} className="hover:bg-bg/40">
+                        <td className="py-2.5 px-3 text-center font-mono text-muted">{idx + 1}</td>
+                        <td className="py-2.5 px-3 font-semibold text-ink">{s.name}</td>
+                        <td className="py-2.5 px-3 text-muted">{s.course || 'BSc CS'}</td>
+                        <td className="py-2.5 px-3 text-muted">{s.division || 'A'}</td>
+                        <td className="py-2.5 px-3 text-center font-mono">{s.attended ?? 0}</td>
+                        <td className="py-2.5 px-3 text-center font-mono">{s.total ?? 0}</td>
+                        <td className="py-2.5 px-3 text-center font-mono font-bold text-red-600 dark:text-red-400">
+                          {(s.percentage || 0).toFixed(1)}%
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                            Defaulter
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Signature Block */}
+            <div className="pt-6 mt-4 border-t border-line grid grid-cols-3 gap-4 text-center text-xs text-muted">
+              <div>
+                <div className="border-t border-ink/40 w-28 sm:w-36 mx-auto mb-1.5" />
+                <span className="font-semibold text-ink">Class In-Charge</span>
+              </div>
+              <div>
+                <div className="border-t border-ink/40 w-28 sm:w-36 mx-auto mb-1.5" />
+                <span className="font-semibold text-ink">HOD / Academic Dean</span>
+              </div>
+              <div>
+                <div className="border-t border-ink/40 w-28 sm:w-36 mx-auto mb-1.5" />
+                <span className="font-semibold text-ink">Principal</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setShowRegisterModal(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
-
 function ProgressBar({ label, value, color }) {
   const pct = Math.min(100, Math.max(0, value || 0))
   return (

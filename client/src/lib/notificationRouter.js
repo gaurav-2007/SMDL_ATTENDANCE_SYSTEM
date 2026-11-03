@@ -13,7 +13,7 @@ export function getNotificationUrl(notification, userRole = 'student') {
     case 'NEW_STUDY_MATERIAL':
     case 'STUDY_MATERIAL':
       if (userRole === 'teacher') return '/teacher/announce';
-      if (userRole === 'admin') return '/admin/announcements';
+      if (userRole === 'admin') return '/admin/announce';
       return '/student/announce';
 
     case 'ATTENDANCE_MARKED':

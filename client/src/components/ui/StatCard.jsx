@@ -6,14 +6,19 @@ import React from 'react';
  */
 export default function StatCard({
   title,
+  label,
   value,
   subtitle,
+  sub,
   icon: Icon,
   badge,
   trend,
   className = '',
   onClick,
 }) {
+  const displayTitle = title || label || '';
+  const displaySubtitle = subtitle || sub || '';
+
   return (
     <div
       onClick={onClick}
@@ -23,7 +28,7 @@ export default function StatCard({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-          {title}
+          {displayTitle}
         </span>
         {Icon && (
           <div className="w-8 h-8 rounded-lg bg-bg border border-line flex items-center justify-center text-muted shrink-0">
@@ -39,7 +44,7 @@ export default function StatCard({
         {badge}
       </div>
 
-      {(subtitle || trend) && (
+      {(displaySubtitle || trend) && (
         <div className="text-xs text-muted flex items-center gap-1.5 pt-1 border-t border-line/60">
           {trend && (
             <span
@@ -50,7 +55,7 @@ export default function StatCard({
               {trend > 0 ? `+${trend}%` : `${trend}%`}
             </span>
           )}
-          <span>{subtitle}</span>
+          <span>{displaySubtitle}</span>
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import DashboardLayout from '../../components/layout/DashboardLayout'
 import AdminHome from './AdminHome'
 import TeachersPanel from './TeachersPanel'
@@ -19,8 +19,8 @@ export default function AdminDashboard() {
         <Route path="lectures" element={<LecturesPanel />} />
         <Route path="reports" element={<ReportsPanel />} />
         <Route path="announce" element={<AnnouncementsPanel />} />
+        <Route path="announcements" element={<Navigate to="/admin/announce" replace />} />
       </Routes>
     </DashboardLayout>
   )
 }
-

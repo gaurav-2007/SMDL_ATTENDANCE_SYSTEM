@@ -258,9 +258,9 @@ const deleteAnnouncement = asyncHandler(async (req, res) => {
 
   // 2. Authorization check: Admin can delete any announcement;
   // Teachers can ONLY delete announcements they authored.
-  if (req.user.role !== 'admin' && announcement.sent_by !== req.user.id) {
+  if (req.user.role !== 'admin' && req.user.role !== 'teacher') {
     res.status(403);
-    throw new Error('Not authorized to delete this announcement. You can only delete announcements you published.');
+    throw new Error('Not authorized to delete this announcement.');
   }
 
   // 3. Clean up attachments first if table exists

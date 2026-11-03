@@ -236,24 +236,34 @@ export default function MyClasses() {
       {/* Quick Metrics Bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
+          title={`Today's Load (${todayActualDay})`}
           label={`Today's Load (${todayActualDay})`}
           value={todayActualDay === 'Sunday' ? 'Off' : `${todayData?.my_lectures?.length || 0} Lectures`}
+          subtitle="Scheduled for you"
+          sub="Scheduled for you"
           icon={Calendar}
         />
         <StatCard
+          title={currentOngoing ? 'Session In Progress' : 'Current Session Status'}
           label={currentOngoing ? 'Session In Progress' : 'Current Session Status'}
           value={currentOngoing ? (currentOngoing.subject?.code || 'Live Session') : 'No Active Slot'}
+          subtitle={currentOngoing ? 'Active now' : 'Standby'}
+          sub={currentOngoing ? 'Active now' : 'Standby'}
           icon={Flame}
         />
         <StatCard
+          title="Cohort Degree Program"
           label="Cohort Degree Program"
           value="NEP Sem-I"
+          subtitle="FY.BSc Computer Science"
           sub="FY.BSc Computer Science"
           icon={Award}
         />
         <StatCard
+          title="College Operating Hours"
           label="College Operating Hours"
           value="08:00 – 13:30"
+          subtitle="Regular timetable window"
           sub="Regular timetable window"
           icon={Clock}
         />
