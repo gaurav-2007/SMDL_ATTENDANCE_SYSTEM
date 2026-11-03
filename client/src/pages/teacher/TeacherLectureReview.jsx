@@ -4,7 +4,7 @@ import {
   Plus, RefreshCw, UserCheck, XCircle, Camera, MapPin,
   Edit3, X, CheckCircle2, AlertTriangle, Loader2, Users,
   ClipboardList, BookOpen, ChevronDown, Search, Smartphone, Zap,
-  Check, ArrowRight, Clock
+  Check, ArrowRight, Clock, Maximize2, Eye
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
@@ -543,7 +543,7 @@ export default function TeacherLectureReview() {
                         <td className="py-3 px-4">
                           {r.selfie_url ? (
                             <button
-                              onClick={() => setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name })}
+                              onClick={() => setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name, roll: r.roll_number, time: r.marked_at, distance: r.distance_meters })}
                               className="w-8 h-8 rounded-lg overflow-hidden border border-line hover:border-brand transition-colors cursor-pointer block"
                               title="Click to view full facial photo"
                             >
@@ -621,9 +621,20 @@ export default function TeacherLectureReview() {
                   <div key={r.student_pk} className="p-3.5 flex flex-col gap-2.5">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-9 h-9 rounded-full bg-brand/10 border border-brand/20 text-brand font-semibold text-xs flex items-center justify-center shrink-0">
-                          {r.full_name?.charAt(0) || 'S'}
-                        </div>
+                        {r.selfie_url ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name, roll: r.roll_number, time: r.marked_at, distance: r.distance_meters })}
+                            className="w-10 h-10 rounded-full overflow-hidden border-2 border-brand/30 hover:border-brand shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all relative group"
+                            title="Click to view full photo"
+                          >
+                            <img src={r.selfie_url} alt={r.full_name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200" />
+                          </button>
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-brand/10 border border-brand/20 text-brand font-semibold text-xs flex items-center justify-center shrink-0">
+                            {r.full_name?.charAt(0) || 'S'}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-ink truncate leading-tight">{r.full_name}</p>
                           <p className="text-xs text-muted font-mono mt-0.5">Roll No: {r.roll_number}</p>
@@ -640,11 +651,23 @@ export default function TeacherLectureReview() {
                       <div className="flex items-center gap-3">
                         {r.selfie_url && (
                           <button
-                            onClick={() => setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name })}
-                            className="inline-flex items-center gap-1 text-brand font-medium cursor-pointer"
+                            type="button"
+                            onClick={() => setSelfieModal({ open: true, url: r.selfie_url, name: r.full_name, roll: r.roll_number, time: r.marked_at, distance: r.distance_meters })}
+                            className="inline-flex items-center gap-1.5 p-1 pr-2 rounded-lg border border-brand/30 bg-brand/5 hover:bg-brand/10 active:scale-95 transition-all cursor-pointer group shadow-2xs"
+                            title="Click to view full photo"
                           >
-                            <Camera className="w-3.5 h-3.5" />
-                            <span>Photo</span>
+                            <div className="w-8 h-8 rounded-md overflow-hidden border border-brand/30 shrink-0 bg-neutral-200 dark:bg-neutral-800 shadow-2xs">
+                              <img
+                                src={r.selfie_url}
+                                alt={`${r.full_name} selfie`}
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200"
+                                loading="lazy"
+                              />
+                            </div>
+                            <span className="text-xs font-semibold text-brand flex items-center gap-1">
+                              <span>Photo</span>
+                              <Maximize2 className="w-3 h-3 opacity-70 group-hover:opacity-100" />
+                            </span>
                           </button>
                         )}
                         {r.distance_meters != null && (
@@ -792,15 +815,40 @@ export default function TeacherLectureReview() {
         onClose={() => setSelfieModal({ ...selfieModal, open: false })}
         title={`Verification Photo: ${selfieModal.name}`}
         description="Captured live selfie during student attendance check-in."
+        size="md"
       >
         <div className="space-y-4">
           {selfieModal.url ? (
-            <div className="rounded-xl overflow-hidden border border-line bg-black/5 max-h-[60vh] flex items-center justify-center">
-              <img
-                src={selfieModal.url}
-                alt={`${selfieModal.name} selfie proof`}
-                className="w-full h-auto max-h-[60vh] object-contain"
-              />
+            <div className="space-y-3">
+              {(selfieModal.roll || selfieModal.time || selfieModal.distance != null) && (
+                <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-lg bg-bg border border-line text-xs">
+                  {selfieModal.roll && (
+                    <span className="font-mono font-semibold text-brand bg-brand/10 px-2 py-0.5 rounded">
+                      Roll: {selfieModal.roll}
+                    </span>
+                  )}
+                  {selfieModal.time && (
+                    <span className="text-muted flex items-center gap-1 font-mono">
+                      <Clock className="w-3.5 h-3.5" />
+                      {new Date(selfieModal.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  {selfieModal.distance != null && (
+                    <span className="text-muted flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {selfieModal.distance}m from geofence
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className="rounded-xl overflow-hidden border border-line bg-black/5 max-h-[65vh] flex items-center justify-center p-1">
+                <img
+                  src={selfieModal.url}
+                  alt={`${selfieModal.name} selfie proof`}
+                  className="w-full h-auto max-h-[60vh] object-contain rounded-lg shadow-sm"
+                />
+              </div>
             </div>
           ) : (
             <EmptyState

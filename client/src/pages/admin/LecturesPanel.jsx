@@ -143,23 +143,35 @@ export default function LecturesPanel() {
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
+          title="Total Scheduled"
           label="Total Scheduled"
           value={loading ? '—' : stats.total}
+          subtitle="All academic lectures"
+          sub="All academic lectures"
           icon={BookOpen}
         />
         <StatCard
+          title="Upcoming / Scheduled"
           label="Upcoming / Scheduled"
           value={loading ? '—' : stats.scheduled}
+          subtitle="Scheduled sessions"
+          sub="Scheduled sessions"
           icon={Calendar}
         />
         <StatCard
+          title="Currently Live"
           label="Currently Live"
           value={loading ? '—' : stats.ongoing}
+          subtitle="Active lecture right now"
+          sub="Active lecture right now"
           icon={Clock}
         />
         <StatCard
+          title="Completed Today"
           label="Completed Today"
           value={loading ? '—' : stats.completed}
+          subtitle="Successfully conducted"
+          sub="Successfully conducted"
           icon={CheckCircle}
         />
       </div>

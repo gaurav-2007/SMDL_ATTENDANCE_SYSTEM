@@ -11,12 +11,12 @@ import {
   User
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { openAttachment } from '../../utils/attachmentHelper'
+import { openAttachment, downloadAttachment } from '../../utils/attachmentHelper'
 import UserProfileModal from '../../components/profile/UserProfileModal'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Button, ProgressRing, StatCard as UIStatCard,
-  Skeleton, EmptyState
+  Skeleton, EmptyState, Modal
 } from '../../components/ui'
 
 // Lazy-load heavy mark attendance component to reduce initial bundle
@@ -769,6 +769,7 @@ function StudentSubjectReports() {
 function StudentAnnouncements() {
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading] = useState(true)
+  const [activeAttachment, setActiveAttachment] = useState(null)
 
   async function fetchAnnouncements() {
     setLoading(true)
@@ -835,31 +836,39 @@ function StudentAnnouncements() {
                       {a.attachments.map((att, i) => (
                         <div
                           key={i}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-bg border border-line rounded-lg text-xs"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-bg border border-line rounded-lg text-xs hover:border-brand/40 transition-colors shadow-2xs group"
                         >
-                          {att.file_type === 'IMAGE' ? (
+                          {att.file_type === 'IMAGE' || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i)) ? (
                             <ImageIcon className="w-4 h-4 text-present shrink-0" />
                           ) : (
                             <FileText className="w-4 h-4 text-brand shrink-0" />
                           )}
-                          <span className="font-medium text-ink truncate max-w-[160px]" title={att.file_name}>
+                          <span
+                            onClick={() => {
+                              if (att.file_type === 'IMAGE' || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i)) || att.file_url?.startsWith('data:image/')) {
+                                setActiveAttachment(att)
+                              } else {
+                                downloadAttachment(att.file_url, att.file_name)
+                              }
+                            }}
+                            className="font-medium text-ink truncate max-w-[150px] cursor-pointer hover:text-brand"
+                            title="Click to view attachment"
+                          >
                             {att.file_name}
                           </span>
-                          <a
-                            href={att.file_url}
-                            download={att.file_name}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
                             onClick={(e) => {
                               e.preventDefault()
-                              openAttachment(att.file_url)
+                              e.stopPropagation()
+                              downloadAttachment(att.file_url, att.file_name)
                             }}
-                            className="inline-flex items-center gap-1 text-brand font-semibold hover:underline ml-1 cursor-pointer"
+                            className="inline-flex items-center gap-1 text-brand font-semibold hover:underline ml-1 cursor-pointer active:scale-95"
                             title="Download document / image"
                           >
                             <Download className="w-3 h-3" />
                             <span>Download</span>
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -880,6 +889,57 @@ function StudentAnnouncements() {
           ))}
         </div>
       )}
+
+      {/* Notice Attachment Lightbox Modal */}
+      <Modal
+        isOpen={Boolean(activeAttachment)}
+        onClose={() => setActiveAttachment(null)}
+        title={activeAttachment?.file_name || 'Notice Attachment'}
+        description="Official circular document / image attachment"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl overflow-hidden border border-line bg-black/5 max-h-[65vh] flex items-center justify-center p-2">
+            {activeAttachment?.file_url?.startsWith('data:image/') || activeAttachment?.file_type === 'IMAGE' || (activeAttachment?.file_name && activeAttachment.file_name.match(/\.(png|jpe?g|webp|gif)$/i)) ? (
+              <img
+                src={activeAttachment.file_url}
+                alt={activeAttachment.file_name}
+                className="max-h-[60vh] max-w-full object-contain rounded-lg shadow-sm"
+              />
+            ) : (
+              <div className="p-8 text-center space-y-2">
+                <FileText className="w-12 h-12 text-brand mx-auto" />
+                <p className="text-sm font-semibold text-ink">{activeAttachment?.file_name}</p>
+                <p className="text-xs text-muted">Tap Download below to save and open this file.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-muted font-mono truncate max-w-[200px]">
+              {activeAttachment?.file_name}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => downloadAttachment(activeAttachment.file_url, activeAttachment.file_name)}
+                className="gap-1.5 font-semibold"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Save / Download</span>
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setActiveAttachment(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

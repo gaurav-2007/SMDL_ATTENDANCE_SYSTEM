@@ -11,6 +11,10 @@ const {
   getReportsOverview,
   getGeofenceConfig,
 } = require('../controllers/attendanceController');
+const {
+  getLiveAttendanceSummary,
+  getAttendanceAuditLogs,
+} = require('../controllers/adminController');
 
 const router = express.Router();
 
@@ -23,5 +27,7 @@ router.get('/lecture/:lectureId', restrictTo('teacher', 'admin'), restrictToActi
 router.get('/:attendanceId/selfie', getAttendanceSelfie);
 router.post('/override', restrictTo('teacher', 'admin'), restrictToActiveOnly, overrideAttendance);
 router.get('/reports/overview', restrictTo('teacher', 'admin'), restrictToActiveOnly, getReportsOverview);
+router.get('/live-summary', restrictTo('teacher', 'admin'), restrictToActiveOnly, getLiveAttendanceSummary);
+router.get('/audit-logs', restrictTo('teacher', 'admin'), restrictToActiveOnly, getAttendanceAuditLogs);
 
 module.exports = router;

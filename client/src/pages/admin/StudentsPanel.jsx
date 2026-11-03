@@ -110,18 +110,10 @@ export default function StudentsPanel() {
             Student Roster & Cohort Management
           </h1>
           <p className="text-xs sm:text-sm text-muted mt-0.5">
-            Manage student enrollments, bulk CSV class onboarding, and batch transfers
+            Manage student enrollments, academic rosters, and division transfers
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            onClick={() => setShowBulkModal(true)}
-            variant="primary"
-            size="sm"
-            className="gap-1.5"
-          >
-            <Upload size={14} /> Bulk CSV Import
-          </Button>
           <Button
             onClick={fetchStudents}
             variant="outline"
@@ -137,23 +129,35 @@ export default function StudentsPanel() {
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
+          title="Total Enrolled"
           label="Total Enrolled"
           value={loading ? '—' : stats.total}
+          subtitle="Registered students"
+          sub="Registered students"
           icon={Users}
         />
         <StatCard
+          title="Active Accounts"
           label="Active Accounts"
           value={loading ? '—' : stats.active}
+          subtitle="Full access granted"
+          sub="Full access granted"
           icon={UserCheck}
         />
         <StatCard
+          title="Pending Verifications"
           label="Pending Verifications"
           value={loading ? '—' : stats.pending}
+          subtitle="Requires approval"
+          sub="Requires approval"
           icon={Clock}
         />
         <StatCard
+          title="Rejected / Blocked"
           label="Rejected / Blocked"
           value={loading ? '—' : stats.rejected}
+          subtitle="Denied accounts"
+          sub="Denied accounts"
           icon={UserX}
         />
       </div>
