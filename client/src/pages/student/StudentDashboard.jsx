@@ -261,52 +261,6 @@ function StudentOverview() {
         />
       </div>
 
-      {/* ── STUDENT IDENTITY & FULL REGISTRATION PROFILE CARD ── */}
-      <Card
-        hoverable
-        onClick={() => setProfileModalOpen(true)}
-        className="p-4 sm:p-5 cursor-pointer bg-gradient-to-r from-surface via-surface to-indigo-50/40 dark:to-indigo-950/20 border-line hover:border-brand/40 group transition-all duration-200 shadow-xs"
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold font-display text-lg flex items-center justify-center shadow-md ring-4 ring-indigo-500/10 shrink-0 group-hover:scale-105 transition-transform">
-              {user?.name?.charAt(0)?.toUpperCase() || 'S'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-sm sm:text-base font-bold font-display text-ink group-hover:text-brand transition-colors truncate">
-                  {user?.name || 'Student Profile'}
-                </h3>
-                <Badge variant="present" size="sm">Active Student</Badge>
-              </div>
-              <p className="text-xs text-muted mt-0.5 flex items-center gap-2 flex-wrap">
-                <span>Roll No: <strong className="text-ink font-mono font-semibold">{info.roll_number || user?.roll_number || '—'}</strong></span>
-                <span>•</span>
-                <span>{info.course || user?.course || 'Undergraduate'}</span>
-                <span>•</span>
-                <span>Div {info.division || user?.division || 'A'}</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                setProfileModalOpen(true)
-              }}
-              className="text-xs font-semibold group-hover:border-brand/40 group-hover:text-brand"
-            >
-              <User className="w-3.5 h-3.5 text-brand" />
-              <span>View Full Registration Details</span>
-              <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:translate-x-0.5 transition-transform" />
-            </Button>
-          </div>
-        </div>
-      </Card>
-
       {/* ── CRITICAL ATTENDANCE ALERT (If below 75%) ── */}
       {overallPct < 75 && !statsLoading && (
         <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl p-4 flex items-start gap-3">
