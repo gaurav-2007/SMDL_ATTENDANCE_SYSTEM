@@ -27,8 +27,8 @@ export function dataUrlToBlob(dataUrl) {
 }
 
 /**
- * Triggers a file download or native Android Share dialog for an attachment.
- * Works for both Base64 Data URLs and remote HTTP/HTTPS URLs.
+ * Downloads an attachment to local device storage.
+ * Works seamlessly across web browsers and mobile WebViews without forcing open share sheets.
  */
 export async function downloadAttachment(url, fileName = 'attachment') {
   if (!url) {
@@ -44,28 +44,6 @@ export async function downloadAttachment(url, fileName = 'attachment') {
       return
     }
 
-    // Try Native Share API first (supported by modern Android WebViews & mobile browsers)
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
-      try {
-        const file = new File([blob], fileName, { type: blob.type })
-        if (navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: fileName,
-            text: `Attachment: ${fileName}`,
-          })
-          toast.success('Attachment saved / shared successfully!')
-          return
-        }
-      } catch (shareErr) {
-        if (shareErr.name === 'AbortError') {
-          return // User cancelled share sheet
-        }
-        console.warn('[attachmentHelper] navigator.share error, falling back:', shareErr.message)
-      }
-    }
-
-    // Standard DOM Blob anchor download fallback (Desktop & web)
     try {
       const blobUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -75,7 +53,7 @@ export async function downloadAttachment(url, fileName = 'attachment') {
       a.click()
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
-      toast.success(`Downloading ${fileName}...`)
+      toast.success(`Downloaded ${fileName}`)
       return
     } catch (blobErr) {
       console.warn('[attachmentHelper] Blob download failed:', blobErr.message)
@@ -92,30 +70,71 @@ export async function downloadAttachment(url, fileName = 'attachment') {
     }
   }
 
-  const a = document.createElement('a')
-  a.href = url
-  a.download = fileName
-  a.target = '_blank'
-  a.rel = 'noopener noreferrer'
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+  try {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    toast.success(`Downloading ${fileName}...`)
+  } catch (err) {
+    window.open(url, '_blank')
+  }
+}
+
+/**
+ * Shares an attachment directly to WhatsApp or native device share sheet.
+ * Supported on mobile phones (Android/iOS) and web.
+ */
+export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attachment') {
+  if (!attachment) return
+
+  const fileName = attachment.file_name || 'Notice_Attachment'
+  const url = attachment.file_url
+
+  // 1. Try Native Share API with File (Supported on mobile Android WebView / Safari)
+  if (url && url.startsWith('data:') && typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
+    try {
+      const blob = dataUrlToBlob(url)
+      if (blob) {
+        const file = new File([blob], fileName, { type: blob.type })
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: title,
+            text: `*${title}*\nAttached: ${fileName}\nSMDL Attendance System`,
+          })
+          toast.success('Shared successfully!')
+          return
+        }
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      console.warn('[attachmentHelper] Native file share cancelled/failed, falling back to WhatsApp link:', err.message)
+    }
+  }
+
+  // 2. Direct WhatsApp Web / App intent
+  const message = `*${title}*\nAttachment: ${fileName}\nFrom SMDL College Attendance Portal`
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+  window.open(whatsappUrl, '_blank')
+  toast.success('Opening WhatsApp...')
 }
 
 /**
  * Opens an attachment (PDF, image, document) safely across web and native Android platforms.
- * Handles data: URLs smoothly without crashing Android Chrome Custom Tabs.
  */
 export async function openAttachment(url, fileName = 'document') {
   if (!url) return
 
-  // If it's a data URL, download / view via downloadAttachment
   if (url.startsWith('data:')) {
     await downloadAttachment(url, fileName)
     return
   }
 
-  // If remote URL on native Android
   if (Capacitor.isNativePlatform()) {
     try {
       await Browser.open({ url, presentationStyle: 'popover' })
