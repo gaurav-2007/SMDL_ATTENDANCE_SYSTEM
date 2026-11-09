@@ -16,26 +16,39 @@ const getNotifications = asyncHandler(async (req, res) => {
   const filter = req.query.filter || 'all'; // 'all' or 'unread'
 
   const offset = (page - 1) * limit;
+  // 24-Hour retention cutoff: Only show notifications from the last 24 hours
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  // 1. Fetch unread count strictly for req.user.id
+  // Opportunistic background pruning: clean up any stale records for this user immediately
+  supabaseAdmin
+    .from('notifications')
+    .delete()
+    .eq('user_id', userId)
+    .lt('created_at', cutoff24h)
+    .then(() => {})
+    .catch(() => {});
+
+  // 1. Fetch unread count strictly for req.user.id within the last 24 hours
   let unreadCount = 0;
   try {
     const { count, error: countErr } = await supabaseAdmin
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .eq('is_read', false);
+      .eq('is_read', false)
+      .gte('created_at', cutoff24h);
 
     if (!countErr && count !== null) {
       unreadCount = count;
     }
   } catch (_e) {}
 
-  // 2. Fetch notifications
+  // 2. Fetch notifications created within the last 24 hours
   let query = supabaseAdmin
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
+    .gte('created_at', cutoff24h)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 

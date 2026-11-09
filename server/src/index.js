@@ -13,6 +13,7 @@ const announcementRoutes = require('./routes/announcementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const { initLectureScheduler } = require('./services/lectureScheduler');
 const { initSelfieCleanupJob } = require('./services/selfieCleanupJob');
+const { initNotificationCleanupJob } = require('./services/notificationCleanupJob');
 
 const helmet = require('helmet');
 const hpp = require('hpp');
@@ -105,6 +106,9 @@ initLectureScheduler();
 
 // Initialize 48-hour attendance selfie retention cleanup job (runs hourly)
 initSelfieCleanupJob();
+
+// Initialize 24-hour notification retention cleanup job (runs hourly, deletes >24h old notifications)
+initNotificationCleanupJob();
 
 // Direct alias for Section 3: GET /student/today-classes & /api/student/today-classes
 const protect = require('./middleware/auth');

@@ -347,6 +347,9 @@ export default function NotificationCenter() {
                   <Bell className="w-3.5 h-3.5" />
                 </div>
                 <h3 className="text-sm font-bold font-display text-ink tracking-tight truncate">Notifications</h3>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-muted/10 text-muted border border-line shrink-0" title="Only notifications from the last 24 hours are displayed">
+                  24h
+                </span>
                 {unreadCount > 0 && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 dark:bg-rose-950/40 dark:border-rose-800/40 dark:text-rose-400 font-mono shrink-0">
                     {unreadCount} new
@@ -456,8 +459,8 @@ export default function NotificationCenter() {
                   <p className="text-sm font-bold text-ink">No notifications</p>
                   <p className="text-xs text-muted mt-1 max-w-[240px] mx-auto leading-relaxed">
                     {activeTab === 'unread'
-                      ? "You're all caught up! No unread notices."
-                      : 'Class updates, reminders and notices will appear here.'}
+                      ? "You're all caught up! No unread notices in the past 24 hours."
+                      : 'No notifications in the past 24 hours. Older notifications are automatically cleared.'}
                   </p>
                 </div>
               ) : (
