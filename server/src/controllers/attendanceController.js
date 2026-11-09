@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { getKolkataDateString } = require('../utils/dateUtils');
+const { getKolkataDateString, getKolkataMinutes } = require('../utils/dateUtils');
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const {
@@ -173,7 +173,7 @@ const markAttendance = asyncHandler(async (req, res) => {
   const [eh, em] = (lecture.end_time || '23:59').split(':').map(Number);
   const startMin = (sh || 0) * 60 + (sm || 0);
   const endMin = (eh || 0) * 60 + (em || 0);
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = getKolkataMinutes(now);
   const expirationMin = Math.min(endMin + 60, startMin + 120);
 
   if (nowMin < startMin) {
