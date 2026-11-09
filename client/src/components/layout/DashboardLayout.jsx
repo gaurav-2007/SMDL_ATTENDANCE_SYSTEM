@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 import NotificationCenter from '../notifications/NotificationCenter'
 import UserProfileModal from '../profile/UserProfileModal'
+import PermissionSetupModal from '../permissions/PermissionSetupModal'
 import { Badge } from '../ui'
 
 // Navigation configuration per role
@@ -284,6 +285,9 @@ export default function DashboardLayout({ children }) {
         onClose={() => setShowProfileModal(false)}
         user={user}
       />
+
+      {/* Global Post-Login Permissions Setup Modal */}
+      <PermissionSetupModal />
 
       {/* ── MOBILE BOTTOM NAVIGATION BAR (Height 56px + Safe-Area) ── */}
       <nav
