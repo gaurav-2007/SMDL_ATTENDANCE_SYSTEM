@@ -1,5 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 import { Browser } from '@capacitor/browser'
+import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
 import toast from 'react-hot-toast'
 
 /**
@@ -38,6 +40,39 @@ export async function downloadAttachment(url, fileName = 'attachment') {
 
   // Case A: Base64 Data URL (images, documents, circulars)
   if (url.startsWith('data:')) {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const base64Data = url.split(',')[1]
+        const written = await Filesystem.writeFile({
+          path: fileName,
+          data: base64Data,
+          directory: Directory.Cache,
+          recursive: true,
+        })
+        try {
+          await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Documents,
+            recursive: true,
+          })
+        } catch (_dErr) {}
+
+        if (written?.uri) {
+          await Share.share({
+            title: fileName,
+            url: written.uri,
+            dialogTitle: 'Save / Open Attachment',
+          })
+        }
+        toast.success(`📎 ${fileName} ready! Save to device or open.`)
+        return
+      } catch (nativeErr) {
+        if (nativeErr?.message?.includes('cancel') || nativeErr?.message?.includes('canceled')) return
+        console.warn('[attachmentHelper] Native save error:', nativeErr)
+      }
+    }
+
     const blob = dataUrlToBlob(url)
     if (!blob) {
       toast.error('Unable to parse attachment data')

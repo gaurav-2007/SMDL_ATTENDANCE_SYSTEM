@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
+import { Capacitor } from '@capacitor/core'
+import { exportReportFile } from '../../utils/fileExportHelper'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Button, StatCard, Skeleton, EmptyState, Modal
@@ -78,38 +80,15 @@ export default function ReportsPanel() {
 
     const csvContent = '\uFEFF' + [...summaryRows.map(r => r.join(',')), ...rows.map(r => r.join(','))].join('\r\n')
     const fileName = `SMDL_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
 
-    // On mobile / Android: Try Native Share API so user can pick where to save (Downloads, Files, Google Drive, WhatsApp, Sheets)
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
-      try {
-        const fileObj = new File([blob], fileName, { type: 'text/csv' })
-        if (navigator.canShare({ files: [fileObj] })) {
-          await navigator.share({
-            files: [fileObj],
-            title: 'SMDL Attendance Defaulter Report (CSV)',
-            text: `SMDL College Attendance Report - Last ${period} Days`
-          })
-          toast.success('📊 CSV Report ready! Saved/shared to your chosen location.')
-          return
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') return
-        console.warn('Share error:', err.message)
-      }
-    }
-
-    // Standard Browser Anchor Download (Desktop Web & Android Fallback)
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', fileName)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    toast.success('📊 CSV Report downloaded! Check your device Downloads folder.')
+    await exportReportFile({
+      content: csvContent,
+      fileName,
+      mimeType: 'text/csv;charset=utf-8;',
+      dialogTitle: 'Save / Open CSV Attendance Report',
+      mobileSuccessMsg: '📊 CSV Report ready! Tap "Save to device" to save in Downloads, or open in Excel / Sheets.',
+      webSuccessMsg: '📊 CSV Report downloaded! Check your browser Downloads folder.',
+    })
   }
 
     function getRegisterHTML() {
@@ -194,9 +173,23 @@ export default function ReportsPanel() {
 </html>`
   }
 
-  function triggerPrint() {
+  async function triggerPrint() {
     if (!stats) return toast.error('No report data available')
     const html = getRegisterHTML()
+
+    // On native mobile (Capacitor Android): opening iframe print fails in WebView.
+    // Instead, save and open the HTML register so user can Print/Save as PDF via their device!
+    if (Capacitor.isNativePlatform()) {
+      const fileName = `SMDL_Attendance_Register_${new Date().toISOString().slice(0, 10)}.html`
+      await exportReportFile({
+        content: html,
+        fileName,
+        mimeType: 'text/html;charset=utf-8;',
+        dialogTitle: 'Print or Save Register as PDF',
+        mobileSuccessMsg: '📄 Document ready! Choose Chrome or Drive to Print or Save as PDF.',
+      })
+      return
+    }
 
     try {
       let iframe = document.getElementById('print-register-iframe')
@@ -226,7 +219,7 @@ export default function ReportsPanel() {
       }, 350)
       toast.success('Opening print dialog...')
     } catch (e) {
-      toast.error('Print unavailable on this device. Use Download HTML option.')
+      toast.error('Print unavailable on this device. Use Save HTML option.')
     }
   }
 
@@ -234,34 +227,15 @@ export default function ReportsPanel() {
     if (!stats) return toast.error('No report data available')
     const html = getRegisterHTML()
     const fileName = `SMDL_Attendance_Defaulter_Register_${new Date().toISOString().slice(0, 10)}.html`
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8;' })
 
-    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
-      try {
-        const fileObj = new File([blob], fileName, { type: 'text/html' })
-        if (navigator.canShare({ files: [fileObj] })) {
-          await navigator.share({
-            files: [fileObj],
-            title: 'SMDL Defaulter Register (HTML)',
-            text: 'SMDL Official Attendance Register'
-          })
-          toast.success('📄 Official Register shared/saved!')
-          return
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') return
-      }
-    }
-
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', fileName)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    toast.success('📄 Official Register HTML downloaded to Downloads folder!')
+    await exportReportFile({
+      content: html,
+      fileName,
+      mimeType: 'text/html;charset=utf-8;',
+      dialogTitle: 'Save / Open Official Register',
+      mobileSuccessMsg: '📄 Official Register ready! Tap "Save to device" to save in Downloads, or open in browser.',
+      webSuccessMsg: '📄 Official Register downloaded! Check your browser Downloads folder.',
+    })
   }
 
   function handlePrintRegisterClick() {
