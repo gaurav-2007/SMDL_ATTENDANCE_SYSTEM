@@ -26,8 +26,9 @@ router.get('/courses', getCourses);
 router.get('/divisions', getDivisions);
 router.get('/subjects', getSubjects);
 
-// Protected Read access (active users can view timetables and teacher assignments)
-router.get('/teachers-list', protect, restrictToActiveOnly, getTeachersList);
+// Admin Read access (faculty emails and directory restricted strictly to active admins)
+router.get('/teachers-list', protect, restrictTo('admin'), restrictToActiveOnly, getTeachersList);
+// Protected Read access (active users can view their authorized division timetable)
 router.get('/timetable/:division_id', protect, restrictToActiveOnly, getDivisionTimetable);
 
 // Administrative Academic Management (STRICTLY ADMIN ONLY)

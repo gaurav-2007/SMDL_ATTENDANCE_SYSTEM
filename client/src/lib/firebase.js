@@ -1,5 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import api from './api';
 
 // Public Web Client Configuration (Safe for browser)
@@ -64,11 +66,44 @@ async function getFirebaseMessaging() {
   return null;
 }
 
-import { Capacitor } from '@capacitor/core'
-import { PushNotifications } from '@capacitor/push-notifications'
-
 // Guard to prevent repeated taps from triggering overlapping registration attempts
-let isPushRegistering = false
+let isPushRegistering = false;
+
+/**
+ * Sends FCM token to backend API to persist in user_devices table
+ */
+async function registerTokenWithBackend(fcmToken, deviceType = 'WEB', deviceName = 'Device') {
+  if (!fcmToken) return;
+  try {
+    await api.post('/notifications/devices', {
+      fcm_token: fcmToken,
+      device_type: deviceType,
+      device_name: deviceName,
+    });
+  } catch (err) {
+    console.warn('[firebase.js] Backend device token registration notice:', err?.response?.data?.message || err.message);
+  }
+}
+
+/**
+ * Ensures native notification channel exists on Android (matches backend fcmService)
+ */
+async function ensureAndroidChannel() {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    await PushNotifications.createChannel({
+      id: 'smdl_alerts',
+      name: 'SMDL Campus Alerts',
+      description: 'Attendance alerts, lecture notifications, and campus updates',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      sound: 'default',
+    });
+  } catch (e) {
+    console.warn('[firebase.js] Channel create warning:', e.message);
+  }
+}
 
 /**
  * Requests notification permission, retrieves FCM token,
@@ -78,122 +113,125 @@ export async function requestWebPushPermission() {
   // --- NATIVE ANDROID FCM WORKFLOW (Capacitor) ---
   if (Capacitor.isNativePlatform()) {
     if (isPushRegistering) {
-      return { supported: true, granted: false, reason: 'Push notification registration already in progress' }
+      return { supported: true, granted: false, reason: 'Push notification registration already in progress' };
     }
-    isPushRegistering = true
+    isPushRegistering = true;
 
     try {
-      // 1. Create native Android notification channel matching backend fcmService
-      await PushNotifications.createChannel({
-        id: 'smdl_alerts',
-        name: 'SMDL Campus Alerts',
-        description: 'Attendance alerts, lecture notifications, and campus updates',
-        importance: 5,
-        visibility: 1,
-        vibration: true,
-      }).catch((e) => console.warn('[firebase.js] Channel create warning:', e.message))
+      // 1. Create native Android notification channel
+      await ensureAndroidChannel();
 
-      // 2. Request runtime push permission (Android 13+)
-      let permStatus = await PushNotifications.checkPermissions()
+      // 2. Proactively re-sync cached token if available so backend stays active immediately
+      const cachedToken = localStorage.getItem('smdl_fcm_token');
+      if (cachedToken) {
+        registerTokenWithBackend(cachedToken, 'ANDROID', 'Android Device');
+      }
+
+      // 3. Check and request runtime push permission (Android 13+)
+      let permStatus = await PushNotifications.checkPermissions();
       if (permStatus.receive !== 'granted') {
-        permStatus = await PushNotifications.requestPermissions()
+        permStatus = await PushNotifications.requestPermissions();
       }
 
       if (permStatus.receive !== 'granted') {
-        isPushRegistering = false
-        return { supported: true, granted: false, reason: 'Push notification permission denied by user' }
+        isPushRegistering = false;
+        return { supported: true, granted: false, reason: 'Push notification permission denied by user' };
       }
 
-      // 3. Register with Google FCM and await token or error with single-use listener cleanup
+      // 4. Register with Google FCM and await token with timeout safety
       return await new Promise((resolve) => {
-        let settled = false
-        let regListener = null
-        let errListener = null
+        let settled = false;
+        let regListener = null;
+        let errListener = null;
 
         const cleanup = () => {
-          if (regListener?.remove) regListener.remove()
-          if (errListener?.remove) errListener.remove()
-          clearTimeout(timeoutId)
-          isPushRegistering = false
-        }
+          if (regListener?.remove) regListener.remove();
+          if (errListener?.remove) errListener.remove();
+          clearTimeout(timeoutId);
+          isPushRegistering = false;
+        };
 
         const timeoutId = setTimeout(() => {
           if (!settled) {
-            settled = true
-            cleanup()
-            resolve({
-              supported: true,
-              granted: false,
-              reason: 'Push notification registration timed out. Please check network/Google Play Services.',
-            })
+            settled = true;
+            cleanup();
+            if (cachedToken) {
+              resolve({ supported: true, granted: true, token: cachedToken });
+            } else {
+              resolve({
+                supported: true,
+                granted: false,
+                reason: 'Push notification registration timed out. Please check network/Google Play Services.',
+              });
+            }
           }
-        }, 15000)
+        }, 12000);
 
         Promise.all([
           PushNotifications.addListener('registration', async (token) => {
-            if (settled) return
-            settled = true
-            const nativeToken = token?.value
+            if (settled) return;
+            settled = true;
+            const nativeToken = token?.value;
             if (nativeToken) {
-              localStorage.setItem('smdl_fcm_token', nativeToken)
-              try {
-                await api.post('/notifications/devices', {
-                  fcm_token: nativeToken,
-                  device_type: 'ANDROID',
-                  device_name: 'Android Device',
-                })
-              } catch (_e) {
-                // Token registration recorded locally
-              }
+              localStorage.setItem('smdl_fcm_token', nativeToken);
+              await registerTokenWithBackend(nativeToken, 'ANDROID', 'Android Device');
             }
-            cleanup()
-            resolve({ supported: true, granted: true, token: nativeToken })
+            cleanup();
+            resolve({ supported: true, granted: true, token: nativeToken });
           }),
           PushNotifications.addListener('registrationError', (err) => {
-            if (settled) return
-            settled = true
-            console.warn('[firebase.js] Native FCM registration error:', err?.error || err)
-            cleanup()
-            resolve({
-              supported: true,
-              granted: false,
-              error: err?.error || err?.message || 'Push notification registration failed',
-              reason: err?.error || err?.message || 'Push notification registration failed',
-            })
+            if (settled) return;
+            settled = true;
+            console.warn('[firebase.js] Native FCM registration error:', err?.error || err);
+            cleanup();
+            if (cachedToken) {
+              resolve({ supported: true, granted: true, token: cachedToken });
+            } else {
+              resolve({
+                supported: true,
+                granted: false,
+                error: err?.error || err?.message || 'Push notification registration failed',
+                reason: err?.error || err?.message || 'Push notification registration failed',
+              });
+            }
           }),
         ]).then(([regHandle, errHandle]) => {
-          regListener = regHandle
-          errListener = errHandle
+          regListener = regHandle;
+          errListener = errHandle;
 
           // Trigger native register() only after listeners are established
           PushNotifications.register().catch((regErr) => {
-            if (settled) return
-            settled = true
-            console.warn('[firebase.js] PushNotifications.register() call rejected:', regErr?.message || regErr)
-            cleanup()
-            resolve({
-              supported: true,
-              granted: false,
-              error: regErr?.message || 'Push notification service unavailable',
-              reason: regErr?.message || 'Push notification service unavailable',
-            })
-          })
+            if (settled) return;
+            settled = true;
+            console.warn('[firebase.js] PushNotifications.register() call rejected:', regErr?.message || regErr);
+            cleanup();
+            if (cachedToken) {
+              resolve({ supported: true, granted: true, token: cachedToken });
+            } else {
+              resolve({
+                supported: true,
+                granted: false,
+                error: regErr?.message || 'Push notification service unavailable',
+                reason: regErr?.message || 'Push notification service unavailable',
+              });
+            }
+          });
         }).catch((listenerErr) => {
-          if (settled) return
-          settled = true
-          cleanup()
+          if (settled) return;
+          settled = true;
+          cleanup();
           resolve({
             supported: true,
             granted: false,
             error: listenerErr?.message,
             reason: 'Failed to initialize notification listeners',
-          })
-        })
-      })
+          });
+        });
+      });
     } catch (err) {
-      isPushRegistering = false
-      console.warn('[firebase.js] Native push exception:', err.message)
-      return { supported: true, granted: false, error: err.message, reason: err.message }
+      isPushRegistering = false;
+      console.warn('[firebase.js] Native push exception:', err.message);
+      return { supported: true, granted: false, error: err.message, reason: err.message };
     }
   }
 
@@ -237,16 +275,8 @@ export async function requestWebPushPermission() {
     const currentToken = await getToken(msgInstance, tokenOptions);
 
     if (currentToken) {
-      // Store locally for lifecycle management
       localStorage.setItem('smdl_fcm_token', currentToken);
-
-      // Register token with backend API
-      await api.post('/notifications/devices', {
-        fcm_token: currentToken,
-        device_type: 'WEB',
-        device_name: `${navigator.userAgent.slice(0, 100)}`,
-      });
-
+      await registerTokenWithBackend(currentToken, 'WEB', `${navigator.userAgent.slice(0, 100)}`);
       return { supported: true, granted: true, token: currentToken };
     }
 
@@ -255,6 +285,26 @@ export async function requestWebPushPermission() {
     console.warn('[firebase.js] Web push permission/token error:', err.message);
     return { supported: true, granted: false, error: err.message };
   }
+}
+
+/**
+ * Passive sync: checks if notifications are already permitted and registers token without prompting
+ */
+export async function syncPushDeviceToken() {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await ensureAndroidChannel();
+      const perm = await PushNotifications.checkPermissions();
+      if (perm.receive === 'granted') {
+        return await requestWebPushPermission();
+      }
+    } else if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      return await requestWebPushPermission();
+    }
+  } catch (e) {
+    console.warn('[firebase.js] Passive push sync warning:', e.message);
+  }
+  return { supported: true, granted: false };
 }
 
 /**
@@ -276,13 +326,33 @@ export async function unregisterWebPushToken() {
 }
 
 /**
- * Foreground message listener callback
+ * Foreground message listener callback (works seamlessly for both Web & Native Android)
  */
 export function onMessageListener(callback) {
-  let unsubscribe = () => {};
+  let unsubscribeWeb = () => {};
+  let nativeHandle = null;
+
+  // 1. Native Android foreground push listener
+  if (Capacitor.isNativePlatform()) {
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      if (typeof callback === 'function') {
+        callback({
+          notification: {
+            title: notification.title || notification.data?.title || 'Notification',
+            body: notification.body || notification.data?.body || notification.data?.message || '',
+          },
+          data: notification.data || {},
+        });
+      }
+    }).then((handle) => {
+      nativeHandle = handle;
+    }).catch((e) => console.warn('[firebase.js] Native listener hook warning:', e.message));
+  }
+
+  // 2. Web foreground message listener
   getFirebaseMessaging().then((msgInstance) => {
     if (msgInstance) {
-      unsubscribe = onMessage(msgInstance, (payload) => {
+      unsubscribeWeb = onMessage(msgInstance, (payload) => {
         if (typeof callback === 'function') {
           callback(payload);
         }
@@ -291,6 +361,27 @@ export function onMessageListener(callback) {
   });
 
   return () => {
-    if (typeof unsubscribe === 'function') unsubscribe();
+    if (nativeHandle?.remove) nativeHandle.remove();
+    if (typeof unsubscribeWeb === 'function') unsubscribeWeb();
+  };
+}
+
+/**
+ * Global Android notification tap action listener
+ */
+export function setupNotificationTapListener(onTap) {
+  if (!Capacitor.isNativePlatform()) return () => {};
+
+  let handle = null;
+  PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+    if (typeof onTap === 'function') {
+      onTap(action?.notification?.data || {});
+    }
+  }).then((h) => {
+    handle = h;
+  }).catch((e) => console.warn('[firebase.js] Tap listener warning:', e.message));
+
+  return () => {
+    if (handle?.remove) handle.remove();
   };
 }

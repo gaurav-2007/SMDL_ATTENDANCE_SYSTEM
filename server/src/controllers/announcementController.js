@@ -1,9 +1,11 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { assertActiveUser } = require('../middleware/roles');
 
 // @desc   Get announcements (filtered for user or all for admin)
 // @route  GET /api/announcements
 const getAnnouncements = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const user = req.user;
 
   // Simple query approach to avoid foreign key alias mismatches
@@ -112,6 +114,7 @@ const getAnnouncements = asyncHandler(async (req, res) => {
 // @desc   Create a new announcement with optional attachment
 // @route  POST /api/announcements
 const createAnnouncement = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const { title, content, target_type, target_id, attachment } = req.body;
 
   if (!title?.trim() || !content?.trim()) {
@@ -237,6 +240,7 @@ const createAnnouncement = asyncHandler(async (req, res) => {
 // @desc   Delete announcement
 // @route  DELETE /api/announcements/:id
 const deleteAnnouncement = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const { id } = req.params;
 
   // 1. Fetch announcement to check existence and ownership

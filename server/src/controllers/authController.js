@@ -112,6 +112,15 @@ const USER_SELECT =
   'id, email, full_name, role, status, phone, password_hash, last_login_at, created_at, updated_at';
 
 const sendRegistrationOtp = asyncHandler(async (req, res) => {
+  // Defensive normalization: support object payloads passed by some client versions
+  if (typeof req.body?.email === 'object' && req.body.email !== null) {
+    const inner = req.body.email;
+    req.body.role = req.body.role || inner.role;
+    req.body.roll_number = req.body.roll_number || inner.roll_number;
+    req.body.employee_id = req.body.employee_id || inner.employee_id;
+    req.body.email = inner.email;
+  }
+
   const parsed = sendOtpSchema.parse(req.body);
   const email = parsed.email.trim().toLowerCase();
   const role = parsed.role || 'student';
@@ -187,9 +196,33 @@ const verifyRegistrationOtp = asyncHandler(async (req, res) => {
     data: {
       email,
       otp_token: result.otpToken,
+      token: result.otpToken, // Backward-compatible alias for existing APK / client callers
     },
   });
 });
+
+const normalizeCourseToken = (val) =>
+  String(val || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+const doesCourseMatchBranch = (course, branchStr) => {
+  if (!course || !branchStr) return false;
+  const rawLower = branchStr.trim().toLowerCase();
+  const normBranch = normalizeCourseToken(branchStr);
+  const cNameLower = (course.name || '').toLowerCase();
+  const cCodeLower = (course.code || '').toLowerCase();
+  const normName = normalizeCourseToken(course.name);
+  const normCode = normalizeCourseToken(course.code);
+  const codeSegments = cCodeLower.split(/[^a-z0-9]+/).filter(Boolean);
+
+  return Boolean(
+    (cNameLower && (cNameLower.includes(rawLower) || rawLower.includes(cNameLower))) ||
+    (cCodeLower && (cCodeLower === rawLower || rawLower.includes(cCodeLower) || codeSegments.includes(rawLower))) ||
+    (normName && normBranch && (normName.includes(normBranch) || normBranch.includes(normName))) ||
+    (normCode && normBranch && (normCode === normBranch || normBranch.includes(normCode)))
+  );
+};
 
 const registerStudent = asyncHandler(async (req, res) => {
   const parsed = registerStudentSchema.parse(req.body);
@@ -233,6 +266,127 @@ const registerStudent = asyncHandler(async (req, res) => {
     throw new Error('Roll number already in use');
   }
 
+  // Resolve and validate division/course consistency BEFORE creating user/student rows
+  const explicitCourseId = (parsed.course_id && parsed.course_id.trim()) ? parsed.course_id.trim() : null;
+  const explicitDivisionId = (parsed.division_id && parsed.division_id.trim()) ? parsed.division_id.trim() : null;
+  const rawBranch = (parsed.branch || parsed.department || req.body.branch || req.body.department || '').trim();
+  const className = (parsed.class || req.body.class || '').trim().toLowerCase();
+  const divName = (parsed.division || req.body.division || '').trim().toLowerCase();
+
+  let assignedCourseId = null;
+  let assignedDivisionId = null;
+
+  if (explicitDivisionId) {
+    const { data: divisionRec, error: divErr } = await supabaseAdmin
+      .from('divisions')
+      .select('id, course_id, name, division_name')
+      .eq('id', explicitDivisionId)
+      .maybeSingle();
+
+    if (divErr) {
+      res.status(500);
+      throw new Error(divErr.message || 'Failed to verify division');
+    }
+    if (!divisionRec) {
+      res.status(400);
+      throw new Error('Selected division was not found');
+    }
+
+    if (explicitCourseId && divisionRec.course_id !== explicitCourseId) {
+      res.status(400);
+      throw new Error('Selected course does not match the chosen division');
+    }
+
+    assignedDivisionId = divisionRec.id;
+    assignedCourseId = divisionRec.course_id || null;
+
+    if (rawBranch) {
+      if (!assignedCourseId) {
+        res.status(400);
+        throw new Error('Selected branch/department does not match the chosen division');
+      }
+      const { data: divisionCourse, error: courseErr } = await supabaseAdmin
+        .from('courses')
+        .select('id, name, code')
+        .eq('id', assignedCourseId)
+        .maybeSingle();
+
+      if (courseErr) {
+        res.status(500);
+        throw new Error(courseErr.message || 'Failed to verify division course');
+      }
+      if (!divisionCourse || !doesCourseMatchBranch(divisionCourse, rawBranch)) {
+        res.status(400);
+        throw new Error('Selected branch/department does not match the chosen division course');
+      }
+    }
+  } else {
+    const { data: allCourses, error: coursesErr } = await supabaseAdmin
+      .from('courses')
+      .select('id, name, code');
+
+    if (coursesErr) {
+      res.status(500);
+      throw new Error(coursesErr.message || 'Failed to verify course catalog');
+    }
+
+    const coursesList = allCourses || [];
+    if (explicitCourseId) {
+      const matchedCourse = coursesList.find((c) => c.id === explicitCourseId);
+      if (!matchedCourse) {
+        res.status(400);
+        throw new Error('Selected course was not found');
+      }
+      if (rawBranch && !doesCourseMatchBranch(matchedCourse, rawBranch)) {
+        res.status(400);
+        throw new Error('Selected branch/department does not match the selected course');
+      }
+      assignedCourseId = matchedCourse.id;
+    } else if (rawBranch && coursesList.length > 0) {
+      const match = coursesList.find((c) => doesCourseMatchBranch(c, rawBranch));
+      if (match) {
+        assignedCourseId = match.id;
+      }
+    }
+
+    // Legacy quick-registration flow compatibility (e.g. LoginPage sends class + division without division_id)
+    if (className || divName) {
+      let query = supabaseAdmin.from('divisions').select('id, course_id, name, division_name');
+      if (assignedCourseId) {
+        query = query.eq('course_id', assignedCourseId);
+      }
+      const { data: divs, error: divsErr } = await query;
+      if (divsErr) {
+        res.status(500);
+        throw new Error(divsErr.message || 'Failed to resolve student division');
+      }
+
+      if (divs && divs.length > 0) {
+        const matched = divs.find((d) => {
+          const dName = (d.name || '').toLowerCase();
+          const dDiv = (d.division_name || '').toLowerCase();
+          const matchYear = className
+            ? (dName.includes(className) ||
+              (className.includes('fy') && dName.includes('fy')) ||
+              (className.includes('sy') && dName.includes('sy')) ||
+              (className.includes('ty') && dName.includes('ty')))
+            : true;
+          const matchDiv = divName ? (dDiv === divName || dName.includes(divName)) : true;
+          return matchYear && matchDiv;
+        }) || divs[0];
+
+        if (matched) {
+          if (assignedCourseId && matched.course_id !== assignedCourseId) {
+            res.status(400);
+            throw new Error('Selected course does not match the resolved division');
+          }
+          assignedDivisionId = matched.id;
+          assignedCourseId = matched.course_id || assignedCourseId;
+        }
+      }
+    }
+  }
+
   const passwordHash = await hashPassword(parsed.password);
 
   const { data: user, error: userErr } = await supabaseAdmin
@@ -251,51 +405,6 @@ const registerStudent = asyncHandler(async (req, res) => {
   if (userErr || !user) {
     res.status(500);
     throw new Error(userErr?.message || 'Failed to create user');
-  }
-
-  let assignedCourseId = (parsed.course_id && parsed.course_id.trim()) ? parsed.course_id.trim() : null;
-  let assignedDivisionId = (parsed.division_id && parsed.division_id.trim()) ? parsed.division_id.trim() : null;
-
-  // If course_id is not set, resolve by branch/department name
-  if (!assignedCourseId && (parsed.branch || parsed.department || req.body.branch || req.body.department)) {
-    const rawBranch = (parsed.branch || parsed.department || req.body.branch || req.body.department).trim().toLowerCase();
-    const { data: allCourses } = await supabaseAdmin.from('courses').select('id, name, code');
-    if (allCourses && allCourses.length > 0) {
-      const match = allCourses.find(c => 
-        c.name.toLowerCase().includes(rawBranch) || 
-        c.code.toLowerCase().includes(rawBranch) ||
-        rawBranch.includes(c.code.toLowerCase())
-      );
-      if (match) assignedCourseId = match.id;
-    }
-  }
-
-  // Resolve division_id if not explicitly provided
-  if (!assignedDivisionId) {
-    const className = (parsed.class || req.body.class || '').trim().toLowerCase();
-    const divName = (parsed.division || req.body.division || '').trim().toLowerCase();
-    const roll = (parsed.roll_number || '').trim().toLowerCase();
-
-    let query = supabaseAdmin.from('divisions').select('id, course_id, name, division_name');
-    if (assignedCourseId) {
-      query = query.eq('course_id', assignedCourseId);
-    }
-    const { data: divs } = await query;
-
-    if (divs && divs.length > 0) {
-      const matched = divs.find(d => {
-        const dName = d.name.toLowerCase();
-        const dDiv = (d.division_name || '').toLowerCase();
-        const matchYear = className ? (dName.includes(className) || (className.includes('fy') && dName.includes('fy')) || (className.includes('sy') && dName.includes('sy')) || (className.includes('ty') && dName.includes('ty'))) : true;
-        const matchDiv = divName ? (dDiv === divName || dName.includes(divName)) : true;
-        return matchYear && matchDiv;
-      }) || divs[0];
-
-      if (matched) {
-        assignedDivisionId = matched.id;
-        assignedCourseId = assignedCourseId || matched.course_id;
-      }
-    }
   }
 
   const { error: studErr } = await supabaseAdmin.from('students').insert({
@@ -530,14 +639,11 @@ const login = asyncHandler(async (req, res) => {
     throw new Error('Invalid email, roll number, or password');
   }
 
-  if (
-    user.status === 'REJECTED' ||
-    user.status === 'SUSPENDED' ||
-    user.status === 'DISABLED'
-  ) {
+  if (user.status !== 'ACTIVE' && user.status !== 'PENDING') {
+    const statusLabel = user.status ? String(user.status).toLowerCase() : 'inactive';
     res.status(401);
     throw new Error(
-      `Account is ${user.status.toLowerCase()}. Contact admin for support.`
+      `Account is ${statusLabel}. Contact admin for support.`
     );
   }
 

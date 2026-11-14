@@ -1,6 +1,8 @@
 const crypto = require('crypto');
-const { getKolkataDateString, getKolkataMinutes } = require('../utils/dateUtils');
+const { getKolkataDateString, getKolkataDayName, getKolkataMinutes } = require('../utils/dateUtils');
 const { supabaseAdmin } = require('../config/db');
+const { assertActiveUser } = require('../middleware/roles');
+const { assertTeacherCanManageLecture } = require('./lectureController');
 const asyncHandler = require('../utils/asyncHandler');
 const {
   validateAndDecodeSelfie,
@@ -13,6 +15,233 @@ const {
 const DEFAULT_COLLEGE_LAT = 19.02479;
 const DEFAULT_COLLEGE_LON = 73.10159;
 const DEFAULT_GEOFENCE_RADIUS = 100; // default 100 meters per Step 8 requirements
+
+// Prevent duplicate lecture insertions under concurrent slot fallback requests
+const activeSlotCreationLocks = new Map();
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function getDayNameSafe(dateStr) {
+  if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  }
+  if (typeof getKolkataDayName === 'function') {
+    return getKolkataDayName();
+  }
+  return DAY_NAMES[new Date().getUTCDay()];
+}
+
+function parseStrictTime(timeStr) {
+  if (typeof timeStr !== 'string') return null;
+  const trimmed = timeStr.trim();
+  const match = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const s = match[3] !== undefined ? parseInt(match[3], 10) : 0;
+  return {
+    minutes: h * 60 + m,
+    formatted: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+  };
+}
+
+function normalizePersistedStatus(status) {
+  if (!status) return 'SCHEDULED';
+  return status === 'ACTIVE' ? 'SCHEDULED' : status;
+}
+
+function isLectureCancelled(lecture) {
+  if (!lecture) return false;
+  if (lecture.status === 'CANCELLED') return true;
+  const st = lecture.status ? String(lecture.status).toUpperCase() : 'SCHEDULED';
+  return ['SCHEDULED', 'ACTIVE'].includes(st) && Boolean(lecture.topic && lecture.topic.includes('[CANCELLED]'));
+}
+
+function hasExplicitRescheduleProvenance(lecture) {
+  if (!lecture || isLectureCancelled(lecture)) return false;
+  if (normalizePersistedStatus(lecture.status) === 'RESCHEDULED') return true;
+  return Boolean(lecture.topic && lecture.topic.includes('[RESCHEDULED]'));
+}
+
+async function assertTeacherAuthorizedForLecture(user, lecture, res) {
+  return assertTeacherCanManageLecture(user, lecture, res);
+}
+
+async function querySlotLectures(slot, todayStr, res) {
+  const { data: matches, error: matchErr } = await supabaseAdmin
+    .from('lectures')
+    .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, created_at, subject:subjects(id, name)')
+    .eq('division_id', slot.division_id)
+    .eq('lecture_date', todayStr)
+    .eq('start_time', slot.start_time)
+    .order('created_at', { ascending: true });
+
+  if (matchErr) {
+    console.error('[attendanceController] Slot lecture query failed:', {
+      slotId: slot.id,
+      divisionId: slot.division_id,
+      date: todayStr,
+      startTime: slot.start_time,
+      code: matchErr.code,
+      message: matchErr.message,
+    });
+    res.status(500);
+    throw new Error('Failed to resolve lecture session for timetable slot');
+  }
+
+  const list = matches || [];
+  if (list.length > 1) {
+    const activeMatches = list.filter((l) => !isLectureCancelled(l));
+    if (activeMatches.length === 1) {
+      return activeMatches[0];
+    }
+    if (activeMatches.length === 0) {
+      return list[0];
+    }
+    console.error('[attendanceController] Ambiguous slot match - multiple active lecture rows:', {
+      slotId: slot.id,
+      divisionId: slot.division_id,
+      subjectId: slot.subject_id,
+      date: todayStr,
+      startTime: slot.start_time,
+      matches: activeMatches.map((l) => ({ id: l.id, status: l.status, subject_id: l.subject_id })),
+    });
+    res.status(409);
+    throw new Error('Multiple conflicting lecture sessions exist for this time slot. Please contact your teacher or admin.');
+  }
+
+  return list[0] || null;
+}
+
+async function resolveOrCreateLectureForSlot(slot, todayStr, userId, res) {
+  if (!slot.division_id || !slot.subject_id) {
+    res.status(400);
+    throw new Error('Timetable slot is missing division or subject configuration');
+  }
+
+  const lockKey = `${slot.division_id}-${todayStr}-${String(slot.start_time || '').slice(0, 5)}`;
+  if (activeSlotCreationLocks.has(lockKey)) {
+    return activeSlotCreationLocks.get(lockKey);
+  }
+
+  const promise = (async () => {
+    const existingAtSlot = await querySlotLectures(slot, todayStr, res);
+    if (existingAtSlot) {
+      return existingAtSlot;
+    }
+
+    // Check whether this slot was rescheduled (and possibly progressed to ONGOING/COMPLETED) today
+    const { data: sameSubjectLectures, error: reschedErr } = await supabaseAdmin
+      .from('lectures')
+      .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, created_at, subject:subjects(id, name)')
+      .eq('division_id', slot.division_id)
+      .eq('lecture_date', todayStr)
+      .eq('subject_id', slot.subject_id)
+      .order('created_at', { ascending: true });
+
+    if (reschedErr) {
+      console.error('[attendanceController] Rescheduled slot lookup failed:', {
+        slotId: slot.id,
+        code: reschedErr.code,
+        message: reschedErr.message,
+      });
+      res.status(500);
+      throw new Error('Failed to resolve scheduled class session');
+    }
+
+    const dayName = getDayNameSafe(todayStr);
+    const { data: rawSubjectSlots, error: subSlotsErr } = await supabaseAdmin
+      .from('division_timetables')
+      .select('id, start_time')
+      .eq('division_id', slot.division_id)
+      .ilike('day_of_week', dayName)
+      .eq('subject_id', slot.subject_id);
+
+    if (subSlotsErr) {
+      console.error('[attendanceController] Timetable subject slot lookup failed:', subSlotsErr.message);
+      res.status(500);
+      throw new Error('Failed to resolve subject timetable schedule');
+    }
+
+    const subjectSlots = Array.isArray(rawSubjectSlots) && rawSubjectSlots.length > 0
+      ? rawSubjectSlots
+      : [slot];
+    const normHHMM = (t) => String(t || '').trim().slice(0, 5);
+    const slotExactTimes = new Set(subjectSlots.map((s) => normHHMM(s.start_time)).filter(Boolean));
+    slotExactTimes.add(normHHMM(slot.start_time));
+
+    const lectureTimesPresent = new Set(
+      (sameSubjectLectures || []).map((l) => normHHMM(l.start_time)).filter(Boolean)
+    );
+    const unmatchedSlotTimes = Array.from(slotExactTimes).filter((hhmm) => !lectureTimesPresent.has(hhmm));
+
+    // Only match off-slot lectures carrying explicit reschedule provenance.
+    // Normal manually created ONGOING/COMPLETED extra sessions must never hijack a timetable slot.
+    const offSlotRescheduled = (sameSubjectLectures || []).filter((l) => {
+      if (slotExactTimes.has(normHHMM(l.start_time))) return false;
+      return hasExplicitRescheduleProvenance(l);
+    });
+
+    if (unmatchedSlotTimes.length > 1 && offSlotRescheduled.length > 0) {
+      console.error('[attendanceController] Ambiguous multi-slot rescheduled lookup:', {
+        slotId: slot.id,
+        unmatchedSlotTimes,
+        offSlotIds: offSlotRescheduled.map((l) => l.id),
+      });
+      res.status(409);
+      throw new Error('Multiple timetable slots for this subject could match a rescheduled session today.');
+    }
+
+    if (offSlotRescheduled.length > 1) {
+      console.error('[attendanceController] Ambiguous off-slot rescheduled lectures for slot:', {
+        slotId: slot.id,
+        divisionId: slot.division_id,
+        subjectId: slot.subject_id,
+        matches: offSlotRescheduled.map((l) => ({ id: l.id, start_time: l.start_time, status: l.status })),
+      });
+      res.status(409);
+      throw new Error('Multiple rescheduled lecture sessions found for this subject today.');
+    }
+
+    if (offSlotRescheduled.length === 1) {
+      return offSlotRescheduled[0];
+    }
+
+    const { data: newLec, error: createLecErr } = await supabaseAdmin
+      .from('lectures')
+      .insert({
+        division_id: slot.division_id,
+        subject_id: slot.subject_id,
+        teacher_id: slot.teacher_id || null,
+        lecture_date: todayStr,
+        start_time: slot.start_time,
+        end_time: slot.end_time,
+        status: 'SCHEDULED',
+        topic: slot.subject?.name || 'Class Lecture',
+        created_by: userId || null,
+      })
+      .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, subject:subjects(id, name)')
+      .single();
+
+    if (createLecErr) {
+      if (createLecErr.code === '23505') {
+        const recovered = await querySlotLectures(slot, todayStr, res);
+        if (recovered) return recovered;
+      }
+      console.error('[attendanceController] Failed to initialize lecture from slot:', createLecErr.message);
+      res.status(500);
+      throw new Error('Failed to create lecture session from timetable slot');
+    }
+
+    return newLec;
+  })().finally(() => {
+    activeSlotCreationLocks.delete(lockKey);
+  });
+
+  activeSlotCreationLocks.set(lockKey, promise);
+  return promise;
+}
 
 /**
  * Loads the active geofence configuration from system_config table with fallback defaults.
@@ -53,7 +282,8 @@ async function getActiveGeofenceConfig() {
 
 // @desc   Get active geofence configuration (read-only for students, teachers, admins)
 // @route  GET /api/attendance/geofence-config
-const getGeofenceConfig = asyncHandler(async (_req, res) => {
+const getGeofenceConfig = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const config = await getActiveGeofenceConfig();
   res.json({
     success: true,
@@ -83,6 +313,12 @@ function calculateDistanceInMeters(lat1, lon1, lat2, lon2) {
 // @desc   Student marks attendance (GPS + Live Selfie)
 // @route  POST /api/attendance/mark
 const markAttendance = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (!['student', 'admin'].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Insufficient permissions');
+  }
+
   const { lecture_id, latitude, longitude, selfie, is_demo_bypass } = req.body;
 
   if (!lecture_id) {
@@ -90,74 +326,121 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new Error('Lecture ID is required');
   }
 
-  // 1. Get student profile
+  // 1. Get authenticated student profile from trusted DB (never trust client division/course)
   const { data: student, error: studErr } = await supabaseAdmin
     .from('students')
-    .select('id, student_id, division_id, course_id')
+    .select('id, student_id, division_id, course_id, division:divisions(id, course_id)')
     .eq('user_id', req.user.id)
-    .single();
+    .maybeSingle();
 
-  if (studErr || !student) {
+  if (studErr) {
+    console.error('[attendanceController] Student profile lookup failed:', studErr.message);
+    res.status(500);
+    throw new Error('Failed to load student profile');
+  }
+  if (!student) {
     res.status(403);
     throw new Error('Student profile not found');
+  }
+  if (!student.division_id) {
+    res.status(403);
+    throw new Error('You are not assigned to a division. Please contact the college administration.');
+  }
+  if (!student.division) {
+    res.status(403);
+    throw new Error('Access Denied: Assigned division record could not be verified.');
+  }
+  const authoritativeStudentCourseId = student.division.course_id || null;
+  if (student.course_id && authoritativeStudentCourseId !== student.course_id) {
+    res.status(403);
+    throw new Error('Access Denied: Student course enrollment is inconsistent with assigned division.');
   }
 
   // 2. Validate lecture exists (support direct lecture ID or division_timetables slot ID)
   let resolvedLectureId = lecture_id;
-  let timetableId = req.body.timetable_id || null;
 
   let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
+    .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, division:divisions(id, course_id), subject:subjects(id, name)')
     .eq('id', resolvedLectureId)
     .maybeSingle();
 
+  if (lecErr) {
+    console.error('[attendanceController] Direct lecture lookup failed:', {
+      lectureId: resolvedLectureId,
+      code: lecErr.code,
+      message: lecErr.message,
+    });
+    res.status(500);
+    throw new Error('Failed to validate lecture session');
+  }
+
   if (!lecture) {
     // Check if resolvedLectureId is a division_timetables slot ID
-    const { data: slot } = await supabaseAdmin
+    const { data: slot, error: slotErr } = await supabaseAdmin
       .from('division_timetables')
-      .select('id, division_id, subject_id, teacher_id, start_time, end_time, subject:subjects(name)')
+      .select('id, division_id, subject_id, teacher_id, start_time, end_time, division:divisions(id, course_id), subject:subjects(id, name)')
       .eq('id', resolvedLectureId)
       .maybeSingle();
 
-    if (slot) {
-      timetableId = slot.id;
-      const todayStr = getKolkataDateString();
-      const { data: existingLec } = await supabaseAdmin
-        .from('lectures')
-        .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
-        .eq('division_id', slot.division_id)
-        .eq('lecture_date', todayStr)
-        .eq('start_time', slot.start_time)
-        .maybeSingle();
+    if (slotErr) {
+      console.error('[attendanceController] Timetable slot lookup failed:', {
+        slotId: resolvedLectureId,
+        code: slotErr.code,
+        message: slotErr.message,
+      });
+      res.status(500);
+      throw new Error('Failed to verify timetable slot');
+    }
 
-      if (existingLec) {
-        lecture = existingLec;
-        resolvedLectureId = existingLec.id;
-      } else {
-        const { data: newLec } = await supabaseAdmin
-          .from('lectures')
-          .insert({
-            division_id: slot.division_id,
-            subject_id: slot.subject_id,
-            teacher_id: slot.teacher_id,
-            lecture_date: todayStr,
-            start_time: slot.start_time,
-            end_time: slot.end_time,
-            status: 'ACTIVE',
-            topic: slot.subject?.name || 'Class Lecture'
-          })
-          .select('id, lecture_date, start_time, end_time, division_id, topic, subject:subjects(name)')
-          .single();
-        lecture = newLec;
-        resolvedLectureId = newLec?.id;
+    if (slot) {
+      if (!slot.division_id || slot.division_id !== student.division_id) {
+        res.status(403);
+        throw new Error('Access Denied: You can only mark attendance for classes in your assigned division.');
       }
+      const todayStr = getKolkataDateString();
+      lecture = await resolveOrCreateLectureForSlot(slot, todayStr, req.user.id, res);
+      resolvedLectureId = lecture?.id;
     }
   }
 
   if (!lecture) {
     res.status(404);
     throw new Error('Lecture session or scheduled class slot not found');
+  }
+
+  if (!lecture.division_id || lecture.division_id !== student.division_id) {
+    res.status(403);
+    throw new Error('Access Denied: You can only mark attendance for lectures in your assigned division.');
+  }
+
+  const { data: targetDivision, error: targetDivErr } = await supabaseAdmin
+    .from('divisions')
+    .select('id, course_id')
+    .eq('id', lecture.division_id)
+    .maybeSingle();
+
+  if (targetDivErr) {
+    console.error('[attendanceController] Target division lookup failed:', targetDivErr.message);
+    res.status(500);
+    throw new Error('Failed to verify division course enrollment');
+  }
+  if (!targetDivision) {
+    res.status(403);
+    throw new Error('Access Denied: Target lecture division could not be verified.');
+  }
+  const targetDivisionCourseId = targetDivision.course_id || null;
+  if (
+    (student.course_id && targetDivisionCourseId !== student.course_id) ||
+    (authoritativeStudentCourseId !== targetDivisionCourseId)
+  ) {
+    res.status(403);
+    throw new Error('Access Denied: Student course/program does not match the target lecture division.');
+  }
+
+  if (isLectureCancelled(lecture)) {
+    res.status(400);
+    throw new Error('Cannot mark attendance for a cancelled lecture');
   }
 
   // 2.1 Timing Window Verification (+1 hr after lecture end, max 2 hrs from start)
@@ -169,12 +452,12 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new Error('Attendance can only be marked on the day of the lecture.');
   }
 
-  const [sh, sm] = (lecture.start_time || '00:00').split(':').map(Number);
-  const [eh, em] = (lecture.end_time || '23:59').split(':').map(Number);
-  const startMin = (sh || 0) * 60 + (sm || 0);
-  const endMin = (eh || 0) * 60 + (em || 0);
+  const parsedStart = parseStrictTime(String(lecture.start_time || '00:00'));
+  const parsedEnd = parseStrictTime(String(lecture.end_time || '23:59'));
+  const startMin = parsedStart ? parsedStart.minutes : 0;
+  const endMin = parsedEnd ? parsedEnd.minutes : 23 * 60 + 59;
   const nowMin = getKolkataMinutes(now);
-  const expirationMin = Math.min(endMin + 60, startMin + 120);
+  const expirationMin = Math.min(endMin + 60, startMin + 120, 23 * 60 + 59);
 
   if (nowMin < startMin) {
     res.status(400);
@@ -189,12 +472,18 @@ const markAttendance = asyncHandler(async (req, res) => {
   }
 
   // 3. Prevent duplicate attendance
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingAttErr } = await supabaseAdmin
     .from('attendance')
     .select('id, status, marked_at')
     .eq('lecture_id', resolvedLectureId)
     .eq('student_id', student.id)
     .maybeSingle();
+
+  if (existingAttErr) {
+    console.error('[attendanceController] Duplicate attendance lookup failed:', existingAttErr.message);
+    res.status(500);
+    throw new Error('Failed to check existing attendance status');
+  }
 
   if (existing) {
     res.status(400);
@@ -319,31 +608,9 @@ const markAttendance = asyncHandler(async (req, res) => {
     throw new Error(attErr?.message || 'Failed to record attendance in database');
   }
 
-  // Also record into attendance_records table if timetableId is known
-  if (timetableId) {
-    try {
-      await supabaseAdmin.from('attendance_records').insert({
-        student_id: student.id,
-        timetable_id: timetableId,
-        attendance_date: lecture?.lecture_date || getKolkataDateString(),
-        status: 'PRESENT',
-        marked_at: new Date().toISOString(),
-        marked_by: req.user.id,
-        location_verified: true,
-        selfie_url: selfie,
-      });
-    } catch (_e) {
-      // safe fallback if attendance_records table is not yet migrated
-    }
-  }
+  // Note: attendance table is the single canonical source of truth (secondary attendance_records write removed)
 
-  // If student does not have division_id assigned yet, link them to this lecture's division
-  if (!student.division_id && lecture.division_id) {
-    await supabaseAdmin
-      .from('students')
-      .update({ division_id: lecture.division_id })
-      .eq('id', student.id);
-  }
+  // Attendance marking must never assign or alter a student division.
 
   // Asynchronously dispatch ATTENDANCE_MARKED notification & check low attendance
   (async () => {
@@ -391,45 +658,28 @@ const markAttendance = asyncHandler(async (req, res) => {
 // @desc   Teacher/Admin gets attendance roster for a specific lecture
 // @route  GET /api/attendance/lecture/:lectureId
 const getLectureAttendance = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const { lectureId } = req.params;
 
   // 1. Get lecture with division
   const { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, division_id, subject_id, teacher_id, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
+    .select('id, division_id, subject_id, teacher_id, status, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
     .eq('id', lectureId)
-    .single();
+    .maybeSingle();
 
-  if (lecErr || !lecture) {
+  if (lecErr) {
+    console.error('[attendanceController] Lecture roster lookup failed:', lecErr.message);
+    res.status(500);
+    throw new Error('Failed to fetch lecture details');
+  }
+  if (!lecture) {
     res.status(404);
     throw new Error('Lecture not found');
   }
 
-  // Teacher authorization check: teacher can ONLY view roster of assigned subjects/lectures
-  if (req.user.role === 'teacher') {
-    const { data: teacherRec } = await supabaseAdmin
-      .from('teachers')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
-
-    if (teacherRec?.id) {
-      let isAuthorized = lecture.teacher_id === teacherRec.id;
-      if (!isAuthorized && lecture.subject_id) {
-        const { data: tsCheck } = await supabaseAdmin
-          .from('teacher_subjects')
-          .select('id')
-          .eq('teacher_id', teacherRec.id)
-          .eq('subject_id', lecture.subject_id)
-          .maybeSingle();
-        if (tsCheck) isAuthorized = true;
-      }
-      if (!isAuthorized) {
-        res.status(403);
-        throw new Error('Access Denied: You are not authorized to view or manage attendance for this subject.');
-      }
-    }
-  }
+  // Fail-closed teacher authorization check
+  await assertTeacherAuthorizedForLecture(req.user, lecture, res);
 
   // 2. Get all students in this division
   const { data: divisionStudents } = await supabaseAdmin
@@ -511,6 +761,7 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
 // @desc   Teacher manual override or status correction (with Audit Log)
 // @route  POST /api/attendance/override
 const overrideAttendance = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const lecture_id = req.body.lecture_id;
   const student_pk = req.body.student_pk || req.body.student_id;
   const status = req.body.status;
@@ -521,45 +772,59 @@ const overrideAttendance = asyncHandler(async (req, res) => {
     throw new Error('lecture_id, student_pk (or student_id), and status are required');
   }
 
-  // Fetch lecture info for authorization & notification metadata
-  const { data: lecture } = await supabaseAdmin
+  // Fetch lecture info for authorization, cancelled protection & notification metadata
+  const { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, lecture_date, subject_id, teacher_id, subject:subjects(name)')
+    .select('id, division_id, lecture_date, subject_id, teacher_id, status, topic, subject:subjects(name)')
     .eq('id', lecture_id)
     .maybeSingle();
 
-  if (req.user.role === 'teacher' && lecture) {
-    const { data: teacherRec } = await supabaseAdmin
-      .from('teachers')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
+  if (lecErr) {
+    console.error('[attendanceController] Override lecture lookup failed:', lecErr.message);
+    res.status(500);
+    throw new Error('Failed to verify lecture session');
+  }
+  if (!lecture) {
+    res.status(404);
+    throw new Error('Lecture not found');
+  }
+  if (isLectureCancelled(lecture)) {
+    res.status(400);
+    throw new Error('Cannot override attendance for a cancelled lecture');
+  }
 
-    if (teacherRec?.id) {
-      let isAllowed = lecture.teacher_id === teacherRec.id;
-      if (!isAllowed && lecture.subject_id) {
-        const { data: tsCheck } = await supabaseAdmin
-          .from('teacher_subjects')
-          .select('id')
-          .eq('teacher_id', teacherRec.id)
-          .eq('subject_id', lecture.subject_id)
-          .maybeSingle();
-        if (tsCheck) isAllowed = true;
-      }
-      if (!isAllowed) {
-        res.status(403);
-        throw new Error('Access Denied: You are not authorized to override attendance for this subject.');
-      }
-    }
+  await assertTeacherAuthorizedForLecture(req.user, lecture, res);
+
+  // Verify target student exists before mutating attendance so orphaned records cannot be created
+  const { data: targetStudent, error: targetStuErr } = await supabaseAdmin
+    .from('students')
+    .select('id, user_id')
+    .eq('id', student_pk)
+    .maybeSingle();
+
+  if (targetStuErr) {
+    console.error('[attendanceController] Override student lookup failed:', targetStuErr.message);
+    res.status(500);
+    throw new Error('Failed to verify student record');
+  }
+  if (!targetStudent) {
+    res.status(404);
+    throw new Error('Student record not found');
   }
 
   // 1. Check if an attendance record already exists
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: existingErr } = await supabaseAdmin
     .from('attendance')
     .select('*')
     .eq('lecture_id', lecture_id)
     .eq('student_id', student_pk)
     .maybeSingle();
+
+  if (existingErr) {
+    console.error('[attendanceController] Override attendance lookup failed:', existingErr.message);
+    res.status(500);
+    throw new Error('Failed to check existing attendance record');
+  }
 
   let attendanceRecord = null;
   const previousStatus = existing ? existing.status : 'ABSENT';
@@ -668,40 +933,99 @@ const overrideAttendance = asyncHandler(async (req, res) => {
 // @desc   Student gets their personal attendance history & metrics
 // @route  GET /api/attendance/my-stats
 const getMyStats = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (!['student', 'admin'].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Insufficient permissions');
+  }
+
   // 1. Find student
-  const { data: student } = await supabaseAdmin
+  const { data: student, error: studErr } = await supabaseAdmin
     .from('students')
     .select('id, student_id, division_id, course_id, courses(name), divisions(name, division_name)')
     .eq('user_id', req.user.id)
-    .single();
+    .maybeSingle();
 
+  if (studErr) {
+    console.error('[attendanceController] getMyStats student lookup failed:', studErr.message);
+    res.status(500);
+    throw new Error('Failed to load student profile');
+  }
   if (!student) {
     res.status(404);
     throw new Error('Student record not found');
   }
 
-  // 2. Get all lectures for student's division
-  const { data: totalLectures } = await supabaseAdmin
+  if (!student.division_id) {
+    return res.json({
+      success: true,
+      data: {
+        student_info: {
+          roll_number: student.student_id,
+          course: student.courses?.name || null,
+          division: null,
+        },
+        division_assigned: false,
+        stats: {
+          total_lectures: 0,
+          attended: 0,
+          percentage: 100,
+          is_safe: true,
+        },
+        history: [],
+      },
+    });
+  }
+
+  // 2. Get all non-cancelled lectures for student's division
+  let { data: totalLectures, error: totalLecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, topic, lecture_date, start_time, subject:subjects(name, code)')
-    .eq('division_id', student.division_id);
+    .select('id, topic, status, lecture_date, start_time, subject:subjects(name, code)')
+    .eq('division_id', student.division_id)
+    .neq('status', 'CANCELLED');
+
+  if (totalLecErr && (totalLecErr.code === '42703' || String(totalLecErr.message).includes('status'))) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, topic, lecture_date, start_time, subject:subjects(name, code)')
+      .eq('division_id', student.division_id);
+    totalLectures = retry.data;
+    totalLecErr = retry.error;
+  }
+
+  if (totalLecErr) {
+    console.error('[attendanceController] getMyStats lectures query failed:', totalLecErr.message);
+    res.status(500);
+    throw new Error('Failed to load lecture history');
+  }
+
+  const activeLectures = (totalLectures || []).filter((l) => !isLectureCancelled(l));
 
   // 3. Get student's attended records
-  const { data: attendedRecords } = await supabaseAdmin
+  const { data: attendedRecords, error: attRecErr } = await supabaseAdmin
     .from('attendance')
     .select('id, lecture_id, status, marked_at, location_verified, source')
     .eq('student_id', student.id);
 
+  if (attRecErr) {
+    console.error('[attendanceController] getMyStats attendance query failed:', attRecErr.message);
+    res.status(500);
+    throw new Error('Failed to load attendance statistics');
+  }
+
+  const activeLectureIds = new Set(activeLectures.map((l) => l.id));
   const presentSet = new Set(
-    (attendedRecords || []).filter((a) => a.status === 'PRESENT').map((a) => a.lecture_id)
+    (attendedRecords || [])
+      .filter((a) => a.status === 'PRESENT' && activeLectureIds.has(a.lecture_id))
+      .map((a) => a.lecture_id)
   );
 
-  const totalCount = totalLectures?.length || 0;
+  const totalCount = activeLectures.length;
   const attendedCount = presentSet.size;
   const percentage = totalCount > 0 ? Math.round((attendedCount / totalCount) * 100) : 100;
 
   // History with lecture details
-  const history = (totalLectures || []).map((l) => {
+  const history = activeLectures.map((l) => {
     const isPresent = presentSet.has(l.id);
     return {
       lecture_id: l.id,
@@ -736,9 +1060,10 @@ const getMyStats = asyncHandler(async (req, res) => {
 // @desc   Get college-wide attendance reports overview & defaulters
 // @route  GET /api/attendance/reports/overview
 const getReportsOverview = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const { days = '30' } = req.query;
   const daysNum = parseInt(days, 10) || 30;
-  const cutoffDate = new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const cutoffDate = getKolkataDateString(new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000));
 
   // 1. Teachers count
   const { data: teachers } = await supabaseAdmin
@@ -762,21 +1087,30 @@ const getReportsOverview = asyncHandler(async (req, res) => {
   const totalStudents = students?.length || 0;
   const activeStudents = (students || []).filter((s) => s.users?.status === 'ACTIVE').length;
 
-  // 3. Lectures in period
-  const { data: lectures } = await supabaseAdmin
+  // 3. Lectures in period (exclude cancelled)
+  const { data: lectures, error: repLecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, division_id, lecture_date')
-    .gte('lecture_date', cutoffDate);
-  const totalLectures = lectures?.length || 0;
+    .select('id, division_id, lecture_date, status, topic')
+    .gte('lecture_date', cutoffDate)
+    .neq('status', 'CANCELLED');
+
+  if (repLecErr) {
+    console.error('[attendanceController] getReportsOverview lectures query failed:', repLecErr.message);
+    res.status(500);
+    throw new Error('Failed to load lectures report');
+  }
+
+  const activeLectures = (lectures || []).filter((l) => !isLectureCancelled(l));
+  const totalLectures = activeLectures.length;
 
   // Lectures per division
   const lecturesByDivision = {};
-  (lectures || []).forEach((l) => {
+  activeLectures.forEach((l) => {
     lecturesByDivision[l.division_id] = (lecturesByDivision[l.division_id] || 0) + 1;
   });
 
   // 4. Attendance in period
-  const lectureIds = (lectures || []).map((l) => l.id);
+  const lectureIds = activeLectures.map((l) => l.id);
   let attendanceRecords = [];
   if (lectureIds.length > 0) {
     const { data: att } = await supabaseAdmin
@@ -844,6 +1178,7 @@ const getReportsOverview = asyncHandler(async (req, res) => {
 // @desc   Get authorized short-lived signed URL for an attendance selfie
 // @route  GET /api/attendance/:attendanceId/selfie
 const getAttendanceSelfie = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const { attendanceId } = req.params;
 
   // 1. Fetch attendance record (with schema cache fallback)
@@ -889,32 +1224,7 @@ const getAttendanceSelfie = asyncHandler(async (req, res) => {
       throw new Error('Access denied: You are not authorized to view this selfie');
     }
   } else if (user.role === 'teacher') {
-    // Teacher must be assigned to this lecture or teach the division/subject
-    const { data: teacherProfile } = await supabaseAdmin
-      .from('teachers')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!teacherProfile) {
-      res.status(403);
-      throw new Error('Teacher profile not found');
-    }
-
-    const isAssigned = att.lectures?.teacher_id === teacherProfile.id;
-    if (!isAssigned) {
-      const { data: ts } = await supabaseAdmin
-        .from('teacher_subjects')
-        .select('id')
-        .eq('teacher_id', teacherProfile.id)
-        .eq('subject_id', att.lectures?.subject_id)
-        .maybeSingle();
-
-      if (!ts) {
-        res.status(403);
-        throw new Error('Access denied: You are not authorized to view selfies for this lecture');
-      }
-    }
+    await assertTeacherAuthorizedForLecture(user, att.lectures || {}, res);
   } else if (user.role !== 'admin') {
     res.status(403);
     throw new Error('Unauthorized role');

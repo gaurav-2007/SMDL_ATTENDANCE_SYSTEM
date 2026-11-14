@@ -120,7 +120,8 @@ async function sendMulticastPush(devices, { title, body, data = {}, notification
       notification: {
         channelId: 'smdl_alerts',
         sound: 'default',
-        clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+        defaultSound: true,
+        defaultVibrateTimings: true,
       },
     },
   };
@@ -147,7 +148,7 @@ async function sendMulticastPush(devices, { title, body, data = {}, notification
 
     // Deactivate obsolete tokens asynchronously
     if (failedTokens.length > 0) {
-      deactivateTokens(failedTokens).catch(() => {});
+      deactivateTokens(failedTokens).catch(() => { });
     }
 
     return {

@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { assertActiveUser } = require('../middleware/roles');
 const {
   SMDL_TIMETABLE_MATRIX,
   DAY_NAMES,
@@ -13,21 +14,315 @@ const {
   getKolkataMinutes,
 } = require('../utils/dateUtils');
 
+const VALID_LECTURE_STATUSES = ['SCHEDULED', 'ACTIVE', 'ONGOING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED'];
+
+function parseStrictTime(timeStr) {
+  if (typeof timeStr !== 'string') return null;
+  const trimmed = timeStr.trim();
+  const match = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  const s = match[3] !== undefined ? parseInt(match[3], 10) : 0;
+  return {
+    minutes: h * 60 + m,
+    formatted: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`,
+  };
+}
+
+function minutesToTimeStr(totalMinutes) {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, totalMinutes));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}
+
+function parseValidDateToKolkata(dateInput, res) {
+  if (typeof dateInput !== 'string' || !dateInput.trim()) {
+    res.status(400);
+    throw new Error('Invalid lecture_date format');
+  }
+  const trimmed = dateInput.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [y, mo, d] = trimmed.split('-').map(Number);
+    const probe = new Date(Date.UTC(y, mo - 1, d));
+    if (
+      probe.getUTCFullYear() !== y ||
+      probe.getUTCMonth() !== mo - 1 ||
+      probe.getUTCDate() !== d
+    ) {
+      res.status(400);
+      throw new Error(`Invalid calendar date: ${trimmed}`);
+    }
+    return trimmed;
+  }
+  const parsed = new Date(trimmed);
+  if (isNaN(parsed.getTime())) {
+    res.status(400);
+    throw new Error('Invalid lecture_date format');
+  }
+  return getKolkataDateString(parsed);
+}
+
+function resolveScheduleTimes({ currentStart, currentEnd, newStartInput, newEndInput, res }) {
+  const hasStart = newStartInput !== undefined && newStartInput !== null && String(newStartInput).trim() !== '';
+  const hasEnd = newEndInput !== undefined && newEndInput !== null && String(newEndInput).trim() !== '';
+
+  const origStart = parseStrictTime(String(currentStart || ''));
+  const origEnd = parseStrictTime(String(currentEnd || ''));
+
+  if (hasStart) {
+    const parsedStart = parseStrictTime(String(newStartInput));
+    if (!parsedStart) {
+      res.status(400);
+      throw new Error('Invalid start_time format. Expected HH:MM or HH:MM:SS');
+    }
+
+    if (hasEnd) {
+      const parsedEnd = parseStrictTime(String(newEndInput));
+      if (!parsedEnd) {
+        res.status(400);
+        throw new Error('Invalid end_time format. Expected HH:MM or HH:MM:SS');
+      }
+      if (parsedEnd.minutes <= parsedStart.minutes) {
+        res.status(400);
+        throw new Error('Invalid time range: end_time must be strictly after start_time');
+      }
+      return { start_time: parsedStart.formatted, end_time: parsedEnd.formatted };
+    }
+
+    // Preserve original duration when start_time changes without explicit end_time
+    if (!origStart || !origEnd || origEnd.minutes <= origStart.minutes) {
+      res.status(400);
+      throw new Error('Cannot reliably preserve lecture duration; please provide a valid end_time');
+    }
+    if (parsedStart.minutes >= 23 * 60 + 59) {
+      res.status(400);
+      throw new Error('Invalid start_time: rescheduled lecture cannot start at or past 23:59');
+    }
+    const origDuration = origEnd.minutes - origStart.minutes;
+    const candidateEndMin = parsedStart.minutes + origDuration;
+    if (candidateEndMin > 23 * 60 + 59) {
+      res.status(400);
+      throw new Error('Invalid start_time: preserved lecture duration would exceed 23:59');
+    }
+    if (candidateEndMin <= parsedStart.minutes) {
+      res.status(400);
+      throw new Error('Invalid time range: rescheduled end_time cannot precede start_time');
+    }
+    return {
+      start_time: parsedStart.formatted,
+      end_time: minutesToTimeStr(candidateEndMin),
+    };
+  }
+
+  if (hasEnd) {
+    const parsedEnd = parseStrictTime(String(newEndInput));
+    if (!parsedEnd) {
+      res.status(400);
+      throw new Error('Invalid end_time format. Expected HH:MM or HH:MM:SS');
+    }
+    if (!origStart || parsedEnd.minutes <= origStart.minutes) {
+      res.status(400);
+      throw new Error('Invalid time range: end_time must be strictly after start_time');
+    }
+    return { start_time: origStart.formatted, end_time: parsedEnd.formatted };
+  }
+
+  return { start_time: currentStart, end_time: currentEnd };
+}
+
+function normalizeTopicForStatus(rawTopic, targetStatus, { preserveRescheduled = false } = {}) {
+  const cleanTopic = (rawTopic || 'Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '').trim() || 'Lecture';
+  if (targetStatus === 'CANCELLED') {
+    return `[CANCELLED] ${cleanTopic}`;
+  }
+  const keepRescheduled =
+    targetStatus === 'RESCHEDULED' ||
+    (preserveRescheduled && ['RESCHEDULED', 'ONGOING', 'COMPLETED'].includes(targetStatus));
+  if (keepRescheduled) {
+    return `[RESCHEDULED] ${cleanTopic}`;
+  }
+  return cleanTopic;
+}
+
+function isLectureCancelled(l) {
+  if (!l) return false;
+  if (l.status === 'CANCELLED') return true;
+  const st = l.status ? String(l.status).toUpperCase() : 'SCHEDULED';
+  return ['SCHEDULED', 'ACTIVE'].includes(st) && Boolean(l.topic && l.topic.includes('[CANCELLED]'));
+}
+
+function normalizePersistedStatus(status) {
+  if (!status) return 'SCHEDULED';
+  return status === 'ACTIVE' ? 'SCHEDULED' : status;
+}
+
+function hasExplicitRescheduleProvenance(l) {
+  if (!l || isLectureCancelled(l)) return false;
+  if (normalizePersistedStatus(l.status) === 'RESCHEDULED') return true;
+  return Boolean(l.topic && l.topic.includes('[RESCHEDULED]'));
+}
+
+async function requireTeacherProfile(user, res) {
+  const { data: teacherRec, error: tchErr } = await supabaseAdmin
+    .from('teachers')
+    .select('id, user_id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (tchErr) {
+    console.error('[lectureController] Failed to verify teacher profile:', tchErr.message);
+    res.status(500);
+    throw new Error('Failed to verify teacher profile');
+  }
+  if (!teacherRec || !teacherRec.id) {
+    res.status(403);
+    throw new Error('Access Denied: Teacher profile not found');
+  }
+  return teacherRec;
+}
+
+function assertActiveAdminOrTeacher(user, res) {
+  assertActiveUser(user, res);
+  if (!['admin', 'teacher'].includes(user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Admin or teacher privileges required');
+  }
+}
+
+async function assertTeacherAuthorizedForSubjectDivision(teacherId, subjectId, divisionId, res) {
+  if (!teacherId || !subjectId || !divisionId) {
+    res.status(403);
+    throw new Error('Access Denied: Subject and division assignment required to manage this lecture');
+  }
+
+  const [
+    { data: subjectRec, error: subjErr },
+    { data: tsRows, error: tsErr },
+    { data: ttRows, error: ttErr },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('subjects')
+      .select('id, division_id')
+      .eq('id', subjectId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('teacher_subjects')
+      .select('id')
+      .eq('teacher_id', teacherId)
+      .eq('subject_id', subjectId)
+      .limit(1),
+    supabaseAdmin
+      .from('division_timetables')
+      .select('id')
+      .eq('division_id', divisionId)
+      .eq('subject_id', subjectId)
+      .eq('teacher_id', teacherId)
+      .limit(1),
+  ]);
+
+  if (subjErr) {
+    console.error('[lectureController] Failed to verify subject division:', subjErr.message);
+    res.status(500);
+    throw new Error('Failed to verify subject division');
+  }
+  if (tsErr) {
+    console.error('[lectureController] Failed to verify teacher subject assignment:', tsErr.message);
+    res.status(500);
+    throw new Error('Failed to verify teacher subject assignment');
+  }
+  if (ttErr && ttErr.code !== '42P01') {
+    console.error('[lectureController] Failed to verify division timetable assignment:', ttErr.message);
+    res.status(500);
+    throw new Error('Failed to verify division timetable assignment');
+  }
+
+  if (!subjectRec || (subjectRec.division_id && subjectRec.division_id !== divisionId)) {
+    res.status(403);
+    throw new Error('Access Denied: This subject belongs to a different division');
+  }
+
+  const hasTimetableAssignment = !ttErr && Array.isArray(ttRows) && ttRows.length > 0;
+  if (hasTimetableAssignment) {
+    return true;
+  }
+
+  const hasTeacherSubject = Array.isArray(tsRows) && tsRows.length > 0;
+  if (subjectRec.division_id === divisionId && hasTeacherSubject) {
+    return true;
+  }
+
+  res.status(403);
+  throw new Error('Access Denied: Unable to verify subject and division assignment for this teacher');
+}
+
+async function assertTeacherCanManageLecture(user, lecture, res) {
+  assertActiveUser(user, res);
+  if (user.role === 'admin') {
+    return null;
+  }
+  if (user.role !== 'teacher') {
+    res.status(403);
+    throw new Error('Access Denied: Insufficient permissions');
+  }
+
+  const teacherRec = await requireTeacherProfile(user, res);
+  if (lecture.teacher_id) {
+    if (lecture.teacher_id === teacherRec.id) {
+      return teacherRec;
+    }
+    res.status(403);
+    throw new Error('Access Denied: This lecture is assigned to another teacher');
+  }
+
+  await assertTeacherAuthorizedForSubjectDivision(
+    teacherRec.id,
+    lecture.subject_id,
+    lecture.division_id,
+    res
+  );
+  return teacherRec;
+}
+
 function calculateDynamicStatus(l) {
-  if (l.status && ['CANCELLED', 'RESCHEDULED'].includes(l.status)) return l.status;
-  if (l.topic && l.topic.includes('[CANCELLED]')) return 'CANCELLED';
-  if (l.topic && l.topic.includes('[RESCHEDULED]')) return 'RESCHEDULED';
+  if (!l) return 'SCHEDULED';
+  if (isLectureCancelled(l)) return 'CANCELLED';
+
+  const persisted = normalizePersistedStatus(l.status);
+  // Explicit terminal or live statuses take precedence over topic tags and clock heuristics
+  if (persisted === 'COMPLETED') {
+    return 'COMPLETED';
+  }
+
   const today = getKolkataDateString();
-  if (l.lecture_date < today) return 'COMPLETED';
-  if (l.lecture_date > today) return 'SCHEDULED';
+  if (persisted === 'ONGOING') {
+    if (l.lecture_date && l.lecture_date < today) return 'COMPLETED';
+    return 'ONGOING';
+  }
+
+  // Past lectures (including past RESCHEDULED) must complete automatically
+  if (l.lecture_date && l.lecture_date < today) {
+    return 'COMPLETED';
+  }
+
+  const rawUpper = l.status ? String(l.status).toUpperCase() : 'SCHEDULED';
+  const isRescheduled =
+    persisted === 'RESCHEDULED' ||
+    (['SCHEDULED', 'ACTIVE'].includes(rawUpper) && Boolean(l.topic && l.topic.includes('[RESCHEDULED]')));
+
+  if (l.lecture_date && l.lecture_date > today) {
+    return isRescheduled ? 'RESCHEDULED' : 'SCHEDULED';
+  }
+
   const currentMinutes = getKolkataMinutes();
-  const [sh, sm] = (l.start_time || '00:00').split(':').map(Number);
-  const [eh, em] = (l.end_time || '23:59').split(':').map(Number);
-  const startMin = (sh || 0) * 60 + (sm || 0);
-  const endMin = (eh || 23) * 60 + (em || 59);
-  if (currentMinutes < startMin) return 'UPCOMING';
+  const parsedStart = parseStrictTime(String(l.start_time || ''));
+  const parsedEnd = parseStrictTime(String(l.end_time || ''));
+  const startMin = parsedStart ? parsedStart.minutes : 0;
+  const endMin = parsedEnd ? parsedEnd.minutes : 23 * 60 + 59;
   if (currentMinutes > endMin) return 'COMPLETED';
-  return 'ONGOING';
+  if (currentMinutes >= startMin) return 'ONGOING';
+  return isRescheduled ? 'RESCHEDULED' : 'UPCOMING';
 }
 
 // Student attendance window rule:
@@ -36,30 +331,31 @@ function calculateDynamicStatus(l) {
 // Max duration allowed is 2 hours from start time.
 function isLectureInAttendanceWindow(lecture, now = new Date()) {
   if (!lecture) return false;
+  if (isLectureCancelled(lecture)) return false;
   const todayStr = getKolkataDateString(now);
   const lectureDateStr = (lecture.lecture_date || '').toString().slice(0, 10);
   if (lectureDateStr && lectureDateStr !== todayStr) {
     return false;
   }
 
-  const [sh, sm] = (lecture.start_time || '00:00').split(':').map(Number);
-  const [eh, em] = (lecture.end_time || '23:59').split(':').map(Number);
-  const startMin = (sh || 0) * 60 + (sm || 0);
-  const endMin = (eh || 0) * 60 + (em || 0);
+  const parsedStart = parseStrictTime(String(lecture.start_time || '00:00'));
+  const parsedEnd = parseStrictTime(String(lecture.end_time || '23:59'));
+  const startMin = parsedStart ? parsedStart.minutes : 0;
+  const endMin = parsedEnd ? parsedEnd.minutes : 23 * 60 + 59;
   const nowMin = getKolkataMinutes(now);
 
-  // 1 hour after lecture ends, capped at max 2 hours (120 mins) from lecture start
-  const expirationMin = Math.min(endMin + 60, startMin + 120);
+  // 1 hour after lecture ends, capped at max 2 hours (120 mins) from lecture start, never past 23:59
+  const expirationMin = Math.min(endMin + 60, startMin + 120, 23 * 60 + 59);
 
   return nowMin >= startMin && nowMin <= expirationMin;
 }
 
 function getWindowExpirationTime(startTimeStr, endTimeStr) {
-  const [sh, sm] = (startTimeStr || '00:00').split(':').map(Number);
-  const [eh, em] = (endTimeStr || '23:59').split(':').map(Number);
-  const startMin = (sh || 0) * 60 + (sm || 0);
-  const endMin = (eh || 0) * 60 + (em || 0);
-  const expirationMin = Math.min(endMin + 60, startMin + 120);
+  const parsedStart = parseStrictTime(String(startTimeStr || '00:00'));
+  const parsedEnd = parseStrictTime(String(endTimeStr || '23:59'));
+  const startMin = parsedStart ? parsedStart.minutes : 0;
+  const endMin = parsedEnd ? parsedEnd.minutes : 23 * 60 + 59;
+  const expirationMin = Math.min(endMin + 60, startMin + 120, 23 * 60 + 59);
   const h = String(Math.floor(expirationMin / 60)).padStart(2, '0');
   const m = String(expirationMin % 60).padStart(2, '0');
   return `${h}:${m}`;
@@ -101,10 +397,118 @@ async function attachTeacherNames(lectures) {
   });
 }
 
+async function loadTeacherAccessContext(userId, res) {
+  const { data: teacherRec, error: tchErr } = await supabaseAdmin
+    .from('teachers')
+    .select('id, teacher_id, user_id, department, users(id, full_name, email)')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (tchErr) {
+    console.error('[lectureController] Teacher context lookup failed:', tchErr.message);
+    res.status(500);
+    throw new Error('Failed to verify teacher profile');
+  }
+  if (!teacherRec?.id) {
+    return { teacherRec: null, assignedSubjectIds: new Set(), timetablePairs: new Set() };
+  }
+
+  const [{ data: tsRows, error: tsErr }, { data: ttRows, error: ttErr }] = await Promise.all([
+    supabaseAdmin.from('teacher_subjects').select('subject_id').eq('teacher_id', teacherRec.id),
+    supabaseAdmin.from('division_timetables').select('division_id, subject_id').eq('teacher_id', teacherRec.id),
+  ]);
+
+  if (tsErr) {
+    console.error('[lectureController] teacher_subjects context lookup failed:', tsErr.message);
+    res.status(500);
+    throw new Error('Failed to load assigned subjects');
+  }
+  if (ttErr && ttErr.code !== '42P01') {
+    console.error('[lectureController] division_timetables context lookup failed:', ttErr.message);
+    res.status(500);
+    throw new Error('Failed to load timetable assignments');
+  }
+
+  const assignedSubjectIds = new Set((tsRows || []).map((r) => r.subject_id).filter(Boolean));
+  const timetablePairs = new Set(
+    (ttRows || [])
+      .filter((r) => r.division_id && r.subject_id)
+      .map((r) => `${r.division_id}-${r.subject_id}`)
+  );
+
+  return { teacherRec, assignedSubjectIds, timetablePairs };
+}
+
+function isTeacherAuthorizedForSubjectDivInCtx(teacherCtx, subId, divId, subjectObj) {
+  if (!teacherCtx?.teacherRec?.id || !subId || !divId || !subjectObj) {
+    return false;
+  }
+  const subjDivId = subjectObj.division_id || null;
+  if (subjDivId && subjDivId !== divId) {
+    return false;
+  }
+  if (teacherCtx.timetablePairs.has(`${divId}-${subId}`)) {
+    return true;
+  }
+  if (subjDivId === divId && teacherCtx.assignedSubjectIds.has(subId)) {
+    return true;
+  }
+  return false;
+}
+
+function evaluateTeacherLectureAccess(teacherCtx, l) {
+  if (!teacherCtx?.teacherRec?.id) {
+    return { visible: false, is_owner: false, can_manage: false, view_only: true };
+  }
+  const tchId = l.teacher?.id || l.teachers?.id || l.teacher_id || null;
+  const subId = l.subject?.id || l.subjects?.id || l.subject_id || null;
+  const divId = l.division?.id || l.divisions?.id || l.division_id || null;
+  const subjectObj = l.subject || l.subjects || null;
+
+  if (tchId) {
+    if (tchId === teacherCtx.teacherRec.id) {
+      return { visible: true, is_owner: true, can_manage: true, view_only: false };
+    }
+    const authorizedShared = isTeacherAuthorizedForSubjectDivInCtx(teacherCtx, subId, divId, subjectObj);
+    return { visible: authorizedShared, is_owner: false, can_manage: false, view_only: true };
+  }
+
+  const canManage = isTeacherAuthorizedForSubjectDivInCtx(teacherCtx, subId, divId, subjectObj);
+  return { visible: canManage, is_owner: false, can_manage: canManage, view_only: !canManage };
+}
+
 // @desc   Get active/today's lectures
 // @route  GET /api/lectures/active
 const getActiveLectures = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (!['student', 'teacher', 'admin'].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Insufficient permissions');
+  }
+
   const todayStr = getKolkataDateString();
+  let studentDivisionId = null;
+
+  if (req.user.role === 'student') {
+    const { data: student, error: studErr } = await supabaseAdmin
+      .from('students')
+      .select('id, division_id')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (studErr) {
+      console.error('[lectureController] Failed verifying student division in getActiveLectures:', studErr.message);
+      res.status(500);
+      throw new Error('Failed to verify student division');
+    }
+    if (!student || !student.division_id) {
+      return res.json({
+        success: true,
+        data: { lectures: [] },
+      });
+    }
+    studentDivisionId = student.division_id;
+  }
 
   // Auto-sync today's timetable slots so they exist in DB
   try {
@@ -117,48 +521,28 @@ const getActiveLectures = asyncHandler(async (req, res) => {
     .from('lectures')
     .select(`
       id,
+      division_id,
+      subject_id,
+      teacher_id,
       lecture_date,
       start_time,
       end_time,
+      status,
       topic,
       created_at,
-      subject:subjects(id, name, code),
+      subject:subjects(id, name, code, division_id),
       division:divisions(id, name, division_name),
       teacher:teachers(id, teacher_id, user_id)
     `)
     .eq('lecture_date', todayStr)
     .order('start_time', { ascending: true });
 
-  let assignedSubjectIds = [];
-  let teacherRecord = null;
+  let teacherCtx = null;
 
   if (req.user.role === 'student') {
-    // Find student's division
-    const { data: student } = await supabaseAdmin
-      .from('students')
-      .select('division_id')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
-
-    if (student?.division_id) {
-      query = query.eq('division_id', student.division_id);
-    }
+    query = query.eq('division_id', studentDivisionId);
   } else if (req.user.role === 'teacher') {
-    const { data: teacher } = await supabaseAdmin
-      .from('teachers')
-      .select('id')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
-
-    teacherRecord = teacher;
-
-    if (teacher?.id) {
-      const { data: tsRows } = await supabaseAdmin
-        .from('teacher_subjects')
-        .select('subject_id')
-        .eq('teacher_id', teacher.id);
-      assignedSubjectIds = (tsRows || []).map((r) => r.subject_id);
-    }
+    teacherCtx = await loadTeacherAccessContext(req.user.id, res);
   }
 
   const { data: lectures, error } = await query;
@@ -169,20 +553,29 @@ const getActiveLectures = asyncHandler(async (req, res) => {
 
   let mapped = await attachTeacherNames(lectures || []);
 
-  // Filter strictly for teacher: ONLY assigned subjects or direct lectures
+  // For active lecture roster selection, only return lectures this teacher is actually authorized to manage
   if (req.user.role === 'teacher') {
-    mapped = mapped.filter((l) => {
-      const subId = l.subject?.id || l.subjects?.id;
-      const tchId = l.teacher?.id || l.teachers?.id;
-      return (teacherRecord?.id && tchId === teacherRecord.id) || (subId && assignedSubjectIds.includes(subId));
-    });
+    mapped = mapped.reduce((acc, l) => {
+      const access = evaluateTeacherLectureAccess(teacherCtx, l);
+      if (access.can_manage) {
+        acc.push({
+          ...l,
+          is_owner: access.is_owner,
+          can_manage: true,
+          view_only: false,
+        });
+      }
+      return acc;
+    }, []);
+  } else if (req.user.role === 'admin') {
+    mapped = mapped.map((l) => ({ ...l, is_owner: true, can_manage: true, view_only: false }));
   }
 
-  // Filter strictly for student: ONLY lectures currently within active attendance window
+  // Filter strictly for student: ONLY own division lectures currently within active attendance window
   if (req.user.role === 'student') {
     const now = new Date();
     mapped = mapped
-      .filter((l) => isLectureInAttendanceWindow(l, now))
+      .filter((l) => l.division_id === studentDivisionId && isLectureInAttendanceWindow(l, now))
       .map((l) => ({
         ...l,
         is_active_now: true,
@@ -199,6 +592,8 @@ const getActiveLectures = asyncHandler(async (req, res) => {
 // @desc   Get comprehensive today schedule for Teacher / Admin
 // @route  GET /api/lectures/today
 const getTodaySchedule = asyncHandler(async (req, res) => {
+  assertActiveAdminOrTeacher(req.user, res);
+
   const targetDateStr = req.query.date ? getKolkataDateString(req.query.date) : getKolkataDateString();
   const dayName = getKolkataDayName(targetDateStr);
 
@@ -209,37 +604,27 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
     console.error('Timetable sync error:', err.message);
   }
 
-  // Get current teacher record & their assigned subjects
-  let currentTeacher = null;
-  let teacherAssignedSubjIds = [];
+  let teacherCtx = null;
   if (req.user.role === 'teacher') {
-    const { data: tRec } = await supabaseAdmin
-      .from('teachers')
-      .select('id, teacher_id, user_id, department, users(id, full_name, email)')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
-    currentTeacher = tRec;
-
-    if (tRec?.id) {
-      const { data: tsList } = await supabaseAdmin
-        .from('teacher_subjects')
-        .select('subject_id')
-        .eq('teacher_id', tRec.id);
-      teacherAssignedSubjIds = (tsList || []).map((r) => r.subject_id);
-    }
+    teacherCtx = await loadTeacherAccessContext(req.user.id, res);
   }
+  const currentTeacher = teacherCtx?.teacherRec || null;
 
   // Fetch all lectures for target date
   const { data: lectures, error } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
+      division_id,
+      subject_id,
+      teacher_id,
       lecture_date,
       start_time,
       end_time,
+      status,
       topic,
       created_at,
-      subject:subjects(id, name, code),
+      subject:subjects(id, name, code, division_id),
       division:divisions(id, name, division_name),
       teacher:teachers(id, teacher_id, user_id)
     `)
@@ -253,21 +638,46 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
 
   const mapped = await attachTeacherNames(lectures || []);
 
-  // Filter for logged-in teacher: strictly their assigned subjects & lectures
-  const myLectures = currentTeacher
-    ? mapped.filter((l) => {
-        const subId = l.subject?.id || l.subjects?.id;
-        const tchId = l.teacher?.id || l.teachers?.id;
-        return (tchId === currentTeacher.id) || (subId && teacherAssignedSubjIds.includes(subId));
-      })
-    : mapped;
+  let myLectures;
+  let accessibleLectures;
 
-  // Accessible lectures for teacher must strictly be their assigned lectures
-  const accessibleLectures = req.user.role === 'teacher' ? myLectures : mapped;
+  if (req.user.role === 'teacher') {
+    if (!currentTeacher?.id) {
+      myLectures = [];
+      accessibleLectures = [];
+    } else {
+      const evaluated = mapped.map((l) => ({
+        item: l,
+        access: evaluateTeacherLectureAccess(teacherCtx, l),
+      }));
+      myLectures = evaluated
+        .filter((e) => e.access.can_manage)
+        .map((e) => ({
+          ...e.item,
+          is_owner: e.access.is_owner,
+          can_manage: true,
+          view_only: false,
+        }));
+      accessibleLectures = evaluated
+        .filter((e) => e.access.visible)
+        .map((e) => ({
+          ...e.item,
+          is_owner: e.access.is_owner,
+          can_manage: e.access.can_manage,
+          view_only: e.access.view_only,
+        }));
+    }
+  } else if (req.user.role === 'admin') {
+    myLectures = mapped.map((l) => ({ ...l, is_owner: true, can_manage: true, view_only: false }));
+    accessibleLectures = myLectures;
+  } else {
+    res.status(403);
+    throw new Error('Access Denied: Admin or teacher privileges required');
+  }
 
-  // Find ongoing and next upcoming
-  const ongoing = accessibleLectures.find((l) => l.status === 'ONGOING') || null;
-  const nextUpcoming = accessibleLectures.find((l) => l.status === 'UPCOMING') || null;
+  // Spotlight own ongoing / upcoming lectures for teachers (never another faculty member's session)
+  const ongoing = myLectures.find((l) => l.status === 'ONGOING') || null;
+  const nextUpcoming = myLectures.find((l) => l.status === 'UPCOMING') || null;
 
   res.json({
     success: true,
@@ -296,6 +706,7 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
 // @desc   Get Full Weekly Timetable Matrix
 // @route  GET /api/lectures/timetable
 const getTimetableMatrix = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const currentDay = getKolkataDayName();
   const currentDate = getKolkataDateString();
   const currentTime = getKolkataTimeString().slice(0, 5);
@@ -314,16 +725,27 @@ const getTimetableMatrix = asyncHandler(async (req, res) => {
 // @desc   Get all scheduled lectures (Admin & Teacher roster)
 // @route  GET /api/lectures
 const getAllLectures = asyncHandler(async (req, res) => {
+  assertActiveAdminOrTeacher(req.user, res);
+
+  let teacherCtx = null;
+  if (req.user.role === 'teacher') {
+    teacherCtx = await loadTeacherAccessContext(req.user.id, res);
+  }
+
   const { data: lectures, error } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
+      division_id,
+      subject_id,
+      teacher_id,
       lecture_date,
       start_time,
       end_time,
+      status,
       topic,
       created_at,
-      subjects:subjects(id, name, code),
+      subjects:subjects(id, name, code, division_id),
       divisions:divisions(id, name, division_name),
       teachers:teachers(id, teacher_id, user_id)
     `)
@@ -334,7 +756,27 @@ const getAllLectures = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
-  const mapped = await attachTeacherNames(lectures || []);
+  let mapped = await attachTeacherNames(lectures || []);
+
+  if (req.user?.role === 'teacher') {
+    mapped = mapped.reduce((acc, l) => {
+      const access = evaluateTeacherLectureAccess(teacherCtx, l);
+      if (access.visible) {
+        acc.push({
+          ...l,
+          is_owner: access.is_owner,
+          can_manage: access.can_manage,
+          view_only: access.view_only,
+        });
+      }
+      return acc;
+    }, []);
+  } else if (req.user?.role === 'admin') {
+    mapped = mapped.map((l) => ({ ...l, is_owner: true, can_manage: true, view_only: false }));
+  } else {
+    res.status(403);
+    throw new Error('Access Denied: Admin or teacher privileges required');
+  }
 
   res.json({
     success: true,
@@ -346,6 +788,7 @@ const getAllLectures = asyncHandler(async (req, res) => {
 // @desc   Teacher/Admin creates/starts a new lecture session
 // @route  POST /api/lectures
 const createLecture = asyncHandler(async (req, res) => {
+  assertActiveAdminOrTeacher(req.user, res);
   const { subject_id, division_id, topic, start_time, end_time, lecture_date } = req.body;
   let { teacher_id } = req.body;
 
@@ -354,8 +797,13 @@ const createLecture = asyncHandler(async (req, res) => {
     throw new Error('Subject and Division are required');
   }
 
-  // Robust teacher ID resolution: supports teachers.id, users.id, or employee code
+  // Robust teacher ID resolution & fail-closed teacher ownership enforcement
   let resolvedTeacherId = null;
+  let actorTeacherRec = null;
+
+  if (req.user.role === 'teacher') {
+    actorTeacherRec = await requireTeacherProfile(req.user, res);
+  }
 
   if (teacher_id) {
     // 1. Direct match on teachers.id (UUID)
@@ -393,17 +841,13 @@ const createLecture = asyncHandler(async (req, res) => {
         }
       }
     }
-  } else if (req.user.role === 'teacher') {
-    // Current user is a teacher scheduling for themselves
-    const { data: teacher } = await supabaseAdmin
-      .from('teachers')
-      .select('id, user_id')
-      .eq('user_id', req.user.id)
-      .maybeSingle();
 
-    if (teacher) {
-      resolvedTeacherId = teacher.id;
+    if (req.user.role === 'teacher' && resolvedTeacherId !== actorTeacherRec.id) {
+      res.status(403);
+      throw new Error('Access Denied: Teachers cannot create lectures assigned to another faculty member');
     }
+  } else if (req.user.role === 'teacher') {
+    resolvedTeacherId = actorTeacherRec.id;
   }
 
   if (!resolvedTeacherId && req.user.role !== 'admin') {
@@ -411,13 +855,47 @@ const createLecture = asyncHandler(async (req, res) => {
     throw new Error('Teacher identification is required');
   }
 
-  const todayStr = lecture_date ? getKolkataDateString(lecture_date) : getKolkataDateString();
-  const defaultStartTime = start_time || getKolkataTimeString();
-  let defaultEndTime = end_time;
-  if (!defaultEndTime) {
-    const [sh, sm] = defaultStartTime.split(':').map(Number);
-    const endH = ((sh || 0) + 1) % 24;
-    defaultEndTime = `${String(endH).padStart(2, '0')}:${String(sm || 0).padStart(2, '0')}:00`;
+  if (req.user.role === 'teacher') {
+    await assertTeacherAuthorizedForSubjectDivision(
+      actorTeacherRec.id,
+      subject_id,
+      division_id,
+      res
+    );
+  }
+
+  const todayStr = lecture_date ? parseValidDateToKolkata(lecture_date, res) : getKolkataDateString();
+  const rawStart = start_time || getKolkataTimeString();
+  const parsedStart = parseStrictTime(rawStart);
+  if (!parsedStart) {
+    res.status(400);
+    throw new Error('Invalid start_time format. Expected HH:MM or HH:MM:SS');
+  }
+  const defaultStartTime = parsedStart.formatted;
+
+  let defaultEndTime;
+  if (end_time !== undefined && end_time !== null && String(end_time).trim() !== '') {
+    const parsedEnd = parseStrictTime(String(end_time));
+    if (!parsedEnd) {
+      res.status(400);
+      throw new Error('Invalid end_time format. Expected HH:MM or HH:MM:SS');
+    }
+    if (parsedEnd.minutes <= parsedStart.minutes) {
+      res.status(400);
+      throw new Error('Invalid time range: end_time must be strictly after start_time');
+    }
+    defaultEndTime = parsedEnd.formatted;
+  } else {
+    if (parsedStart.minutes >= 23 * 60 + 59) {
+      res.status(400);
+      throw new Error('Invalid start_time: lecture cannot start at or past 23:59 without end_time');
+    }
+    const candidateEndMin = parsedStart.minutes + 60;
+    if (candidateEndMin > 23 * 60 + 59) {
+      res.status(400);
+      throw new Error('Invalid start_time: default lecture duration would exceed 23:59; please provide an explicit end_time');
+    }
+    defaultEndTime = minutesToTimeStr(candidateEndMin);
   }
 
   // Conflict Resolution: If teacher already has an overlapping lecture on this date,
@@ -426,7 +904,7 @@ const createLecture = asyncHandler(async (req, res) => {
     try {
       const { data: existingLectures } = await supabaseAdmin
         .from('lectures')
-        .select('id, start_time, end_time, topic, division_id, subject:subjects(name)')
+        .select('id, start_time, end_time, status, topic, division_id, subject:subjects(name)')
         .eq('teacher_id', resolvedTeacherId)
         .eq('lecture_date', todayStr);
 
@@ -440,7 +918,7 @@ const createLecture = asyncHandler(async (req, res) => {
       const newEndMin = toMin(defaultEndTime);
 
       const conflicting = (existingLectures || []).filter((lec) => {
-        if (lec.topic && lec.topic.includes('[CANCELLED]')) return false;
+        if (isLectureCancelled(lec)) return false;
         const exStartMin = toMin(lec.start_time);
         const exEndMin = toMin(lec.end_time || '23:59:59');
         return exStartMin < newEndMin && exEndMin > newStartMin;
@@ -455,14 +933,9 @@ const createLecture = asyncHandler(async (req, res) => {
           const originalTopic = (conf.topic || 'Regular Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
           await supabaseAdmin
             .from('lectures')
-            .update({ topic: `[CANCELLED] ${originalTopic}` })
+            .update({ topic: `[CANCELLED] ${originalTopic}`, status: 'CANCELLED' })
             .eq('id', conf.id);
         }
-
-        // Also attempt status update if column ever added
-        try {
-          await supabaseAdmin.from('lectures').update({ status: 'CANCELLED' }).in('id', conflictingIds);
-        } catch (_ignore) {}
 
         // Dispatch cancellation notifications
         const { notifyLectureCancellation } = require('../services/lectureScheduler');
@@ -488,6 +961,7 @@ const createLecture = asyncHandler(async (req, res) => {
     lecture_date: todayStr,
     start_time: defaultStartTime,
     end_time: defaultEndTime,
+    status: 'SCHEDULED',
     topic: topic || 'Regular Lecture',
     created_by: req.user.id,
   };
@@ -504,6 +978,7 @@ const createLecture = asyncHandler(async (req, res) => {
       lecture_date,
       start_time,
       end_time,
+      status,
       topic,
       subject:subjects(id, name, code),
       division:divisions(id, name, division_name)
@@ -558,56 +1033,88 @@ const updateLectureStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (status === 'CANCELLED' || status === 'RESCHEDULED') {
-    try {
-      const { data: curr } = await supabaseAdmin
-        .from('lectures')
-        .select('topic')
-        .eq('id', id)
-        .maybeSingle();
-      if (curr) {
-        const cleanT = (curr.topic || 'Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
-        await supabaseAdmin
-          .from('lectures')
-          .update({ topic: `[${status}] ${cleanT}` })
-          .eq('id', id);
-      }
-    } catch (_tErr) {}
+  const requestedStatus = typeof status === 'string' ? status.trim().toUpperCase() : '';
+  if (!requestedStatus || !VALID_LECTURE_STATUSES.includes(requestedStatus)) {
+    res.status(400);
+    throw new Error('Invalid lecture status. Allowed values: SCHEDULED, ONGOING, COMPLETED, CANCELLED, RESCHEDULED');
+  }
+  const normalizedStatus = normalizePersistedStatus(requestedStatus);
+
+  const { data: curr, error: fetchErr } = await supabaseAdmin
+    .from('lectures')
+    .select('id, division_id, subject_id, teacher_id, topic, status, lecture_date, start_time, end_time')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchErr) {
+    res.status(500);
+    throw new Error(fetchErr.message);
+  }
+  if (!curr) {
+    res.status(404);
+    throw new Error('Lecture session not found');
+  }
+
+  await assertTeacherCanManageLecture(req.user, curr, res);
+
+  const updatePayload = {
+    status: normalizedStatus,
+    topic: normalizeTopicForStatus(curr.topic, normalizedStatus, {
+      preserveRescheduled: hasExplicitRescheduleProvenance(curr),
+    }),
+  };
+
+  if (normalizedStatus === 'RESCHEDULED') {
+    const newDateInput = req.body.new_date || req.body.lecture_date;
+    const newStartInput = req.body.new_time || req.body.start_time;
+    const newEndInput = req.body.new_end_time || req.body.end_time;
+
+    if (newDateInput !== undefined && newDateInput !== null && String(newDateInput).trim() !== '') {
+      updatePayload.lecture_date = parseValidDateToKolkata(String(newDateInput), res);
+    }
+
+    const resolvedTimes = resolveScheduleTimes({
+      currentStart: curr.start_time,
+      currentEnd: curr.end_time,
+      newStartInput,
+      newEndInput,
+      res,
+    });
+    updatePayload.start_time = resolvedTimes.start_time;
+    updatePayload.end_time = resolvedTimes.end_time;
   }
 
   const { data: updated, error } = await supabaseAdmin
     .from('lectures')
-    .update({ status })
+    .update(updatePayload)
     .eq('id', id)
     .select()
     .maybeSingle();
 
   if (error) {
-    // If column doesn't exist, acknowledge safely
-    return res.json({
-      success: true,
-      message: `Lecture status marked as ${status}`,
-      data: { id, status },
-    });
+    res.status(500);
+    throw new Error(error.message);
   }
 
   // Notify students if lecture was cancelled or rescheduled
   (async () => {
     try {
       const { notifyLectureCancellation, notifyLectureRescheduling } = require('../services/lectureScheduler');
-      if (status === 'CANCELLED') {
+      if (normalizedStatus === 'CANCELLED') {
         await notifyLectureCancellation(id, req.body.reason || 'Class cancelled');
-      } else if (status === 'RESCHEDULED') {
+      } else if (normalizedStatus === 'RESCHEDULED') {
         const newTime = req.body.new_time || updated?.start_time || '14:00';
-        const newDate = req.body.new_date || updated?.lecture_date || new Date().toISOString().split('T')[0];
+        const newDate = req.body.new_date || updated?.lecture_date || getKolkataDateString();
         await notifyLectureRescheduling(id, newTime, newDate, req.body.reason || 'Timetable updated');
       }
-    } catch (_e) {}
+    } catch (notifErr) {
+      console.warn('[lectureController] Status notification notice:', notifErr.message);
+    }
   })();
 
   res.json({
     success: true,
-    message: `Lecture marked as ${status}`,
+    message: `Lecture marked as ${normalizedStatus}`,
     data: { lecture: updated },
   });
 });
@@ -616,6 +1123,23 @@ const updateLectureStatus = asyncHandler(async (req, res) => {
 // @route  DELETE /api/lectures/:id
 const deleteLecture = asyncHandler(async (req, res) => {
   const { id } = req.params;
+
+  const { data: curr, error: fetchErr } = await supabaseAdmin
+    .from('lectures')
+    .select('id, division_id, subject_id, teacher_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchErr) {
+    res.status(500);
+    throw new Error(fetchErr.message);
+  }
+  if (!curr) {
+    res.status(404);
+    throw new Error('Lecture session not found');
+  }
+
+  await assertTeacherCanManageLecture(req.user, curr, res);
 
   const { error } = await supabaseAdmin
     .from('lectures')
@@ -636,32 +1160,59 @@ const deleteLecture = asyncHandler(async (req, res) => {
 // @desc   Live query today's classes for student from division timetable (Fix #4: No cron, live query)
 // @route  GET /api/lectures/today-classes
 const getStudentTodayClasses = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (!['student', 'teacher', 'admin'].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Insufficient permissions');
+  }
+
   const todayStr = getKolkataDateString();
   const dayName = getKolkataDayName();
 
-  // 1. Find student's division
-  let divisionId = req.query.division_id;
+  // 1. Find student's division strictly from DB profile (never trust student ?division_id=)
+  let divisionId = null;
   let studentRecord = null;
 
   if (req.user.role === 'student') {
-    const { data: stu } = await supabaseAdmin
+    const { data: stu, error: stuErr } = await supabaseAdmin
       .from('students')
       .select('id, student_id, division_id, division:divisions(id, name, division_name)')
       .eq('user_id', req.user.id)
       .maybeSingle();
 
-    studentRecord = stu;
-    divisionId = stu?.division_id || divisionId;
-  }
+    if (stuErr) {
+      console.error('[lectureController] Failed loading student division profile:', stuErr.message);
+      res.status(500);
+      throw new Error('Failed to load student profile');
+    }
 
-  if (!divisionId) {
-    // If division not assigned yet, try to find default division
-    const { data: defaultDiv } = await supabaseAdmin
-      .from('divisions')
-      .select('id, name')
-      .limit(1)
-      .maybeSingle();
-    divisionId = defaultDiv?.id;
+    studentRecord = stu;
+    divisionId = stu?.division_id || null;
+
+    if (!divisionId) {
+      return res.json({
+        success: true,
+        data: {
+          date: todayStr,
+          day_name: dayName,
+          is_holiday: dayName === 'Sunday',
+          classes_count: 0,
+          classes: [],
+          division_assigned: false,
+          source: 'unassigned_division',
+        },
+      });
+    }
+  } else {
+    divisionId = req.query.division_id || null;
+    if (!divisionId) {
+      const { data: defaultDiv } = await supabaseAdmin
+        .from('divisions')
+        .select('id, name')
+        .limit(1)
+        .maybeSingle();
+      divisionId = defaultDiv?.id || null;
+    }
   }
 
   // 2. Query division_timetables live by day of week (Section 3)
@@ -683,49 +1234,203 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
         teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name, email))
       `)
       .eq('division_id', divisionId)
-      .eq('day_of_week', dayName)
+      .ilike('day_of_week', dayName)
       .order('start_time', { ascending: true });
+
+    if (slotErr && slotErr.code !== '42P01') {
+      console.error('[lectureController] Failed loading division_timetables:', slotErr.message);
+      res.status(500);
+      throw new Error('Failed to load division timetable');
+    }
 
     if (!slotErr && slots && slots.length > 0) {
       isFromTimetable = true;
 
-      // Check attendance for student
-      let attendanceMap = {};
-      if (studentRecord?.id) {
-        const { data: attRecords } = await supabaseAdmin
-          .from('attendance_records')
-          .select('id, timetable_id, status, marked_at')
-          .eq('student_id', studentRecord.id)
-          .eq('attendance_date', todayStr);
+      // Cross-reference today's persisted lectures deterministically and canonical attendance table
+      const { data: todayLectures, error: todayLecErr } = await supabaseAdmin
+        .from('lectures')
+        .select(`
+          id,
+          division_id,
+          subject_id,
+          start_time,
+          end_time,
+          lecture_date,
+          status,
+          topic,
+          created_at,
+          subject:subjects(id, name, code),
+          teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
+        `)
+        .eq('division_id', divisionId)
+        .eq('lecture_date', todayStr)
+        .order('created_at', { ascending: true });
 
-        (attRecords || []).forEach((r) => {
-          attendanceMap[r.timetable_id] = r;
+      if (todayLecErr) {
+        console.error('[lectureController] Failed loading today lectures for student:', todayLecErr.message);
+        res.status(500);
+        throw new Error('Failed to load today class schedule');
+      }
+
+      const divLectures = (todayLectures || []).filter(
+        (l) => l.division_id === divisionId
+      );
+
+      const attendanceByLectureId = {};
+      if (studentRecord?.id && divLectures.length > 0) {
+        const { data: attRows, error: attErr } = await supabaseAdmin
+          .from('attendance')
+          .select('id, lecture_id, status, marked_at')
+          .eq('student_id', studentRecord.id)
+          .in('lecture_id', divLectures.map((l) => l.id));
+
+        if (attErr) {
+          console.error('[lectureController] Failed loading student attendance rows:', attErr.message);
+          res.status(500);
+          throw new Error('Failed to load student attendance status');
+        }
+
+        (attRows || []).forEach((r) => {
+          attendanceByLectureId[r.lecture_id] = r;
         });
       }
 
+      const normHHMM = (t) => String(t || '').trim().slice(0, 5);
+      const pickPreferredLecture = (candidates) => {
+        if (!candidates || candidates.length === 0) return null;
+        return [...candidates].sort((a, b) => {
+          const aCan = isLectureCancelled(a) ? 1 : 0;
+          const bCan = isLectureCancelled(b) ? 1 : 0;
+          if (aCan !== bCan) return aCan - bCan; // Active/replacement before cancelled original
+          const aCreated = a.created_at || '';
+          const bCreated = b.created_at || '';
+          if (aCreated !== bCreated) return bCreated.localeCompare(aCreated); // Latest replacement first
+          return String(b.id || '').localeCompare(String(a.id || ''));
+        })[0];
+      };
+
+      const byTimeAndSubject = new Map();
+      for (const l of divLectures) {
+        const key = `${normHHMM(l.start_time)}-${l.subject_id}`;
+        if (!byTimeAndSubject.has(key)) byTimeAndSubject.set(key, []);
+        byTimeAndSubject.get(key).push(l);
+      }
+
+      const slotMatches = new Array(slots.length).fill(null);
+      const consumedLectureIds = new Set();
+
+      // Pass 1: Match exact (division_id + start_time + subject_id)
+      slots.forEach((s, idx) => {
+        const key = `${normHHMM(s.start_time)}-${s.subject?.id}`;
+        const candidates = byTimeAndSubject.get(key);
+        if (candidates && candidates.length > 0) {
+          const chosen = pickPreferredLecture(candidates);
+          slotMatches[idx] = chosen;
+          candidates.forEach((c) => consumedLectureIds.add(c.id));
+        }
+      });
+
+      const timetableExactKeys = new Set(
+        slots
+          .filter((s) => s.start_time && s.subject?.id)
+          .map((s) => `${normHHMM(s.start_time)}-${s.subject.id}`)
+      );
+
+      // Pass 2: Detect unambiguous same-day rescheduled/progressed off-slot lectures for remaining unmatched slots
+      const unmatchedSlotCountBySubject = new Map();
+      slots.forEach((s, idx) => {
+        if (!slotMatches[idx] && s.subject?.id) {
+          unmatchedSlotCountBySubject.set(
+            s.subject.id,
+            (unmatchedSlotCountBySubject.get(s.subject.id) || 0) + 1
+          );
+        }
+      });
+
+      // Only match off-slot lectures that carry explicit reschedule provenance
+      // (RESCHEDULED status or [RESCHEDULED] topic tag). Normal manual ONGOING/COMPLETED
+      // classes must NEVER be mistaken for a rescheduled timetable slot.
+      const unconsumedReschedBySubject = new Map();
+      for (const l of divLectures) {
+        if (consumedLectureIds.has(l.id) || !hasExplicitRescheduleProvenance(l) || !l.subject_id) continue;
+        const exactKey = `${normHHMM(l.start_time)}-${l.subject_id}`;
+        if (timetableExactKeys.has(exactKey)) continue;
+
+        if (!unconsumedReschedBySubject.has(l.subject_id)) {
+          unconsumedReschedBySubject.set(l.subject_id, []);
+        }
+        unconsumedReschedBySubject.get(l.subject_id).push(l);
+      }
+
+      slots.forEach((s, idx) => {
+        if (slotMatches[idx] || !s.subject?.id) return;
+        const unmatchedCount = unmatchedSlotCountBySubject.get(s.subject.id) || 0;
+        const candidates = unconsumedReschedBySubject.get(s.subject.id) || [];
+        if (unmatchedCount === 1 && candidates.length === 1) {
+          const chosen = candidates[0];
+          slotMatches[idx] = chosen;
+          consumedLectureIds.add(chosen.id);
+        }
+      });
+
       const now = new Date();
-      liveClasses = slots.map((s) => {
-        const status = getSlotStatus(s.start_time, s.end_time, todayStr);
-        const att = attendanceMap[s.id];
-        const canMark = isLectureInAttendanceWindow({ start_time: s.start_time, end_time: s.end_time, lecture_date: todayStr }, now);
+      liveClasses = slots.map((s, idx) => {
+        const matchedLecture = slotMatches[idx];
+        const att = matchedLecture ? attendanceByLectureId[matchedLecture.id] : null;
+        const effectiveStart = matchedLecture?.start_time || s.start_time;
+        const effectiveEnd = matchedLecture?.end_time || s.end_time;
+        const status = matchedLecture
+          ? calculateDynamicStatus(matchedLecture)
+          : getSlotStatus(s.start_time, s.end_time, todayStr);
+        const canMark = matchedLecture
+          ? isLectureInAttendanceWindow(matchedLecture, now)
+          : isLectureInAttendanceWindow({ start_time: s.start_time, end_time: s.end_time, lecture_date: todayStr }, now);
+
         return {
-          id: s.id,
+          id: matchedLecture?.id || s.id,
           timetable_id: s.id,
+          lecture_id: matchedLecture?.id || null,
           subject_name: s.subject?.name || 'Class',
           subject_code: s.subject?.code || '',
-          teacher_name: s.teacher?.user?.full_name || 'Assigned Faculty',
+          teacher_name: matchedLecture?.teacher?.user?.full_name || s.teacher?.user?.full_name || 'Assigned Faculty',
           room_number: s.room_number || 'Room 101',
           is_lab: !!s.is_lab,
-          start_time: s.start_time,
-          end_time: s.end_time,
+          start_time: effectiveStart,
+          end_time: effectiveEnd,
           status,
           is_attended: att?.status === 'PRESENT',
           attendance_status: att ? att.status : 'NOT_MARKED',
           marked_at: att?.marked_at || null,
           can_mark_attendance: canMark,
-          window_expires_at: getWindowExpirationTime(s.start_time, s.end_time),
+          window_expires_at: getWindowExpirationTime(effectiveStart, effectiveEnd),
         };
       });
+
+      // Include any extra/replacement non-cancelled lectures in this division not bound to a slot
+      for (const l of divLectures) {
+        if (consumedLectureIds.has(l.id) || isLectureCancelled(l)) continue;
+        const att = attendanceByLectureId[l.id];
+        liveClasses.push({
+          id: l.id,
+          timetable_id: null,
+          lecture_id: l.id,
+          subject_name: l.subject?.name || (l.topic || '').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '').trim() || 'Class',
+          subject_code: l.subject?.code || '',
+          teacher_name: l.teacher?.user?.full_name || 'Assigned Faculty',
+          room_number: 'Room 101',
+          is_lab: (l.topic || '').toLowerCase().includes('lab') || (l.topic || '').toLowerCase().includes('practical'),
+          start_time: l.start_time,
+          end_time: l.end_time,
+          status: calculateDynamicStatus(l),
+          is_attended: att?.status === 'PRESENT',
+          attendance_status: att ? att.status : 'NOT_MARKED',
+          marked_at: att?.marked_at || null,
+          can_mark_attendance: isLectureInAttendanceWindow(l, now),
+          window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
+        });
+      }
+
+      liveClasses.sort((a, b) => String(a.start_time || '').localeCompare(String(b.start_time || '')));
     }
   }
 
@@ -735,13 +1440,14 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
       await syncTodayLectures(todayStr);
     } catch (_e) {}
 
-    const { data: lectures } = await supabaseAdmin
+    const { data: lectures, error: fallbackLecErr } = await supabaseAdmin
       .from('lectures')
       .select(`
         id,
         lecture_date,
         start_time,
         end_time,
+        status,
         topic,
         subject:subjects(id, name, code),
         teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
@@ -750,14 +1456,26 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
       .eq('division_id', divisionId)
       .order('start_time', { ascending: true });
 
+    if (fallbackLecErr) {
+      console.error('[lectureController] Failed loading fallback daily lectures:', fallbackLecErr.message);
+      res.status(500);
+      throw new Error('Failed to load today class schedule');
+    }
+
     if (lectures && lectures.length > 0) {
       let attMap = {};
       if (studentRecord?.id) {
-        const { data: att } = await supabaseAdmin
+        const { data: att, error: fallbackAttErr } = await supabaseAdmin
           .from('attendance')
           .select('id, lecture_id, status, marked_at')
           .eq('student_id', studentRecord.id)
           .in('lecture_id', lectures.map((l) => l.id));
+
+        if (fallbackAttErr) {
+          console.error('[lectureController] Failed loading fallback attendance:', fallbackAttErr.message);
+          res.status(500);
+          throw new Error('Failed to load student attendance status');
+        }
 
         (att || []).forEach((a) => {
           attMap[a.lecture_id] = a;
@@ -766,13 +1484,13 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
 
       const now = new Date();
       liveClasses = lectures.map((l) => {
-        const status = getSlotStatus(l.start_time, l.end_time, todayStr);
+        const status = calculateDynamicStatus(l);
         const att = attMap[l.id];
-        const canMark = isLectureInAttendanceWindow({ start_time: l.start_time, end_time: l.end_time, lecture_date: todayStr }, now);
+        const canMark = isLectureInAttendanceWindow(l, now);
         return {
           id: l.id,
           timetable_id: l.id,
-          subject_name: l.subject?.name || l.topic || 'Class',
+          subject_name: l.subject?.name || (l.topic || '').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '').trim() || 'Class',
           subject_code: l.subject?.code || '',
           teacher_name: l.teacher?.user?.full_name || 'Assigned Faculty',
           room_number: 'Room 101',
@@ -826,6 +1544,7 @@ const updateLecture = asyncHandler(async (req, res) => {
       lecture_date,
       start_time,
       end_time,
+      status,
       topic,
       subject:subjects(id, name, code),
       division:divisions(id, name, division_name),
@@ -834,10 +1553,16 @@ const updateLecture = asyncHandler(async (req, res) => {
     .eq('id', id)
     .maybeSingle();
 
-  if (fetchErr || !currentLecture) {
+  if (fetchErr) {
+    res.status(500);
+    throw new Error(fetchErr.message);
+  }
+  if (!currentLecture) {
     res.status(404);
     throw new Error('Lecture session not found');
   }
+
+  const actorTeacherRec = await assertTeacherCanManageLecture(req.user, currentLecture, res);
 
   // 2. Resolve teacher_id if provided
   let resolvedTeacherId = currentLecture.teacher_id;
@@ -880,6 +1605,11 @@ const updateLecture = asyncHandler(async (req, res) => {
       }
     }
 
+    if (req.user.role === 'teacher' && resolvedTeacherId !== actorTeacherRec.id) {
+      res.status(403);
+      throw new Error('Access Denied: Teachers cannot transfer lectures to another faculty member');
+    }
+
     if (resolvedTeacherId !== currentLecture.teacher_id) {
       teacherChanged = true;
     }
@@ -887,61 +1617,116 @@ const updateLecture = asyncHandler(async (req, res) => {
 
   const effectiveDivisionId = division_id || currentLecture.division_id;
   const effectiveSubjectId = subject_id || currentLecture.subject_id;
-  const effectiveDate = lecture_date ? getKolkataDateString(lecture_date) : currentLecture.lecture_date;
-  const effectiveStartTime = start_time || currentLecture.start_time;
-  const effectiveEndTime = end_time || currentLecture.end_time;
+  if (
+    req.user.role === 'teacher' &&
+    (effectiveSubjectId !== currentLecture.subject_id || effectiveDivisionId !== currentLecture.division_id)
+  ) {
+    await assertTeacherAuthorizedForSubjectDivision(
+      actorTeacherRec.id,
+      effectiveSubjectId,
+      effectiveDivisionId,
+      res
+    );
+  }
+  const effectiveDate =
+    lecture_date !== undefined && lecture_date !== null && String(lecture_date).trim() !== ''
+      ? parseValidDateToKolkata(String(lecture_date), res)
+      : currentLecture.lecture_date;
+
+  const resolvedTimes = resolveScheduleTimes({
+    currentStart: currentLecture.start_time,
+    currentEnd: currentLecture.end_time,
+    newStartInput: start_time,
+    newEndInput: end_time,
+    res,
+  });
+  const effectiveStartTime = resolvedTimes.start_time;
+  const effectiveEndTime = resolvedTimes.end_time;
   const effectiveTopic = topic !== undefined ? topic : currentLecture.topic;
 
   // 3. Conflict Resolution for the new teacher (if teacher or timing changed)
-  if (resolvedTeacherId && (teacherChanged || start_time || lecture_date)) {
+  if (resolvedTeacherId && (teacherChanged || start_time || end_time || lecture_date)) {
     try {
-      const { data: existingLectures } = await supabaseAdmin
+      const { data: existingLectures, error: confErr } = await supabaseAdmin
         .from('lectures')
-        .select('id, start_time, end_time, topic, division_id, subject:subjects(name)')
+        .select('id, start_time, end_time, status, topic, division_id, subject:subjects(name)')
         .eq('teacher_id', resolvedTeacherId)
         .eq('lecture_date', effectiveDate)
         .neq('id', id);
 
-      const toMin = (t) => {
-        if (!t) return 0;
-        const [h, m] = t.toString().split(':').map(Number);
-        return (h || 0) * 60 + (m || 0);
-      };
+      if (confErr) {
+        console.warn('[lectureController] Conflict lookup warning:', confErr.message);
+      } else {
+        const toMin = (t) => {
+          if (!t) return 0;
+          const [h, m] = t.toString().split(':').map(Number);
+          return (h || 0) * 60 + (m || 0);
+        };
 
-      const newStartMin = toMin(effectiveStartTime);
-      const newEndMin = toMin(effectiveEndTime);
+        const newStartMin = toMin(effectiveStartTime);
+        const newEndMin = toMin(effectiveEndTime);
 
-      const conflicting = (existingLectures || []).filter((lec) => {
-        if (lec.topic && lec.topic.includes('[CANCELLED]')) return false;
-        const exStartMin = toMin(lec.start_time);
-        const exEndMin = toMin(lec.end_time || '23:59:59');
-        return exStartMin < newEndMin && exEndMin > newStartMin;
-      });
+        const conflicting = (existingLectures || []).filter((lec) => {
+          if (isLectureCancelled(lec)) return false;
+          const exStartMin = toMin(lec.start_time);
+          const exEndMin = toMin(lec.end_time || '23:59:59');
+          return exStartMin < newEndMin && exEndMin > newStartMin;
+        });
 
-      if (conflicting.length > 0) {
-        const conflictingIds = conflicting.map((c) => c.id);
-        console.log(`[lectureController] Auto-cancelling ${conflictingIds.length} conflicting lecture(s) for substitute teacher ${resolvedTeacherId}:`, conflictingIds);
+        if (conflicting.length > 0) {
+          const conflictingIds = conflicting.map((c) => c.id);
+          console.log(`[lectureController] Auto-cancelling ${conflictingIds.length} conflicting lecture(s) for substitute teacher ${resolvedTeacherId}:`, conflictingIds);
 
-        for (const conf of conflicting) {
-          const origT = (conf.topic || 'Regular Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
-          await supabaseAdmin
-            .from('lectures')
-            .update({ topic: `[CANCELLED] ${origT}` })
-            .eq('id', conf.id);
-        }
+          for (const conf of conflicting) {
+            await supabaseAdmin
+              .from('lectures')
+              .update({
+                topic: normalizeTopicForStatus(conf.topic || 'Regular Lecture', 'CANCELLED'),
+                status: 'CANCELLED',
+              })
+              .eq('id', conf.id);
+          }
 
-        const { notifyLectureCancellation } = require('../services/lectureScheduler');
-        for (const conf of conflicting) {
-          try {
-            await notifyLectureCancellation(
-              conf.id,
-              `Automatically cancelled due to proxy schedule conflict at ${effectiveStartTime.slice(0, 5)}`
-            );
-          } catch (_e) {}
+          const { notifyLectureCancellation } = require('../services/lectureScheduler');
+          for (const conf of conflicting) {
+            try {
+              await notifyLectureCancellation(
+                conf.id,
+                `Automatically cancelled due to proxy schedule conflict at ${effectiveStartTime.slice(0, 5)}`
+              );
+            } catch (_e) {}
+          }
         }
       }
-    } catch (_cErr) {}
+    } catch (cErr) {
+      console.warn('[lectureController] Non-blocking conflict check warning:', cErr.message);
+    }
   }
+
+  const normTimeForCompare = (val) => {
+    const parsed = parseStrictTime(String(val || ''));
+    return parsed ? parsed.formatted : String(val || '').trim();
+  };
+  const normDateForCompare = (val) => String(val || '').trim().slice(0, 10);
+
+  const scheduleChanged = Boolean(
+    (lecture_date !== undefined && lecture_date !== null && String(lecture_date).trim() !== '' &&
+      normDateForCompare(effectiveDate) !== normDateForCompare(currentLecture.lecture_date)) ||
+    (start_time !== undefined && start_time !== null && String(start_time).trim() !== '' &&
+      normTimeForCompare(effectiveStartTime) !== normTimeForCompare(currentLecture.start_time)) ||
+    (end_time !== undefined && end_time !== null && String(end_time).trim() !== '' &&
+      normTimeForCompare(effectiveEndTime) !== normTimeForCompare(currentLecture.end_time))
+  );
+  const reqStatusUpper = typeof req.body.status === 'string' ? req.body.status.trim().toUpperCase() : '';
+  if (reqStatusUpper && !VALID_LECTURE_STATUSES.includes(reqStatusUpper)) {
+    res.status(400);
+    throw new Error('Invalid lecture status');
+  }
+  const resolvedStatus = reqStatusUpper
+    ? normalizePersistedStatus(reqStatusUpper)
+    : scheduleChanged && !isLectureCancelled(currentLecture)
+      ? 'RESCHEDULED'
+      : normalizePersistedStatus(currentLecture.status);
 
   // 4. Update the lecture record
   const updatePayload = {
@@ -951,7 +1736,10 @@ const updateLecture = asyncHandler(async (req, res) => {
     lecture_date: effectiveDate,
     start_time: effectiveStartTime,
     end_time: effectiveEndTime,
-    topic: effectiveTopic,
+    status: resolvedStatus,
+    topic: normalizeTopicForStatus(effectiveTopic, resolvedStatus, {
+      preserveRescheduled: hasExplicitRescheduleProvenance(currentLecture),
+    }),
   };
 
   const { data: updated, error: updErr } = await supabaseAdmin
@@ -963,6 +1751,7 @@ const updateLecture = asyncHandler(async (req, res) => {
       lecture_date,
       start_time,
       end_time,
+      status,
       topic,
       subject:subjects(id, name, code),
       division:divisions(id, name, division_name),
@@ -1050,6 +1839,11 @@ module.exports = {
   getTodaySchedule,
   getTimetableMatrix,
   getStudentTodayClasses,
+  assertActiveAdminOrTeacher,
+  assertTeacherAuthorizedForSubjectDivision,
+  assertTeacherCanManageLecture,
+  loadTeacherAccessContext,
+  evaluateTeacherLectureAccess,
 };
 
 

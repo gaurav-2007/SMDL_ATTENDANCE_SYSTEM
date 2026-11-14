@@ -15,10 +15,12 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/api';
 import { supabase } from '../../lib/supabase';
-import { requestWebPushPermission, onMessageListener } from '../../lib/firebase';
+import { requestWebPushPermission, onMessageListener, setupNotificationTapListener } from '../../lib/firebase';
 import { getNotificationUrl } from '../../lib/notificationRouter';
 import NotificationPreferencesModal from './NotificationPreferencesModal';
 
@@ -242,12 +244,29 @@ export default function NotificationCenter() {
     };
   }, [user?.id, fetchNotifications]);
 
-  // Check notification permission state
+  // Check notification permission state & hook tap actions
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
+    if (Capacitor.isNativePlatform()) {
+      PushNotifications.checkPermissions()
+        .then((status) => {
+          setPushStatus(status.receive === 'granted' ? 'granted' : 'default');
+        })
+        .catch(() => {});
+
+      const cleanupTap = setupNotificationTapListener((data) => {
+        const targetUrl = data?.actionUrl || getNotificationUrl(data, user?.role);
+        if (targetUrl) {
+          navigate(targetUrl);
+        }
+      });
+
+      return () => {
+        if (typeof cleanupTap === 'function') cleanupTap();
+      };
+    } else if (typeof window !== 'undefined' && 'Notification' in window) {
       setPushStatus(Notification.permission);
     }
-  }, []);
+  }, [user?.role, navigate]);
 
   // Close drawer on outside click
   useEffect(() => {
@@ -394,7 +413,7 @@ export default function NotificationCenter() {
               <div className="bg-sky-50 dark:bg-sky-950/40 border-b border-sky-200 dark:border-sky-800/40 px-3 py-2 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 min-w-0 text-xs text-sky-800 dark:text-sky-200">
                   <Bell size={13} className="shrink-0 text-sky-600 dark:text-sky-400" />
-                  <span className="truncate text-[11px]">Enable browser notifications for alerts?</span>
+                  <span className="truncate text-[11px]">Enable push notifications for alerts?</span>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button

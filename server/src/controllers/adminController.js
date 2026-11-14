@@ -526,6 +526,56 @@ const disableTeacher = asyncHandler(async (req, res) => {
   });
 });
 
+const normalizeOptionalId = (val) => {
+  if (val === undefined || val === null) return null;
+  const trimmed = String(val).trim();
+  return trimmed ? trimmed : null;
+};
+
+const fetchTrustedDivisionById = async (divisionId, cache = null) => {
+  if (!divisionId) return null;
+  if (cache && cache.has(divisionId)) {
+    return cache.get(divisionId);
+  }
+  const { data: division, error } = await supabaseAdmin
+    .from('divisions')
+    .select('id, course_id, name, division_name')
+    .eq('id', divisionId)
+    .maybeSingle();
+
+  if (error) {
+    const err = new Error(error.message || 'Failed to verify target division');
+    err.statusCode = 500;
+    throw err;
+  }
+  if (cache && division) {
+    cache.set(divisionId, division);
+  }
+  return division || null;
+};
+
+const fetchTrustedCourseById = async (courseId, cache = null) => {
+  if (!courseId) return null;
+  if (cache && cache.has(courseId)) {
+    return cache.get(courseId);
+  }
+  const { data: course, error } = await supabaseAdmin
+    .from('courses')
+    .select('id, name, code')
+    .eq('id', courseId)
+    .maybeSingle();
+
+  if (error) {
+    const err = new Error(error.message || 'Failed to verify target course');
+    err.statusCode = 500;
+    throw err;
+  }
+  if (cache && course) {
+    cache.set(courseId, course);
+  }
+  return course || null;
+};
+
 // @desc   Bulk Import Students via CSV data
 // @route  POST /api/admin/students/bulk-import
 const bulkImportStudents = asyncHandler(async (req, res) => {
@@ -540,6 +590,8 @@ const bulkImportStudents = asyncHandler(async (req, res) => {
 
   const imported = [];
   const errors = [];
+  const divisionCache = new Map();
+  const courseCache = new Map();
 
   for (let i = 0; i < students.length; i++) {
     const s = students[i];
@@ -547,23 +599,56 @@ const bulkImportStudents = asyncHandler(async (req, res) => {
     const name = s.full_name || s.name;
     const email = s.email || `${String(roll).toLowerCase()}@student.smdl.ac.in`;
     const phone = s.phone ? String(s.phone) : null;
-    const targetDiv = s.division_id || division_id;
-    const targetCourse = s.course_id || course_id;
+    const targetDiv = normalizeOptionalId(s.division_id) || normalizeOptionalId(division_id);
+    const targetCourse = normalizeOptionalId(s.course_id) || normalizeOptionalId(course_id);
 
     if (!roll || !name) {
       errors.push({ row: i + 1, error: 'Missing roll number or full name' });
       continue;
     }
 
+    const normalizedRoll = String(roll).trim().toUpperCase();
+
     try {
+      // Validate division & derive authoritative course_id BEFORE creating user/student rows
+      let resolvedDivisionId = null;
+      let resolvedCourseId = null;
+
+      if (targetDiv) {
+        const divRec = await fetchTrustedDivisionById(targetDiv, divisionCache);
+        if (!divRec) {
+          errors.push({ row: i + 1, roll, error: 'Target division not found' });
+          continue;
+        }
+        if (targetCourse && divRec.course_id !== targetCourse) {
+          errors.push({ row: i + 1, roll, error: 'Course does not match the target division' });
+          continue;
+        }
+        resolvedDivisionId = divRec.id;
+        resolvedCourseId = divRec.course_id ?? null;
+      } else if (targetCourse) {
+        const courseRec = await fetchTrustedCourseById(targetCourse, courseCache);
+        if (!courseRec) {
+          errors.push({ row: i + 1, roll, error: 'Target course not found' });
+          continue;
+        }
+        resolvedCourseId = courseRec.id;
+      }
+
       // Check if user already exists
-      const { data: existingUser } = await supabaseAdmin
+      const { data: existingUser, error: exUserErr } = await supabaseAdmin
         .from('users')
         .select('id')
         .eq('email', email)
         .maybeSingle();
 
+      if (exUserErr) {
+        errors.push({ row: i + 1, roll, error: exUserErr.message });
+        continue;
+      }
+
       let userId;
+      let createdNewUser = false;
       if (existingUser) {
         userId = existingUser.id;
       } else {
@@ -585,35 +670,63 @@ const bulkImportStudents = asyncHandler(async (req, res) => {
           continue;
         }
         userId = newUser.id;
+        createdNewUser = true;
       }
 
       // Check if student profile exists
-      const { data: existingProfile } = await supabaseAdmin
+      const { data: existingProfile, error: exProfErr } = await supabaseAdmin
         .from('students')
-        .select('id')
-        .or(`student_id.eq.${roll},user_id.eq.${userId}`)
+        .select('id, user_id, student_id')
+        .or(`student_id.eq.${normalizedRoll},user_id.eq.${userId}`)
         .maybeSingle();
+
+      if (exProfErr) {
+        if (createdNewUser) {
+          await supabaseAdmin.from('users').delete().eq('id', userId);
+        }
+        errors.push({ row: i + 1, roll, error: exProfErr.message });
+        continue;
+      }
 
       if (!existingProfile) {
         const { error: sErr } = await supabaseAdmin
           .from('students')
           .insert({
             user_id: userId,
-            student_id: String(roll).trim().toUpperCase(),
-            division_id: targetDiv || null,
-            course_id: targetCourse || null,
+            student_id: normalizedRoll,
+            division_id: resolvedDivisionId,
+            course_id: resolvedCourseId,
           });
 
         if (sErr) {
+          if (createdNewUser) {
+            await supabaseAdmin.from('users').delete().eq('id', userId);
+          }
           errors.push({ row: i + 1, roll, error: sErr.message });
           continue;
         }
       } else {
-        if (targetDiv) {
-          await supabaseAdmin
+        if (createdNewUser || (existingProfile.user_id && existingProfile.user_id !== userId)) {
+          if (createdNewUser) {
+            await supabaseAdmin.from('users').delete().eq('id', userId);
+          }
+          errors.push({ row: i + 1, roll, error: 'Roll number already assigned to another student' });
+          continue;
+        }
+        if (resolvedDivisionId) {
+          const { error: updErr } = await supabaseAdmin
             .from('students')
-            .update({ division_id: targetDiv, course_id: targetCourse || undefined })
+            .update({
+              division_id: resolvedDivisionId,
+              course_id: resolvedCourseId,
+              updated_at: new Date().toISOString(),
+            })
             .eq('id', existingProfile.id);
+
+          if (updErr) {
+            errors.push({ row: i + 1, roll, error: updErr.message });
+            continue;
+          }
         }
       }
 
@@ -640,8 +753,7 @@ const bulkImportStudents = asyncHandler(async (req, res) => {
 // @route  POST /api/admin/students/:student_id/transfer
 const transferStudentDivision = asyncHandler(async (req, res) => {
   const { student_id } = req.params;
-  const new_division_id = req.body.new_division_id || req.body.division_id;
-  const new_course_id = req.body.new_course_id || req.body.course_id;
+  const new_division_id = normalizeOptionalId(req.body.new_division_id || req.body.division_id);
   const reason = req.body.reason;
 
   if (!new_division_id) {
@@ -649,25 +761,35 @@ const transferStudentDivision = asyncHandler(async (req, res) => {
     throw new Error('New division is required');
   }
 
-  // 1. Look up student record by internal id, user_id, or roll number (student_id)
-  const { data: stRec } = await supabaseAdmin
+  // 1. Validate target division and derive authoritative course_id from DB (never trust client course_id)
+  const targetDivision = await fetchTrustedDivisionById(new_division_id);
+  if (!targetDivision) {
+    res.status(404);
+    throw new Error('Target division not found');
+  }
+
+  // 2. Look up student record by internal id, user_id, or roll number (student_id)
+  const { data: stRec, error: stErr } = await supabaseAdmin
     .from('students')
     .select('id, user_id, student_id')
     .or(`id.eq.${student_id},user_id.eq.${student_id},student_id.eq.${student_id}`)
     .maybeSingle();
 
+  if (stErr) {
+    res.status(500);
+    throw new Error(stErr.message || 'Failed to verify student record');
+  }
   if (!stRec) {
     res.status(404);
     throw new Error('Student record not found');
   }
 
+  // 3. Update division_id and derived course_id together in a single DB update
   const updateData = {
-    division_id: new_division_id,
+    division_id: targetDivision.id,
+    course_id: targetDivision.course_id ?? null,
     updated_at: new Date().toISOString(),
   };
-  if (new_course_id) {
-    updateData.course_id = new_course_id;
-  }
 
   const { data: updated, error } = await supabaseAdmin
     .from('students')
@@ -697,12 +819,12 @@ const getLiveAttendanceSummary = asyncHandler(async (_req, res) => {
     .from('students')
     .select('*', { count: 'exact', head: true });
 
-  const { data: todayLectures } = await supabaseAdmin
+  const { data: todayLectures, error: todayLecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, start_time, end_time, subject:subjects(name, code), division:divisions(name)')
-    .eq('lecture_date', todayStr);
+    .select('id, start_time, end_time, status, topic, subject:subjects(name, code), division:divisions(name)')
+    .eq('lecture_date', todayStr).neq('status', 'CANCELLED');
 
-  const lectureIds = (todayLectures || []).map((l) => l.id);
+  if (todayLecErr) { res.status(500); throw new Error(todayLecErr.message); } const activeTodayLectures = (todayLectures || []).filter((l) => l.status !== 'CANCELLED' && !l.topic?.includes('[CANCELLED]')); const lectureIds = activeTodayLectures.map((l) => l.id);
 
   let presentCount = 0;
   let absentCount = 0;
@@ -732,12 +854,12 @@ const getLiveAttendanceSummary = asyncHandler(async (_req, res) => {
     data: {
       date: todayStr,
       total_students: studentCount || 0,
-      today_lectures_count: todayLectures?.length || 0,
+      today_lectures_count: activeTodayLectures.length,
       present_count: presentCount,
       absent_count: absentCount,
       total_marked: totalMarked,
       attendance_percentage: attendanceRate,
-      active_lectures: todayLectures || [],
+      active_lectures: activeTodayLectures,
     },
   });
 });

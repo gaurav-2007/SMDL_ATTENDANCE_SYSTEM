@@ -20,11 +20,11 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/geofence-config', getGeofenceConfig);
-router.post('/mark', attendanceMarkLimiter, restrictTo('student', 'admin'), markAttendance);
-router.get('/my-stats', restrictTo('student', 'admin'), getMyStats);
+router.get('/geofence-config', restrictToActiveOnly, getGeofenceConfig);
+router.post('/mark', attendanceMarkLimiter, restrictTo('student', 'admin'), restrictToActiveOnly, markAttendance);
+router.get('/my-stats', restrictTo('student', 'admin'), restrictToActiveOnly, getMyStats);
 router.get('/lecture/:lectureId', restrictTo('teacher', 'admin'), restrictToActiveOnly, getLectureAttendance);
-router.get('/:attendanceId/selfie', getAttendanceSelfie);
+router.get('/:attendanceId/selfie', restrictToActiveOnly, getAttendanceSelfie);
 router.post('/override', restrictTo('teacher', 'admin'), restrictToActiveOnly, overrideAttendance);
 router.get('/reports/overview', restrictTo('teacher', 'admin'), restrictToActiveOnly, getReportsOverview);
 router.get('/live-summary', restrictTo('teacher', 'admin'), restrictToActiveOnly, getLiveAttendanceSummary);

@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { assertActiveUser } = require('../middleware/roles');
 const {
   registerDevice,
   unregisterDevice,
@@ -10,6 +11,7 @@ const {
 // @desc   Get paginated notifications and unread count for authenticated user
 // @route  GET /api/notifications
 const getNotifications = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const page = parseInt(req.query.page || '1', 10);
   const limit = parseInt(req.query.limit || '20', 10);
@@ -95,6 +97,7 @@ const getNotifications = asyncHandler(async (req, res) => {
 // @desc   Mark a single notification as read
 // @route  PATCH /api/notifications/:id/read
 const markAsRead = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const notificationId = req.params.id;
 
@@ -121,6 +124,7 @@ const markAsRead = asyncHandler(async (req, res) => {
 // @desc   Mark all notifications as read for current user
 // @route  POST /api/notifications/mark-all-read
 const markAllAsRead = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
 
   const { error } = await supabaseAdmin
@@ -143,6 +147,7 @@ const markAllAsRead = asyncHandler(async (req, res) => {
 // @desc   Get user notification preferences
 // @route  GET /api/notifications/preferences
 const getPreferences = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const prefs = await getUserPreferences(userId);
 
@@ -155,6 +160,7 @@ const getPreferences = asyncHandler(async (req, res) => {
 // @desc   Update user notification preferences
 // @route  PUT /api/notifications/preferences
 const updatePreferences = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const updated = await updateUserPreferences(userId, req.body || {});
 
@@ -168,6 +174,7 @@ const updatePreferences = asyncHandler(async (req, res) => {
 // @desc   Register device FCM token (Web & Android ready)
 // @route  POST /api/notifications/devices
 const registerDeviceToken = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const { fcm_token, device_type, device_name } = req.body;
 
@@ -192,6 +199,7 @@ const registerDeviceToken = asyncHandler(async (req, res) => {
 // @desc   Unregister device token on logout
 // @route  DELETE /api/notifications/devices
 const unregisterDeviceToken = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const { fcm_token } = req.body;
 

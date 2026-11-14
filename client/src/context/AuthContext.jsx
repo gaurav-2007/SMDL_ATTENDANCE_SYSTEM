@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '../lib/api'
-import { unregisterWebPushToken, requestWebPushPermission } from '../lib/firebase'
+import { unregisterWebPushToken, requestWebPushPermission, syncPushDeviceToken } from '../lib/firebase'
 
 const AuthContext = createContext(null)
 
@@ -14,7 +14,10 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem('smdl_user')
     if (token && stored) {
       try {
-        setUser(JSON.parse(stored))
+        const u = JSON.parse(stored)
+        setUser(u)
+        // Automatically sync & keep FCM device token active in background
+        syncPushDeviceToken().catch(() => {})
       } catch {
         localStorage.removeItem('smdl_user')
       }
@@ -50,10 +53,8 @@ export function AuthProvider({ children }) {
     if (userData?.id) localStorage.setItem('smdl_user', JSON.stringify(userData))
     setUser(userData)
 
-    // Re-sync push device token if browser notification permission was granted
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      requestWebPushPermission().catch(() => {})
-    }
+    // Re-sync push device token across Android Native (Capacitor) and Web
+    syncPushDeviceToken().catch(() => {})
 
     return userData
   }, [])
@@ -106,13 +107,25 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
-  const sendOtp = useCallback(async (email, role = 'student', extra = {}) => {
-    const { data } = await api.post('/auth/send-otp', { email, role, ...extra })
+  const sendOtp = useCallback(async (emailOrPayload, role = 'student', extra = {}) => {
+    let payload = {}
+    if (typeof emailOrPayload === 'object' && emailOrPayload !== null) {
+      payload = { ...emailOrPayload }
+    } else {
+      payload = { email: emailOrPayload, role, ...extra }
+    }
+    const { data } = await api.post('/auth/send-otp', payload)
     return data
   }, [])
 
-  const verifyOtp = useCallback(async (email, otp) => {
-    const { data } = await api.post('/auth/verify-otp', { email, otp })
+  const verifyOtp = useCallback(async (emailOrPayload, otp) => {
+    let payload = {}
+    if (typeof emailOrPayload === 'object' && emailOrPayload !== null) {
+      payload = { ...emailOrPayload }
+    } else {
+      payload = { email: emailOrPayload, otp }
+    }
+    const { data } = await api.post('/auth/verify-otp', payload)
     return data
   }, [])
 
