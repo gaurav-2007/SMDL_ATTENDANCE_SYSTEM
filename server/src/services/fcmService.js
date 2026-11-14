@@ -4,6 +4,7 @@ const { getMessaging } = require('firebase-admin/messaging');
 const { supabaseAdmin } = require('../config/db');
 
 let isFirebaseInitialized = false;
+let lastInitError = null;
 
 // Initialize Firebase Admin SDK safely
 function initFirebaseAdmin() {
@@ -59,9 +60,11 @@ function initFirebaseAdmin() {
     }
 
     console.log('ℹ️ [fcmService] Firebase credentials not configured in server/.env — operating in In-App Only mode.');
+    lastInitError = 'Firebase credentials not configured in environment variables.';
     return false;
   } catch (err) {
     console.warn('⚠️ [fcmService] Failed to initialize Firebase Admin SDK:', err.message);
+    lastInitError = err.message;
     isFirebaseInitialized = false;
     return false;
   }
@@ -184,6 +187,7 @@ async function deactivateTokens(tokens) {
 module.exports = {
   sendMulticastPush,
   isFirebaseActive: () => isFirebaseInitialized,
+  getLastInitError: () => lastInitError,
   initFirebaseAdmin,
   deactivateTokens,
 };

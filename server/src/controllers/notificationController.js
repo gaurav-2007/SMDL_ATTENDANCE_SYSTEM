@@ -7,6 +7,7 @@ const {
   getUserPreferences,
   updateUserPreferences,
 } = require('../services/notificationService');
+const { isFirebaseActive, initFirebaseAdmin, getLastInitError } = require('../services/fcmService');
 
 // @desc   Get paginated notifications and unread count for authenticated user
 // @route  GET /api/notifications
@@ -216,6 +217,7 @@ const unregisterDeviceToken = asyncHandler(async (req, res) => {
 // @desc   Get public Firebase Web client configuration (No private keys or server secrets)
 // @route  GET /api/notifications/firebase-config
 const getFirebasePublicConfig = asyncHandler(async (req, res) => {
+  const active = initFirebaseAdmin();
   res.json({
     success: true,
     data: {
@@ -226,6 +228,13 @@ const getFirebasePublicConfig = asyncHandler(async (req, res) => {
       messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '1055325335219',
       appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_WEB_APP_ID || '1:1055325335219:android:8c5871c30ab73d58ce8ac6',
       vapidKey: process.env.VITE_FIREBASE_VAPID_KEY || process.env.FIREBASE_VAPID_KEY || '',
+      firebaseAdminActive: Boolean(active),
+      initError: getLastInitError() || null,
+      hasServiceAccountEnv: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT),
+      serviceAccountLength: process.env.FIREBASE_SERVICE_ACCOUNT ? process.env.FIREBASE_SERVICE_ACCOUNT.trim().length : 0,
+      hasProjectIdEnv: Boolean(process.env.FIREBASE_PROJECT_ID),
+      hasClientEmailEnv: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
+      hasPrivateKeyEnv: Boolean(process.env.FIREBASE_PRIVATE_KEY),
     },
   });
 });
