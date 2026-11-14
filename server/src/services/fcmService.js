@@ -6,55 +6,122 @@ const { supabaseAdmin } = require('../config/db');
 let isFirebaseInitialized = false;
 let lastInitError = null;
 
+function extractCredentials(input) {
+  if (!input || typeof input !== 'string') return null;
+  let text = input.trim();
+
+  // Strip wrapping quotes if any
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    text = text.slice(1, -1).trim();
+  }
+
+  // 1. Try Base64 decode
+  if (text.startsWith('ey') || (/^[A-Za-z0-9+/=]+$/.test(text) && text.length > 200)) {
+    try {
+      const decoded = Buffer.from(text, 'base64').toString('utf8');
+      const parsed = JSON.parse(decoded);
+      if (parsed.private_key || parsed.privateKey) {
+        return parsed;
+      }
+    } catch (_e) {}
+  }
+
+  // 2. Try standard JSON.parse
+  if (text.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.private_key || parsed.privateKey) {
+        return parsed;
+      }
+    } catch (_e) {}
+  }
+
+  // 3. Fallback: Robust regex extraction
+  // Resilient to bad copy-pastes, invalid characters in cert_url, escaped quotes, etc.
+  const pkMatch = text.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/);
+  const emailMatch = text.match(/["']?client_email["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
+  const projMatch = text.match(/["']?project_id["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
+
+  if (pkMatch) {
+    return {
+      projectId: (projMatch && projMatch[1]) || process.env.FIREBASE_PROJECT_ID || 'gaurav-f685e',
+      clientEmail: (emailMatch && emailMatch[1]) || process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@gaurav-f685e.iam.gserviceaccount.com',
+      privateKey: pkMatch[0],
+    };
+  }
+
+  return null;
+}
+
+function normalizeCert(credentials) {
+  if (!credentials) return null;
+  const rawKey = credentials.privateKey || credentials.private_key;
+  if (!rawKey) return null;
+  return {
+    projectId: credentials.projectId || credentials.project_id || process.env.FIREBASE_PROJECT_ID || 'gaurav-f685e',
+    clientEmail: credentials.clientEmail || credentials.client_email || process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@gaurav-f685e.iam.gserviceaccount.com',
+    privateKey: rawKey.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n'),
+  };
+}
+
 // Initialize Firebase Admin SDK safely
 function initFirebaseAdmin() {
   if (isFirebaseInitialized) return true;
+
+  if (admin.apps && admin.apps.length > 0) {
+    isFirebaseInitialized = true;
+    lastInitError = null;
+    return true;
+  }
 
   try {
     const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY
-      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-      : null;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
     const getCert = (admin.credential && typeof admin.credential.cert === 'function')
       ? admin.credential.cert
       : admin.cert;
 
     if (serviceAccountJson) {
-      let credentials;
       const trimmed = serviceAccountJson.trim();
-      if (trimmed.startsWith('{')) {
-        credentials = JSON.parse(trimmed);
-      } else if (trimmed.startsWith('ey') || /^[A-Za-z0-9+/=]+$/.test(trimmed) && trimmed.length > 100) {
-        // Base64-encoded Service Account JSON (popular for Render/Heroku environment variables)
-        const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
-        credentials = JSON.parse(decoded);
-      } else {
+      let credentials = extractCredentials(trimmed);
+
+      if (!credentials) {
         // Assume file path (relative to server root or absolute)
         const resolvedPath = path.isAbsolute(trimmed)
           ? trimmed
           : path.resolve(__dirname, '../../', trimmed);
         credentials = require(resolvedPath);
       }
+
+      const certConfig = normalizeCert(credentials);
+      if (!certConfig || !certConfig.privateKey) {
+        throw new Error('Service account does not contain a valid private key.');
+      }
+
       admin.initializeApp({
-        credential: getCert(credentials),
+        credential: getCert(certConfig),
       });
       isFirebaseInitialized = true;
+      lastInitError = null;
       console.log('🔥 [fcmService] Firebase Admin initialized successfully via Service Account.');
       return true;
     }
 
     if (projectId && clientEmail && privateKey) {
+      const certConfig = normalizeCert({
+        projectId,
+        clientEmail,
+        privateKey,
+      });
+
       admin.initializeApp({
-        credential: getCert({
-          projectId,
-          clientEmail,
-          privateKey,
-        }),
+        credential: getCert(certConfig),
       });
       isFirebaseInitialized = true;
+      lastInitError = null;
       console.log('🔥 [fcmService] Firebase Admin initialized successfully via environment variables.');
       return true;
     }
