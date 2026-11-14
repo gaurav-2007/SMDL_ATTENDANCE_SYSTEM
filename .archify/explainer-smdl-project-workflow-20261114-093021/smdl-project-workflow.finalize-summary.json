@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "explainer",
+  "quality": "showcase",
+  "specification": {
+    "path": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\candidate.archify.md",
+    "sha256": "dafffc9f7f2df2a5f02557a02e433f0ba9b5c6835c1c2d14e72502094bb3f4e3",
+    "bytes": 7104
+  },
+  "artifact": {
+    "path": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+    "sha256": "9cd15b5dbaca64caa206ff7b78ec736fee4c785e70f01bc3644adc3eed49ad84",
+    "bytes": 969871
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "not-run"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.finalize.json",
+    "summaryReceipt": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.finalize-summary.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-14T03:53:33.021Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 3097,
+  "browserCheck": {
+    "requested": false,
+    "ran": false
+  }
+}

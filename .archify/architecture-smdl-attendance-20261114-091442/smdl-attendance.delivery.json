@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "8d1b627a-5de6-4f90-9a67-d907f2cf72cd",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\candidate.json",
+  "output": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\smdl-attendance.html",
+  "specification": {
+    "sha256": "09a110b715a7a3a635043480ac884f0b2b14e648e78db0160151ab958db1a75e",
+    "bytes": 7661
+  },
+  "artifact": {
+    "sha256": "7f279b411be47bc10eeb86fd57cee2fff8aca0a1f6f23df1dd397ff7e8a9a551",
+    "bytes": 853394
+  }
+}

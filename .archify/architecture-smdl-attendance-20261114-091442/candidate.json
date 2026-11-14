@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SMDL Attendance System Architecture",
+    "output": ".archify/architecture-smdl-attendance-20261114-091442/smdl-attendance.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/gaurav-2007/SMDL_ATTENDANCE_SYSTEM.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "fbc2c41b9591d877e71bc7d0d1bc3633af875c56"
+    }
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "frontend",
+      "label": "Web & Mobile PWA",
+      "sublabel": "React 19 + Vite + Tailwind",
+      "tag": "Students / Faculty / Admin",
+      "sources": [
+        {
+          "path": "client/src/App.jsx",
+          "line": 1,
+          "end_line": 50,
+          "label": "Role-based App Router"
+        }
+      ],
+      "pos": [40, 200],
+      "size": [150, 70]
+    },
+    {
+      "id": "gateway",
+      "type": "cloud",
+      "label": "Render Reverse Proxy",
+      "sublabel": "HTTPS Termination :443",
+      "tag": "TLS & DDoS Shield",
+      "pos": [285, 200],
+      "size": [140, 70]
+    },
+    {
+      "id": "apiServer",
+      "type": "backend",
+      "label": "Express API Server",
+      "sublabel": "Node.js v20+ :5000",
+      "tag": "REST Routes & Pipeline",
+      "sources": [
+        {
+          "path": "server/src/index.js",
+          "line": 1,
+          "end_line": 65,
+          "label": "Express entry & middleware"
+        }
+      ],
+      "pos": [520, 200],
+      "size": [160, 70]
+    },
+    {
+      "id": "authGuard",
+      "type": "security",
+      "label": "Auth & Access Guard",
+      "sublabel": "JWT & Role Enforcement",
+      "tag": "Zod + Rate Limiter",
+      "sources": [
+        {
+          "path": "server/src/middleware/auth.js",
+          "line": 1,
+          "end_line": 45,
+          "label": "JWT bearer protection"
+        }
+      ],
+      "pos": [520, 340],
+      "size": [160, 64]
+    },
+    {
+      "id": "emailService",
+      "type": "messagebus",
+      "label": "SMTP Mail Service",
+      "sublabel": "Nodemailer Gateway",
+      "tag": "OTP & Password Reset",
+      "sources": [
+        {
+          "path": "server/src/services/emailService.js",
+          "line": 1,
+          "end_line": 45,
+          "label": "SMTP transporter client"
+        }
+      ],
+      "pos": [520, 60],
+      "size": [160, 64]
+    },
+    {
+      "id": "lectureEngine",
+      "type": "backend",
+      "label": "Attendance Engine",
+      "sublabel": "Geo-Fence & Timetable",
+      "tag": "IST Lifecycle Sync",
+      "sources": [
+        {
+          "path": "server/src/controllers/attendanceController.js",
+          "line": 1,
+          "end_line": 50,
+          "label": "Attendance controller"
+        }
+      ],
+      "pos": [770, 200],
+      "size": [170, 70]
+    },
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "Cron Job Runner",
+      "sublabel": "node-cron :60s Interval",
+      "tag": "Auto Status & Alerts",
+      "sources": [
+        {
+          "path": "server/src/services/lectureScheduler.js",
+          "line": 1,
+          "end_line": 50,
+          "label": "Scheduler tick runner"
+        }
+      ],
+      "pos": [770, 340],
+      "size": [170, 64]
+    },
+    {
+      "id": "supabaseDb",
+      "type": "database",
+      "label": "Supabase PostgreSQL",
+      "sublabel": "Cloud Database (RLS)",
+      "tag": "Relational Schema",
+      "sources": [
+        {
+          "path": "server/src/config/db.js",
+          "line": 1,
+          "end_line": 38,
+          "label": "Supabase client proxies"
+        }
+      ],
+      "pos": [1040, 160],
+      "size": [160, 64]
+    },
+    {
+      "id": "supabaseStorage",
+      "type": "database",
+      "label": "Supabase Storage",
+      "sublabel": "Bucket: attendance-selfies",
+      "tag": "Photo Verification",
+      "sources": [
+        {
+          "path": "server/src/services/selfieStorageService.js",
+          "line": 1,
+          "end_line": 50,
+          "label": "Storage bucket service"
+        }
+      ],
+      "pos": [1040, 260],
+      "size": [160, 64]
+    },
+    {
+      "id": "fcmGateway",
+      "type": "messagebus",
+      "label": "Firebase Cloud Msg",
+      "sublabel": "Google FCM HTTP v1",
+      "tag": "Push Alerts",
+      "sources": [
+        {
+          "path": "server/src/services/fcmService.js",
+          "line": 1,
+          "end_line": 50,
+          "label": "Firebase Admin SDK"
+        }
+      ],
+      "pos": [1040, 370],
+      "size": [160, 64]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Render Cloud Platform (Node.js Service)",
+      "wraps": ["gateway", "apiServer", "authGuard", "lectureEngine", "scheduler"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Supabase Managed Cloud",
+      "wraps": ["supabaseDb", "supabaseStorage"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn-client-gateway",
+      "from": "clients",
+      "to": "gateway",
+      "label": "HTTPS / PWA",
+      "variant": "emphasis"
+    },
+    {
+      "id": "conn-gateway-api",
+      "from": "gateway",
+      "to": "apiServer",
+      "label": "Proxy Pass"
+    },
+    {
+      "id": "conn-api-auth",
+      "from": "apiServer",
+      "to": "authGuard",
+      "label": "Verify Auth",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "conn-api-email",
+      "from": "apiServer",
+      "to": "emailService",
+      "label": "Send OTP",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "conn-api-engine",
+      "from": "apiServer",
+      "to": "lectureEngine",
+      "label": "Controller",
+      "variant": "emphasis"
+    },
+    {
+      "id": "conn-scheduler-engine",
+      "from": "scheduler",
+      "to": "lectureEngine",
+      "label": "Sync Slots",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "conn-engine-db",
+      "from": "lectureEngine",
+      "to": "supabaseDb",
+      "label": "SQL / CRUD",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "conn-engine-storage",
+      "from": "lectureEngine",
+      "to": "supabaseStorage",
+      "label": "Save Selfie",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "conn-scheduler-fcm",
+      "from": "scheduler",
+      "to": "fcmGateway",
+      "label": "Push Alerts",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Client & Ingress Layer",
+      "items": [
+        "Vite React PWA serves Students, Faculty, and Admin dashboards",
+        "HTML5 Geolocation & Camera APIs capture verification selfies within campus geofence",
+        "Render reverse proxy terminates HTTPS and applies DDoS and security shielding"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Backend Services Layer",
+      "items": [
+        "Express 5 handles REST routes with JWT verification and role-based access guards",
+        "Attendance engine dynamically calculates lecture status from division timetables",
+        "Cron runner checks class transitions and scheduled alerts every 60 seconds"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Data & Messaging Layer",
+      "items": [
+        "Supabase PostgreSQL stores relational timetable and attendance records with RLS",
+        "Student selfies validated by image magic bytes and stored in Supabase Storage",
+        "Firebase Cloud Messaging (FCM) delivers push notifications; SMTP sends OTP emails"
+      ]
+    }
+  ]
+}
+
