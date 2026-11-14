@@ -15,42 +15,45 @@ function extractCredentials(input) {
     text = text.slice(1, -1).trim();
   }
 
-  // 1. Try Base64 decode
+  // Candidate parser: handles valid JSON as well as corrupted JSON via regex
+  const parseCandidate = (candidate) => {
+    if (!candidate || typeof candidate !== 'string') return null;
+
+    // 1. Try standard JSON.parse
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && (parsed.private_key || parsed.privateKey)) {
+        return parsed;
+      }
+    } catch (_e) {}
+
+    // 2. Resilient Regex Fallback (extracts key, email, project even if cert_url or trailing json is corrupted)
+    const pkMatch = candidate.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/);
+    const emailMatch = candidate.match(/["']?client_email["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
+    const projMatch = candidate.match(/["']?project_id["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
+
+    if (pkMatch) {
+      return {
+        projectId: (projMatch && projMatch[1]) || process.env.FIREBASE_PROJECT_ID || 'gaurav-f685e',
+        clientEmail: (emailMatch && emailMatch[1]) || process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@gaurav-f685e.iam.gserviceaccount.com',
+        privateKey: pkMatch[0],
+      };
+    }
+
+    return null;
+  };
+
+  // If input looks like Base64 (starts with "ey" or only valid b64 chars and long)
   if (text.startsWith('ey') || (/^[A-Za-z0-9+/=]+$/.test(text) && text.length > 200)) {
     try {
       const decoded = Buffer.from(text, 'base64').toString('utf8');
-      const parsed = JSON.parse(decoded);
-      if (parsed.private_key || parsed.privateKey) {
-        return parsed;
-      }
+      const b64Result = parseCandidate(decoded);
+      if (b64Result) return b64Result;
     } catch (_e) {}
   }
 
-  // 2. Try standard JSON.parse
-  if (text.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed.private_key || parsed.privateKey) {
-        return parsed;
-      }
-    } catch (_e) {}
-  }
-
-  // 3. Fallback: Robust regex extraction
-  // Resilient to bad copy-pastes, invalid characters in cert_url, escaped quotes, etc.
-  const pkMatch = text.match(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?-----END [A-Z ]*PRIVATE KEY-----/);
-  const emailMatch = text.match(/["']?client_email["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
-  const projMatch = text.match(/["']?project_id["']?\s*[:=]\s*["']([^"'\s]+)["']/i);
-
-  if (pkMatch) {
-    return {
-      projectId: (projMatch && projMatch[1]) || process.env.FIREBASE_PROJECT_ID || 'gaurav-f685e',
-      clientEmail: (emailMatch && emailMatch[1]) || process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@gaurav-f685e.iam.gserviceaccount.com',
-      privateKey: pkMatch[0],
-    };
-  }
-
-  return null;
+  // Fallback to direct text parsing
+  return parseCandidate(text);
 }
 
 function normalizeCert(credentials) {
