@@ -23,20 +23,25 @@ function initFirebaseAdmin() {
 
     if (serviceAccountJson) {
       let credentials;
-      if (serviceAccountJson.trim().startsWith('{')) {
-        credentials = JSON.parse(serviceAccountJson);
+      const trimmed = serviceAccountJson.trim();
+      if (trimmed.startsWith('{')) {
+        credentials = JSON.parse(trimmed);
+      } else if (trimmed.startsWith('ey') || /^[A-Za-z0-9+/=]+$/.test(trimmed) && trimmed.length > 100) {
+        // Base64-encoded Service Account JSON (popular for Render/Heroku environment variables)
+        const decoded = Buffer.from(trimmed, 'base64').toString('utf8');
+        credentials = JSON.parse(decoded);
       } else {
         // Assume file path (relative to server root or absolute)
-        const resolvedPath = path.isAbsolute(serviceAccountJson)
-          ? serviceAccountJson
-          : path.resolve(__dirname, '../../', serviceAccountJson);
+        const resolvedPath = path.isAbsolute(trimmed)
+          ? trimmed
+          : path.resolve(__dirname, '../../', trimmed);
         credentials = require(resolvedPath);
       }
       admin.initializeApp({
         credential: getCert(credentials),
       });
       isFirebaseInitialized = true;
-      console.log('🔥 [fcmService] Firebase Admin initialized successfully via Service Account JSON.');
+      console.log('🔥 [fcmService] Firebase Admin initialized successfully via Service Account.');
       return true;
     }
 
