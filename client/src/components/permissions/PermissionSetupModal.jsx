@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
 import { Camera as CapCamera } from '@capacitor/camera'
 import { PushNotifications } from '@capacitor/push-notifications'
+import { requestWebPushPermission } from '../../lib/firebase'
 import {
   MapPin, Camera, Bell, ShieldCheck, CheckCircle2,
   AlertCircle, ChevronRight, Loader2, X
@@ -104,15 +105,10 @@ export default function PermissionSetupModal() {
     setRequesting(true)
     const updated = { ...perms }
 
-    // 1. Notification Permission
+    // 1. Notification Permission & FCM Registration
     try {
-      if (Capacitor.isNativePlatform()) {
-        const res = await PushNotifications.requestPermissions()
-        updated.notifications = res.receive === 'granted' ? 'granted' : 'denied'
-      } else if (typeof window !== 'undefined' && 'Notification' in window) {
-        const res = await Notification.requestPermission()
-        updated.notifications = res === 'granted' ? 'granted' : 'denied'
-      }
+      const pushRes = await requestWebPushPermission()
+      updated.notifications = pushRes.granted ? 'granted' : 'denied'
     } catch (err) {
       console.warn('[Perms] Notification request error:', err)
       updated.notifications = 'denied'

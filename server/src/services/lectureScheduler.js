@@ -58,6 +58,24 @@ async function getReminderWindowMinutes() {
 }
 
 /**
+ * Checks system_config global toggle for lecture reminders (default: enabled)
+ */
+async function isLectureRemindersEnabled() {
+  try {
+    const { data } = await supabaseAdmin
+      .from('system_config')
+      .select('config_value')
+      .eq('config_key', 'lecture_reminders_enabled')
+      .maybeSingle();
+
+    if (data?.config_value !== undefined && data?.config_value !== null) {
+      return String(data.config_value).trim().toLowerCase() !== 'false';
+    }
+  } catch (_e) {}
+  return true;
+}
+
+/**
  * Atomic claim pattern: Ensures only ONE worker processes this exact event key
  */
 async function atomicClaimEvent(eventKey, { lectureId, lectureDate, notificationType, divisionId, startTime, studentCount }) {
@@ -115,11 +133,17 @@ async function processUpcomingLectureReminders() {
     console.warn('[lectureScheduler] Timetable sync notice:', err.message);
   }
 
+  // Check global reminder switch in system_config
+  const remindersEnabled = await isLectureRemindersEnabled();
+  if (!remindersEnabled) {
+    return;
+  }
+
   // Retrieve advance reminder window (default 10 min)
   const windowMinutes = await getReminderWindowMinutes();
 
-  // Query today's active lectures
-  const { data: lectures, error } = await supabaseAdmin
+  // Query today's lectures (with explicit error logging and fallback if status column is missing)
+  let { data: lectures, error } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
@@ -135,32 +159,66 @@ async function processUpcomingLectureReminders() {
     `)
     .eq('lecture_date', todayStr);
 
-  if (error || !lectures || lectures.length === 0) {
+  if (error && (error.code === '42703' || String(error.message).includes('status'))) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select(`
+        id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        division_id,
+        subject:subjects(id, name, code),
+        division:divisions(id, name, division_name),
+        teacher:teachers(id, teacher_id, user_id)
+      `)
+      .eq('lecture_date', todayStr);
+    lectures = retry.data;
+    error = retry.error;
+  }
+
+  if (error) {
+    console.error('❌ [lectureScheduler] Failed querying lectures for reminders:', error.message);
+    return;
+  }
+
+  if (!lectures || lectures.length === 0) {
     return;
   }
 
   for (const lecture of lectures) {
-    // 1. Skip cancelled or completed lectures
-    if (lecture.status === 'CANCELLED' || lecture.status === 'COMPLETED' || lecture.topic?.includes('[CANCELLED]')) {
+    // 1. Only pre-start eligible statuses (exclude CANCELLED, COMPLETED, ONGOING)
+    const rawStatus = String(lecture.status || 'SCHEDULED').toUpperCase();
+    if (!['SCHEDULED', 'RESCHEDULED', 'ACTIVE'].includes(rawStatus) || lecture.topic?.includes('[CANCELLED]')) {
       continue;
     }
 
-    // 2. Check start time window
+    // 2. Strict pre-start window check (never triggers after lecture has started or ended)
     const startMinutes = timeToMinutes(lecture.start_time);
     const diff = startMinutes - currentMinutes;
 
-    // Trigger if lecture starts between (windowMinutes - 1) and (windowMinutes + 1)
-    if (diff > windowMinutes - 1 && diff <= windowMinutes + 1) {
-      const eventKey = `START_${lecture.id}_${todayStr}`;
+    if (currentMinutes >= startMinutes || diff <= 0) {
+      continue;
+    }
+
+    // Trigger once upon entering [1 .. windowMinutes] minutes prior to start_time
+    if (diff > 0 && diff <= windowMinutes) {
+      const eventKey = `START_${lecture.id}_${todayStr}_${lecture.start_time || ''}`;
       const subjectName = lecture.subject?.name || lecture.topic || 'Class';
       const divisionName = lecture.division?.name || 'Class';
       const startTimeFormatted = lecture.start_time ? lecture.start_time.slice(0, 5) : '';
 
       // Find all students in this division
-      const { data: students } = await supabaseAdmin
+      const { data: students, error: studErr } = await supabaseAdmin
         .from('students')
         .select('user_id')
         .eq('division_id', lecture.division_id);
+
+      if (studErr) {
+        console.warn('[lectureScheduler] Failed querying students for reminder:', studErr.message);
+        continue;
+      }
 
       const studentUserIds = (students || []).map((s) => s.user_id).filter(Boolean);
 

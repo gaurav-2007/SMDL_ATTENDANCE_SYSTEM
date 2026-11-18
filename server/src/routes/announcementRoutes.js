@@ -11,7 +11,7 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/', getAnnouncements);
+router.get('/', restrictToActiveOnly, getAnnouncements);
 router.post('/', restrictTo('teacher', 'admin'), restrictToActiveOnly, createAnnouncement);
 router.delete('/:id', restrictTo('teacher', 'admin'), restrictToActiveOnly, deleteAnnouncement);
 

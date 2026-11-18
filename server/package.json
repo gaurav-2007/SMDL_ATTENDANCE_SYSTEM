@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "dev:nodemon": "nodemon src/index.js"
+    "dev:nodemon": "nodemon src/index.js",
+    "test": "node tests/test_migration011_offline.js"
   },
   "keywords": [
     "smdl",

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\candidate.json",
+    "sha256": "09a110b715a7a3a635043480ac884f0b2b14e648e78db0160151ab958db1a75e",
+    "bytes": 7661
+  },
+  "artifact": {
+    "path": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\smdl-attendance.html",
+    "sha256": "7f279b411be47bc10eeb86fd57cee2fff8aca0a1f6f23df1dd397ff7e8a9a551",
+    "bytes": 853394
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\smdl-attendance.finalize.json",
+    "summaryReceipt": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\smdl-attendance.finalize-summary.json",
+    "browserCheckReceipt": "D:\\project by trae smdl\\.archify\\architecture-smdl-attendance-20261114-091442\\smdl-attendance.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-14T03:53:33.021Z",
+    "source": "network",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 5428,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

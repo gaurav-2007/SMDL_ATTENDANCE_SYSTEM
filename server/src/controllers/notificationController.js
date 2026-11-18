@@ -1,15 +1,18 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { assertActiveUser } = require('../middleware/roles');
 const {
   registerDevice,
   unregisterDevice,
   getUserPreferences,
   updateUserPreferences,
 } = require('../services/notificationService');
+const { isFirebaseActive, initFirebaseAdmin, getLastInitError } = require('../services/fcmService');
 
 // @desc   Get paginated notifications and unread count for authenticated user
 // @route  GET /api/notifications
 const getNotifications = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const page = parseInt(req.query.page || '1', 10);
   const limit = parseInt(req.query.limit || '20', 10);
@@ -95,6 +98,7 @@ const getNotifications = asyncHandler(async (req, res) => {
 // @desc   Mark a single notification as read
 // @route  PATCH /api/notifications/:id/read
 const markAsRead = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const notificationId = req.params.id;
 
@@ -121,6 +125,7 @@ const markAsRead = asyncHandler(async (req, res) => {
 // @desc   Mark all notifications as read for current user
 // @route  POST /api/notifications/mark-all-read
 const markAllAsRead = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
 
   const { error } = await supabaseAdmin
@@ -143,6 +148,7 @@ const markAllAsRead = asyncHandler(async (req, res) => {
 // @desc   Get user notification preferences
 // @route  GET /api/notifications/preferences
 const getPreferences = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const prefs = await getUserPreferences(userId);
 
@@ -155,6 +161,7 @@ const getPreferences = asyncHandler(async (req, res) => {
 // @desc   Update user notification preferences
 // @route  PUT /api/notifications/preferences
 const updatePreferences = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const updated = await updateUserPreferences(userId, req.body || {});
 
@@ -168,6 +175,7 @@ const updatePreferences = asyncHandler(async (req, res) => {
 // @desc   Register device FCM token (Web & Android ready)
 // @route  POST /api/notifications/devices
 const registerDeviceToken = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const { fcm_token, device_type, device_name } = req.body;
 
@@ -192,6 +200,7 @@ const registerDeviceToken = asyncHandler(async (req, res) => {
 // @desc   Unregister device token on logout
 // @route  DELETE /api/notifications/devices
 const unregisterDeviceToken = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
   const userId = req.user.id;
   const { fcm_token } = req.body;
 
@@ -208,16 +217,24 @@ const unregisterDeviceToken = asyncHandler(async (req, res) => {
 // @desc   Get public Firebase Web client configuration (No private keys or server secrets)
 // @route  GET /api/notifications/firebase-config
 const getFirebasePublicConfig = asyncHandler(async (req, res) => {
+  const active = initFirebaseAdmin();
   res.json({
     success: true,
     data: {
-      apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || '',
-      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_WEB_AUTH_DOMAIN || '',
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || '',
-      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_WEB_STORAGE_BUCKET || '',
-      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '',
-      appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_WEB_APP_ID || '',
+      apiKey: process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || 'AIzaSyDbMxOhQ2HXf18ZYDfQb8594PT9SOC7qj4',
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.FIREBASE_WEB_AUTH_DOMAIN || 'gaurav-f685e.firebaseapp.com',
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || 'gaurav-f685e',
+      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_WEB_STORAGE_BUCKET || 'gaurav-f685e.firebasestorage.app',
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.FIREBASE_MESSAGING_SENDER_ID || '1055325335219',
+      appId: process.env.VITE_FIREBASE_APP_ID || process.env.FIREBASE_WEB_APP_ID || '1:1055325335219:android:8c5871c30ab73d58ce8ac6',
       vapidKey: process.env.VITE_FIREBASE_VAPID_KEY || process.env.FIREBASE_VAPID_KEY || '',
+      firebaseAdminActive: Boolean(active),
+      initError: getLastInitError() || null,
+      hasServiceAccountEnv: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT),
+      serviceAccountLength: process.env.FIREBASE_SERVICE_ACCOUNT ? process.env.FIREBASE_SERVICE_ACCOUNT.trim().length : 0,
+      hasProjectIdEnv: Boolean(process.env.FIREBASE_PROJECT_ID),
+      hasClientEmailEnv: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
+      hasPrivateKeyEnv: Boolean(process.env.FIREBASE_PRIVATE_KEY),
     },
   });
 });

@@ -1,0 +1,483 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "explainer",
+  "quality": "showcase",
+  "startedAt": "2026-11-14T04:01:40.242Z",
+  "specification": {
+    "path": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\candidate.archify.md",
+    "sha256": "dafffc9f7f2df2a5f02557a02e433f0ba9b5c6835c1c2d14e72502094bb3f4e3",
+    "bytes": 7104
+  },
+  "artifact": {
+    "path": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+    "sha256": "9cd15b5dbaca64caa206ff7b78ec736fee4c785e70f01bc3644adc3eed49ad84",
+    "bytes": 969871
+  },
+  "stages": {
+    "browser-check": {
+      "status": "not-run",
+      "execution": "not-requested"
+    },
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Users\\grmou\\.gemini\\config\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "explainer",
+        "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\candidate.archify.md",
+        "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "dafffc9f7f2df2a5f02557a02e433f0ba9b5c6835c1c2d14e72502094bb3f4e3",
+          "bytes": 7104
+        },
+        "validation": {
+          "checksPassed": 4,
+          "checkCount": 4,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 1663,
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Users\\grmou\\.gemini\\config\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "explainer",
+        "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\candidate.archify.md",
+        "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+        "--quality",
+        "showcase",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "a281a078-48bb-4263-867d-44f228833fc4",
+        "ok": true,
+        "command": "deliver",
+        "type": "explainer",
+        "input": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\candidate.archify.md",
+        "output": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+        "explainer": {
+          "preparedSha256": "206b1235a16a116ef8145664c69abe61f9c77ca686617a0280caa1619a68db08",
+          "dependencies": [
+            {
+              "kind": "diagram-spec",
+              "id": "attendance-workflow",
+              "inline": true,
+              "sha256": "d46f0eb9ead02cf7ecbbcd60833b19127d6ff464116f0cf1cff16b7d66c34ccc",
+              "bytes": 2169
+            },
+            {
+              "kind": "diagram-spec",
+              "id": "attendance-marking-seq",
+              "inline": true,
+              "sha256": "3683df8924315ed1591504acaf62510f040e586a28da9aa300e2043053fc7e98",
+              "bytes": 1526
+            }
+          ]
+        },
+        "specification": {
+          "sha256": "dafffc9f7f2df2a5f02557a02e433f0ba9b5c6835c1c2d14e72502094bb3f4e3",
+          "bytes": 7104
+        },
+        "artifact": {
+          "sha256": "9cd15b5dbaca64caa206ff7b78ec736fee4c785e70f01bc3644adc3eed49ad84",
+          "bytes": 969871
+        },
+        "validation": {
+          "checksPassed": 4,
+          "checkCount": 4,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 759,
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Users\\grmou\\.gemini\\config\\skills\\archify\\bin\\archify.mjs",
+        "check",
+        "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+        "family": "explainer",
+        "artifact": {
+          "sha256": "9cd15b5dbaca64caa206ff7b78ec736fee4c785e70f01bc3644adc3eed49ad84",
+          "bytes": 969871
+        },
+        "checks": [
+          {
+            "name": "explainer_structure",
+            "ok": true,
+            "details": [
+              "62 unique DOM IDs"
+            ]
+          },
+          {
+            "name": "explainer_payload_identity",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "explainer_dependencies",
+            "ok": true,
+            "details": [
+              "2 frozen dependencies"
+            ]
+          },
+          {
+            "name": "explainer_native_diagrams",
+            "ok": true,
+            "details": [
+              "attendance-workflow: pass",
+              "attendance-marking-seq: pass"
+            ]
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "issues": [],
+          "nativeDiagrams": [
+            {
+              "id": "attendance-workflow",
+              "receipt": {
+                "ok": true,
+                "file": "C:\\Users\\grmou\\AppData\\Local\\Temp\\archify-explainer-check-jGEEiZ\\child.html",
+                "artifact": {
+                  "sha256": "052a828c6b78a0b9ac55230306792ff4a7d4a99c9a89c66ba266c8a30677b7b6",
+                  "bytes": 839869
+                },
+                "checks": [
+                  {
+                    "name": "single_svg",
+                    "ok": true,
+                    "details": [
+                      "found 1 <svg> block(s)"
+                    ]
+                  },
+                  {
+                    "name": "finite_svg",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "orthogonal_arrows",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "label_route_clearance",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "relationship_crossings",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "relationship_corridors",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "container_border_runs",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "route_rhythm",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "legend_clearance",
+                    "ok": true,
+                    "details": []
+                  }
+                ],
+                "composition": {
+                  "schemaVersion": 1,
+                  "profile": "showcase",
+                  "status": "pass",
+                  "summary": {
+                    "errors": 0,
+                    "warnings": 0
+                  },
+                  "metrics": {
+                    "properCrossings": 0,
+                    "resolvedCrossovers": 0,
+                    "ambiguousCorridors": 0,
+                    "arrowheadCollisions": 0,
+                    "containerBorderRuns": 0,
+                    "labelRouteClearanceIssues": 0,
+                    "labelCanvasOverflowIssues": 0,
+                    "minLabelRouteClearance": 13,
+                    "desktopReadabilityIssues": 0,
+                    "viewportHeightIssues": 0,
+                    "minProjectedNodeTextPx": 6.3319148936170215,
+                    "maxBends": 0,
+                    "routesOverSuggestedBends": 0,
+                    "maxStretch": 1,
+                    "routesOverSuggestedStretch": 0,
+                    "minSegmentPx": 8,
+                    "minInteriorSegmentPx": null,
+                    "shortSegmentCount": 4,
+                    "shortEndpointSegmentCount": 4,
+                    "shortInteriorSegmentCount": 0,
+                    "microSegmentCount": 0
+                  },
+                  "suggestedLimits": {
+                    "bendsPerRelationship": 2,
+                    "stretch": 1.35,
+                    "segmentPx": 16,
+                    "microSegmentPx": 8
+                  },
+                  "routeReview": {
+                    "crossings": [],
+                    "detours": []
+                  },
+                  "leadingSpace": {
+                    "measured": false,
+                    "reviewSuggested": false
+                  },
+                  "desktopReadability": {
+                    "budgetBasis": "legacy-930",
+                    "readerContract": "declared-wide-v1",
+                    "availableDiagramWidth": 930,
+                    "actualBudgetPx": 930,
+                    "limit": "legacy",
+                    "requestedTargetPx": null,
+                    "requestedTargetMet": null,
+                    "hardFloorPx": 6,
+                    "hardFloorMet": true,
+                    "minimumOwner": {
+                      "kind": "edge",
+                      "id": "admin_setup-to-cron_sync-1",
+                      "from": "admin_setup",
+                      "to": "cron_sync"
+                    },
+                    "minimumSourceTextPx": 8,
+                    "minimumProjectedTextPx": 6.3319148936170215,
+                    "semanticTextCount": 17
+                  },
+                  "issues": []
+                }
+              }
+            },
+            {
+              "id": "attendance-marking-seq",
+              "receipt": {
+                "ok": true,
+                "file": "C:\\Users\\grmou\\AppData\\Local\\Temp\\archify-explainer-check-wDLnb9\\child.html",
+                "artifact": {
+                  "sha256": "ba683b50e5c62fdb2aa7eb1aba94ec41613df0a8e553ae4aaab0de543f214dda",
+                  "bytes": 829574
+                },
+                "checks": [
+                  {
+                    "name": "single_svg",
+                    "ok": true,
+                    "details": [
+                      "found 1 <svg> block(s)"
+                    ]
+                  },
+                  {
+                    "name": "finite_svg",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "orthogonal_arrows",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "label_route_clearance",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "relationship_crossings",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "relationship_corridors",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "container_border_runs",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "route_rhythm",
+                    "ok": true,
+                    "details": []
+                  },
+                  {
+                    "name": "legend_clearance",
+                    "ok": true,
+                    "details": []
+                  }
+                ],
+                "composition": {
+                  "schemaVersion": 1,
+                  "profile": "showcase",
+                  "status": "pass",
+                  "summary": {
+                    "errors": 0,
+                    "warnings": 0
+                  },
+                  "metrics": {
+                    "properCrossings": 0,
+                    "resolvedCrossovers": 0,
+                    "ambiguousCorridors": 0,
+                    "arrowheadCollisions": 0,
+                    "containerBorderRuns": 0,
+                    "labelRouteClearanceIssues": 0,
+                    "labelCanvasOverflowIssues": 0,
+                    "minLabelRouteClearance": 28,
+                    "desktopReadabilityIssues": 0,
+                    "viewportHeightIssues": 0,
+                    "minProjectedNodeTextPx": 11,
+                    "maxBends": 0,
+                    "routesOverSuggestedBends": 0,
+                    "maxStretch": 1,
+                    "routesOverSuggestedStretch": 0,
+                    "minSegmentPx": 181,
+                    "minInteriorSegmentPx": null,
+                    "shortSegmentCount": 0,
+                    "shortEndpointSegmentCount": 0,
+                    "shortInteriorSegmentCount": 0,
+                    "microSegmentCount": 0
+                  },
+                  "suggestedLimits": {
+                    "bendsPerRelationship": 2,
+                    "stretch": 1.35,
+                    "segmentPx": 16,
+                    "microSegmentPx": 8
+                  },
+                  "routeReview": {
+                    "crossings": [],
+                    "detours": []
+                  },
+                  "leadingSpace": {
+                    "measured": false,
+                    "reviewSuggested": false
+                  },
+                  "sequenceColumnSpace": {
+                    "measured": true,
+                    "columnFit": "spread",
+                    "participantCount": 3,
+                    "occupiedRight": 611.3,
+                    "viewBoxLeft": 0,
+                    "canvasWidth": 640,
+                    "emptyRightPx": 28.8,
+                    "emptyRightRatio": 0.045,
+                    "typicalParticipantWidth": 148,
+                    "reviewSuggested": false
+                  },
+                  "desktopReadability": {
+                    "budgetBasis": "legacy-930",
+                    "readerContract": "declared-wide-v1",
+                    "availableDiagramWidth": 930,
+                    "actualBudgetPx": 930,
+                    "limit": "legacy",
+                    "requestedTargetPx": null,
+                    "requestedTargetMet": null,
+                    "hardFloorPx": 6,
+                    "hardFloorMet": true,
+                    "minimumOwner": {
+                      "kind": "edge",
+                      "id": "student-to-api-1",
+                      "from": "student",
+                      "to": "api"
+                    },
+                    "minimumSourceTextPx": 11,
+                    "minimumProjectedTextPx": 11,
+                    "semanticTextCount": 13
+                  },
+                  "issues": []
+                }
+              }
+            }
+          ]
+        },
+        "diagnostics": [],
+        "provenance": "current",
+        "deliveryReceiptId": "a281a078-48bb-4263-867d-44f228833fc4"
+      }
+    }
+  },
+  "browserCheck": {
+    "requested": false,
+    "ran": false
+  },
+  "diagnostics": [],
+  "evidence": {
+    "receipt": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.finalize.json",
+    "summaryReceipt": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.finalize-summary.json"
+  },
+  "visualReview": "not-requested",
+  "finishedAt": "2026-11-14T04:01:43.340Z",
+  "durationMs": 3097,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-11-14T03:53:33.021Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

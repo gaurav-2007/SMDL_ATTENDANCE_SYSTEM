@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "a281a078-48bb-4263-867d-44f228833fc4",
+  "status": "current",
+  "command": "deliver",
+  "type": "explainer",
+  "input": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\candidate.archify.md",
+  "output": "D:\\project by trae smdl\\.archify\\explainer-smdl-project-workflow-20261114-093021\\smdl-project-workflow.html",
+  "specification": {
+    "sha256": "dafffc9f7f2df2a5f02557a02e433f0ba9b5c6835c1c2d14e72502094bb3f4e3",
+    "bytes": 7104
+  },
+  "artifact": {
+    "sha256": "9cd15b5dbaca64caa206ff7b78ec736fee4c785e70f01bc3644adc3eed49ad84",
+    "bytes": 969871
+  },
+  "explainer": {
+    "preparedSha256": "206b1235a16a116ef8145664c69abe61f9c77ca686617a0280caa1619a68db08",
+    "dependencies": [
+      {
+        "kind": "diagram-spec",
+        "id": "attendance-workflow",
+        "inline": true,
+        "sha256": "d46f0eb9ead02cf7ecbbcd60833b19127d6ff464116f0cf1cff16b7d66c34ccc",
+        "bytes": 2169
+      },
+      {
+        "kind": "diagram-spec",
+        "id": "attendance-marking-seq",
+        "inline": true,
+        "sha256": "3683df8924315ed1591504acaf62510f040e586a28da9aa300e2043053fc7e98",
+        "bytes": 1526
+      }
+    ]
+  }
+}

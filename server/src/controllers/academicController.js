@@ -1,5 +1,6 @@
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
+const { assertActiveUser } = require('../middleware/roles');
 
 
 // @desc   Get all courses with divisions
@@ -233,8 +234,47 @@ const deleteCourse = asyncHandler(async (req, res) => {
 // @desc   Get weekly timetable for a division
 // @route  GET /api/academic/timetable/:division_id
 const getDivisionTimetable = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+
+  if (!['student', 'teacher', 'admin'].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Insufficient permissions');
+  }
+
   const { division_id } = req.params;
   const { day_of_week } = req.query;
+
+  if (!division_id) {
+    res.status(400);
+    throw new Error('division_id is required');
+  }
+
+  const isStudent = req.user.role === 'student';
+  if (isStudent) {
+    const { data: student, error: stuErr } = await supabaseAdmin
+      .from('students')
+      .select('id, division_id')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (stuErr) {
+      console.error('[academicController] Failed verifying student division:', stuErr.message);
+      res.status(500);
+      throw new Error('Failed to verify student division');
+    }
+    if (!student || !student.division_id) {
+      res.status(403);
+      throw new Error('You are not assigned to a division. Please contact the college administration.');
+    }
+    if (student.division_id !== division_id) {
+      res.status(403);
+      throw new Error('Access Denied: You can only view the timetable for your assigned division.');
+    }
+  }
+
+  const teacherSelect = isStudent
+    ? 'teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))'
+    : 'teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name, email))';
 
   let query = supabaseAdmin
     .from('division_timetables')
@@ -248,7 +288,7 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
       is_lab,
       created_at,
       subject:subjects(id, name, code),
-      teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name, email))
+      ${teacherSelect}
     `)
     .eq('division_id', division_id)
     .order('start_time', { ascending: true });
@@ -263,9 +303,33 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
+  const slots = isStudent
+    ? (data || []).map((slot) => {
+        if (!slot.teacher && !slot.teachers) return slot;
+        const sanitizeTeacher = (t) => {
+          if (!t) return t;
+          const sanitizeUser = (u) => {
+            if (!u) return u;
+            const { email: _omittedEmail, ...safeUser } = u;
+            return safeUser;
+          };
+          return {
+            ...t,
+            ...(t.user ? { user: sanitizeUser(t.user) } : {}),
+            ...(t.users ? { users: sanitizeUser(t.users) } : {}),
+          };
+        };
+        return {
+          ...slot,
+          ...(slot.teacher ? { teacher: sanitizeTeacher(slot.teacher) } : {}),
+          ...(slot.teachers ? { teachers: sanitizeTeacher(slot.teachers) } : {}),
+        };
+      })
+    : (data || []);
+
   res.json({
     success: true,
-    data: { slots: data || [] },
+    data: { slots },
   });
 });
 
@@ -464,9 +528,15 @@ const loadSmdlTimetableMatrix = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc   Get list of active teachers for timetable assignment
+// @desc   Get list of active teachers for timetable assignment (Admin only)
 // @route  GET /api/academic/teachers-list
-const getTeachersList = asyncHandler(async (_req, res) => {
+const getTeachersList = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Access Denied: Admin privileges required');
+  }
+
   const { data: teachers, error } = await supabaseAdmin
     .from('teachers')
     .select('id, teacher_id, department, designation, user:users!teachers_user_id_fkey(id, full_name, email, status)')

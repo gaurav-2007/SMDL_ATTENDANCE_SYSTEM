@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const protect = require('../middleware/auth');
+const { restrictToActiveOnly } = require('../middleware/roles');
 const {
   getNotifications,
   markAsRead,
@@ -15,8 +16,8 @@ const {
 // Public route to retrieve public Web FCM client configuration (No server secrets)
 router.get('/firebase-config', getFirebasePublicConfig);
 
-// All notification routes below require authenticated JWT session
-router.use(protect);
+// All notification routes below require authenticated and active JWT session
+router.use(protect, restrictToActiveOnly);
 
 router.get('/', getNotifications);
 router.patch('/:id/read', markAsRead);

@@ -77,22 +77,37 @@ async function getAcademicEntities() {
   }
 
   // Get FYBSc CS division
-  const { data: divisions } = await supabaseAdmin
+  const { data: divisions, error: divErr } = await supabaseAdmin
     .from('divisions')
     .select('id, name, division_name')
     .eq('name', 'FYBSc CS');
+  if (divErr) {
+    console.error('[TimetableSync] Failed to query FYBSc CS division:', divErr.message);
+    return { division: null, subjects: {}, teachers: {}, allTeachers: [], error: divErr.message };
+  }
   const division = divisions?.[0] || null;
 
   // Get FYBSc CS subjects
-  const { data: subjects } = await supabaseAdmin
-    .from('subjects')
-    .select('id, name, code, division_id')
-    .eq('division_id', division?.id);
+  let subjects = [];
+  if (division?.id) {
+    const { data: subData, error: subErr } = await supabaseAdmin
+      .from('subjects')
+      .select('id, name, code, division_id')
+      .eq('division_id', division.id);
+    if (subErr) {
+      console.error('[TimetableSync] Failed to query subjects:', subErr.message);
+      return { division, subjects: {}, teachers: {}, allTeachers: [], error: subErr.message };
+    }
+    subjects = subData || [];
+  }
 
   // Get teachers
-  const { data: teachers } = await supabaseAdmin
+  const { data: teachers, error: tchErr } = await supabaseAdmin
     .from('teachers')
     .select('id, teacher_id, user_id, department, designation, user:users!teachers_user_id_fkey(id, full_name, email)');
+  if (tchErr) {
+    console.warn('[TimetableSync] Failed to query teachers:', tchErr.message);
+  }
 
   const subjectMap = {};
   (subjects || []).forEach((s) => {
@@ -130,66 +145,244 @@ function getSlotStatus(startTime, endTime, targetDateStr) {
   const [sh, sm] = (startTime || '00:00').split(':').map(Number);
   const [eh, em] = (endTime || '23:59').split(':').map(Number);
 
-  const startMin = (sh || 0) * 60 + (sm || 0);
-  const endMin = (eh || 23) * 60 + (em || 59);
+  const startMin = (Number.isFinite(sh) ? sh : 0) * 60 + (Number.isFinite(sm) ? sm : 0);
+  const endMin = (Number.isFinite(eh) ? eh : 23) * 60 + (Number.isFinite(em) ? em : 59);
 
   if (currentMinutes < startMin) return 'UPCOMING';
   if (currentMinutes > endMin) return 'COMPLETED';
   return 'ONGOING';
 }
 
-// Ensure today's lectures from the timetable are generated in the database
-async function syncTodayLectures(targetDateStr) {
-  const targetDate = targetDateStr ? new Date(targetDateStr) : new Date();
+// Prevent duplicate inserts from concurrent requests for the same date
+const activeSyncLocks = new Map();
+
+function normalizeTimeHHMM(t) {
+  const parts = String(t || '').trim().split(':');
+  if (parts.length < 2) return '';
+  return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+}
+
+async function performSyncTodayLectures(targetDateStr) {
   const dateStr = targetDateStr ? getKolkataDateString(targetDateStr) : getKolkataDateString();
   const dayName = getKolkataDayName(dateStr);
 
-  const daySchedule = SMDL_TIMETABLE_MATRIX.weekly_schedule[dayName] || [];
-  if (daySchedule.length === 0) {
-    return { date: dateStr, day: dayName, is_holiday: true, count: 0 };
+  // 1. Load live multi-division timetable slots for today's weekday
+  const { data: dayTimetableSlots, error: ttErr } = await supabaseAdmin
+    .from('division_timetables')
+    .select('id, division_id, day_of_week, start_time, end_time, subject_id, teacher_id, is_lab, subject:subjects(id, name, code), teacher:teachers(id, user_id)')
+    .ilike('day_of_week', dayName)
+    .order('start_time', { ascending: true });
+
+  if (ttErr) {
+    if (ttErr.code !== '42P01') {
+      console.error('[TimetableSync] Failed to query division_timetables:', ttErr.message);
+      return { date: dateStr, day: dayName, inserted: 0, error: ttErr.message };
+    }
+    console.warn('[TimetableSync] division_timetables table unavailable; checking legacy fallback:', ttErr.message);
   }
 
-  const { division, subjects, teachers } = await getAcademicEntities();
-  if (!division) return { error: 'Division not found' };
-
-  // Check which lectures already exist for target date
-  const { data: existingLectures } = await supabaseAdmin
+  // 2. Check which lectures already exist across all divisions for target date
+  let { data: existingLectures, error: existErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, subject_id, teacher_id, division_id, start_time, end_time, topic, lecture_date')
-    .eq('division_id', division.id)
+    .select('id, subject_id, teacher_id, division_id, start_time, end_time, status, topic, lecture_date')
     .eq('lecture_date', dateStr);
 
-  const existingBySlot = new Set((existingLectures || []).map((l) => `${l.start_time}-${l.subject_id}`));
+  if (existErr && (existErr.code === '42703' || String(existErr.message).includes('status'))) {
+    // Graceful fallback if lectures.status column not yet migrated in Supabase
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, subject_id, teacher_id, division_id, start_time, end_time, topic, lecture_date')
+      .eq('lecture_date', dateStr);
+    existingLectures = retry.data;
+    existErr = retry.error;
+  }
+
+  if (existErr) {
+    console.error('[TimetableSync] Failed to query existing lectures:', existErr.message);
+    return { date: dateStr, day: dayName, inserted: 0, error: existErr.message };
+  }
+
+  const existingBySlot = new Set();
+  const occupiedTimeSlots = new Set();
+
+  for (const l of existingLectures || []) {
+    const normTime = normalizeTimeHHMM(l.start_time);
+    existingBySlot.add(`${l.division_id}-${normTime}-${l.subject_id}`);
+    // Track occupied (division_id, start_time) so cancelled or subject-swapped/proxy slots are not recreated
+    occupiedTimeSlots.add(`${l.division_id}-${normTime}`);
+  }
+
+  // Build unified candidate list from multi-division timetable + FYBSc CS legacy fallback (when absent)
+  const candidateSlots = [];
+  for (const slot of dayTimetableSlots || []) {
+    if (!slot.division_id || !slot.subject_id) continue;
+    candidateSlots.push({
+      division_id: slot.division_id,
+      subject_id: slot.subject_id,
+      teacher_id: slot.teacher_id || null,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      topic: slot.subject?.name
+        ? `${slot.subject.name} (${slot.is_lab ? 'Practical' : 'Lecture'})`
+        : 'Scheduled Lecture',
+      created_by: slot.teacher?.user_id || null,
+    });
+  }
+
+  // 3. Legacy matrix fallback ONLY for FYBSc CS when absent in division_timetables
+  const legacyDaySchedule = SMDL_TIMETABLE_MATRIX.weekly_schedule[dayName] || [];
+  if (legacyDaySchedule.length > 0) {
+    const { division, subjects, teachers, error: entErr } = await getAcademicEntities();
+    if (!entErr && division) {
+      const { data: divConfiguredRows, error: divCheckErr } = await supabaseAdmin
+        .from('division_timetables')
+        .select('id')
+        .eq('division_id', division.id)
+        .limit(1);
+
+      if (divCheckErr && divCheckErr.code !== '42P01') {
+        console.warn('[TimetableSync] Skipping legacy fallback check due to division_timetables error:', divCheckErr.message);
+      } else {
+        const hasDivisionTimetable = !divCheckErr && divConfiguredRows && divConfiguredRows.length > 0;
+        if (!hasDivisionTimetable) {
+          for (const item of legacyDaySchedule) {
+            const slot = SMDL_TIMETABLE_MATRIX.time_slots.find((s) => s.slot_id === item.slot_id);
+            if (!slot) continue;
+
+            const subj = subjects[item.code];
+            const teacher = teachers[item.teacher];
+            if (!subj) continue;
+
+            candidateSlots.push({
+              division_id: division.id,
+              subject_id: subj.id,
+              teacher_id: teacher?.id || null,
+              start_time: slot.start_time,
+              end_time: slot.end_time,
+              topic: `${item.name} (${item.type})`,
+              created_by: teacher?.user_id || null,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Track exact timetable slot keys so off-slot moved lectures (RESCHEDULED / ONGOING / COMPLETED) can be identified
+  const timetableExactKeys = new Set(
+    candidateSlots.map((c) => `${c.division_id}-${normalizeTimeHHMM(c.start_time)}-${c.subject_id}`)
+  );
+
+  // Collect unmatched slots in Pass 1
+  const unmatchedByDivSubj = new Map();
+  for (const c of candidateSlots) {
+    const normTime = normalizeTimeHHMM(c.start_time);
+    const exactKey = `${c.division_id}-${normTime}-${c.subject_id}`;
+    const timeKey = `${c.division_id}-${normTime}`;
+    if (existingBySlot.has(exactKey) || occupiedTimeSlots.has(timeKey)) {
+      continue;
+    }
+    const divSubjKey = `${c.division_id}-${c.subject_id}`;
+    if (!unmatchedByDivSubj.has(divSubjKey)) unmatchedByDivSubj.set(divSubjKey, []);
+    unmatchedByDivSubj.get(divSubjKey).push(c);
+  }
+
+  // Collect off-slot lectures ONLY when they carry explicit reschedule provenance
+  // (RESCHEDULED status or [RESCHEDULED] topic tag). Normal manual ONGOING/COMPLETED
+  // extra lectures must NEVER suppress or replace regular timetable slots.
+  // Limitation: without timetable_slot_id & original_lecture_date columns, cross-date
+  // reschedules and multi-slot same-subject moves cannot be disambiguated automatically.
+  const offSlotReschedByDivSubj = new Map();
+  for (const l of existingLectures || []) {
+    if (!l.division_id || !l.subject_id) continue;
+    const stUpper = String(l.status || 'SCHEDULED').toUpperCase();
+    const isCancelled =
+      stUpper === 'CANCELLED' ||
+      (['SCHEDULED', 'ACTIVE'].includes(stUpper) && Boolean(l.topic && l.topic.includes('[CANCELLED]')));
+    if (isCancelled) continue;
+
+    const normTime = normalizeTimeHHMM(l.start_time);
+    const exactKey = `${l.division_id}-${normTime}-${l.subject_id}`;
+    if (timetableExactKeys.has(exactKey)) continue;
+
+    const hasExplicitResched =
+      stUpper === 'RESCHEDULED' || Boolean(l.topic && l.topic.includes('[RESCHEDULED]'));
+    if (hasExplicitResched) {
+      const divSubjKey = `${l.division_id}-${l.subject_id}`;
+      if (!offSlotReschedByDivSubj.has(divSubjKey)) offSlotReschedByDivSubj.set(divSubjKey, []);
+      offSlotReschedByDivSubj.get(divSubjKey).push(l);
+    }
+  }
 
   const toInsert = [];
-  for (const item of daySchedule) {
-    const slot = SMDL_TIMETABLE_MATRIX.time_slots.find((s) => s.slot_id === item.slot_id);
-    if (!slot) continue;
+  for (const [divSubjKey, groupSlots] of unmatchedByDivSubj.entries()) {
+    const reschedCandidates = offSlotReschedByDivSubj.get(divSubjKey) || [];
+    if (groupSlots.length === 1 && reschedCandidates.length === 1) {
+      // Unambiguous 1-to-1 association: single unmatched slot covered by explicit rescheduled lecture
+      continue;
+    }
+    if (reschedCandidates.length > 0 && (groupSlots.length > 1 || reschedCandidates.length > 1)) {
+      console.warn(
+        '[TimetableSync] Ambiguous rescheduled slot mapping without timetable_slot_id; refusing to guess:',
+        { divSubjKey, unmatchedSlots: groupSlots.length, reschedCandidates: reschedCandidates.length }
+      );
+    }
 
-    const subj = subjects[item.code];
-    const teacher = teachers[item.teacher];
-    if (!subj) continue;
-
-    const key = `${slot.start_time}-${subj.id}`;
-    if (!existingBySlot.has(key)) {
-      toInsert.push({
-        subject_id: subj.id,
-        teacher_id: teacher?.id || null,
-        division_id: division.id,
-        lecture_date: dateStr,
-        start_time: slot.start_time,
-        end_time: slot.end_time,
-        topic: `${item.name} (${item.type})`,
-        created_by: teacher?.user_id || division.id,
-      });
+    for (const slot of groupSlots) {
+      const normTime = normalizeTimeHHMM(slot.start_time);
+      const exactKey = `${slot.division_id}-${normTime}-${slot.subject_id}`;
+      const timeKey = `${slot.division_id}-${normTime}`;
+      if (!existingBySlot.has(exactKey) && !occupiedTimeSlots.has(timeKey)) {
+        existingBySlot.add(exactKey);
+        occupiedTimeSlots.add(timeKey);
+        toInsert.push({
+          subject_id: slot.subject_id,
+          teacher_id: slot.teacher_id,
+          division_id: slot.division_id,
+          lecture_date: dateStr,
+          start_time: slot.start_time,
+          end_time: slot.end_time,
+          topic: slot.topic,
+          status: 'SCHEDULED',
+          created_by: slot.created_by,
+        });
+      }
     }
   }
 
   if (toInsert.length > 0) {
-    await supabaseAdmin.from('lectures').insert(toInsert);
+    let { error: insertErr } = await supabaseAdmin.from('lectures').insert(toInsert);
+    if (insertErr && (insertErr.code === '42703' || String(insertErr.message).includes('status'))) {
+      // Fallback: strip status column if not present in Supabase table schema
+      const withoutStatus = toInsert.map(({ status, ...rest }) => rest);
+      const retryInsert = await supabaseAdmin.from('lectures').insert(withoutStatus);
+      insertErr = retryInsert.error;
+    }
+    if (insertErr) {
+      console.error('[TimetableSync] Failed to insert lectures:', insertErr.message);
+      return { date: dateStr, day: dayName, inserted: 0, error: insertErr.message };
+    }
+  }
+
+  if ((dayTimetableSlots || []).length === 0 && toInsert.length === 0 && (existingLectures || []).length === 0) {
+    return { date: dateStr, day: dayName, is_holiday: true, count: 0, inserted: 0 };
   }
 
   return { date: dateStr, day: dayName, inserted: toInsert.length };
+}
+
+// Ensure today's lectures from the timetable are generated in the database
+async function syncTodayLectures(targetDateStr) {
+  const lockKey = targetDateStr ? getKolkataDateString(targetDateStr) : getKolkataDateString();
+  if (activeSyncLocks.has(lockKey)) {
+    return activeSyncLocks.get(lockKey);
+  }
+
+  const promise = performSyncTodayLectures(targetDateStr).finally(() => {
+    activeSyncLocks.delete(lockKey);
+  });
+  activeSyncLocks.set(lockKey, promise);
+  return promise;
 }
 
 module.exports = {

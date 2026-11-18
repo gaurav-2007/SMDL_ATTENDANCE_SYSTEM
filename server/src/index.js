@@ -112,9 +112,10 @@ initNotificationCleanupJob();
 
 // Direct alias for Section 3: GET /student/today-classes & /api/student/today-classes
 const protect = require('./middleware/auth');
+const { restrictToActiveOnly } = require('./middleware/roles');
 const { getStudentTodayClasses } = require('./controllers/lectureController');
-app.get('/api/student/today-classes', protect, getStudentTodayClasses);
-app.get('/student/today-classes', protect, getStudentTodayClasses);
+app.get('/api/student/today-classes', protect, restrictToActiveOnly, getStudentTodayClasses);
+app.get('/student/today-classes', protect, restrictToActiveOnly, getStudentTodayClasses);
 
 
 app.get('/', (_req, res) => {

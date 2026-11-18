@@ -219,6 +219,8 @@ export default function RegisterPage() {
         email: form.email.trim().toLowerCase(),
         role,
         purpose: 'REGISTER',
+        roll_number: role === 'student' ? form.roll_number?.trim() : undefined,
+        employee_id: role === 'teacher' ? form.employee_id?.trim() : undefined,
       })
 
       setStep('otp')
@@ -265,6 +267,8 @@ export default function RegisterPage() {
         email: form.email.trim().toLowerCase(),
         role,
         purpose: 'REGISTER',
+        roll_number: role === 'student' ? form.roll_number?.trim() : undefined,
+        employee_id: role === 'teacher' ? form.employee_id?.trim() : undefined,
       })
       setResendTimer(60)
       setOtpDigits(['', '', '', '', '', ''])
@@ -297,7 +301,11 @@ export default function RegisterPage() {
         purpose: 'REGISTER',
       })
 
-      const token = verifyRes.data?.data?.token || verifyRes.data?.token
+      const token =
+        verifyRes.data?.data?.otp_token ||
+        verifyRes.data?.otp_token ||
+        verifyRes.data?.data?.token ||
+        verifyRes.data?.token
       if (!token) throw new Error('Verification completed but authorization token was missing')
 
       const payload = {

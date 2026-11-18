@@ -40,4 +40,18 @@ const restrictToActiveOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { restrictTo, restrictToActiveOnly };
+const assertActiveUser = (user, res) => {
+  if (!user) {
+    if (res) res.status(401);
+    throw new Error('Not authenticated');
+  }
+  const hasActiveStatus =
+    user.status === 'ACTIVE' &&
+    (user.account_status === undefined || user.account_status === 'ACTIVE');
+  if (!hasActiveStatus) {
+    if (res) res.status(403);
+    throw new Error('Your account is not active. Please wait for admin approval.');
+  }
+};
+
+module.exports = { restrictTo, restrictToActiveOnly, assertActiveUser };

@@ -17,11 +17,11 @@ const router = express.Router();
 
 router.use(protect);
 
-router.get('/', getAllLectures);
-router.get('/active', getActiveLectures);
-router.get('/today', getTodaySchedule);
-router.get('/today-classes', getStudentTodayClasses);
-router.get('/timetable', getTimetableMatrix);
+router.get('/', restrictTo('teacher', 'admin'), restrictToActiveOnly, getAllLectures);
+router.get('/active', restrictToActiveOnly, getActiveLectures);
+router.get('/today', restrictTo('teacher', 'admin'), restrictToActiveOnly, getTodaySchedule);
+router.get('/today-classes', restrictToActiveOnly, getStudentTodayClasses);
+router.get('/timetable', restrictToActiveOnly, getTimetableMatrix);
 router.post('/', restrictTo('teacher', 'admin'), restrictToActiveOnly, createLecture);
 router.patch('/:id/status', restrictTo('teacher', 'admin'), restrictToActiveOnly, updateLectureStatus);
 router.put('/:id', restrictTo('teacher', 'admin'), restrictToActiveOnly, updateLecture);
