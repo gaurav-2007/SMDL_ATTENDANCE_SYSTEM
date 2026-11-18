@@ -1,5 +1,4 @@
 import { Capacitor } from '@capacitor/core'
-import { Browser } from '@capacitor/browser'
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 import toast from 'react-hot-toast'
@@ -87,7 +86,8 @@ async function resolveBase64AndName(url, rawFileName = 'Notice_Attachment') {
 
 /**
  * Downloads an attachment to local device storage.
- * Works seamlessly across web browsers and mobile WebViews (Capacitor/Android).
+ * - On Mobile APK: Directly saves to device Documents/Downloads folder without opening the share sheet.
+ * - On Laptop/Web: Downloads to browser Downloads folder.
  */
 export async function downloadAttachment(url, fileName = 'attachment') {
   if (!url) {
@@ -101,15 +101,17 @@ export async function downloadAttachment(url, fileName = 'attachment') {
       const { base64Data, safeName } = await resolveBase64AndName(url, fileName)
 
       if (base64Data) {
-        // Write to Cache directory (guaranteed accessible via Android FileProvider)
-        const written = await Filesystem.writeFile({
-          path: safeName,
-          data: base64Data,
-          directory: Directory.Cache,
-          recursive: true,
-        })
+        // Request storage permission if required on Android
+        try {
+          const perm = await Filesystem.checkPermissions()
+          if (perm.publicStorage !== 'granted') {
+            await Filesystem.requestPermissions()
+          }
+        } catch (_pErr) {}
 
-        // Also attempt persistent copy to Documents folder
+        let saved = false
+
+        // 1. Save directly into public Documents folder (accessible in phone file manager)
         try {
           await Filesystem.writeFile({
             path: safeName,
@@ -117,24 +119,40 @@ export async function downloadAttachment(url, fileName = 'attachment') {
             directory: Directory.Documents,
             recursive: true,
           })
-        } catch (_docErr) {}
+          saved = true
+        } catch (_docErr) {
+          // 2. Fallback to app Data folder if Documents has permission restrictions
+          try {
+            await Filesystem.writeFile({
+              path: safeName,
+              data: base64Data,
+              directory: Directory.Data,
+              recursive: true,
+            })
+            saved = true
+          } catch (_dataErr) {
+            // 3. Fallback to Cache
+            await Filesystem.writeFile({
+              path: safeName,
+              data: base64Data,
+              directory: Directory.Cache,
+              recursive: true,
+            })
+            saved = true
+          }
+        }
 
-        // Launch native Android Share/Save action sheet with file content URI
-        if (written?.uri) {
-          await Share.share({
-            title: safeName,
-            files: [written.uri],
-            dialogTitle: 'Save / Download Notice File',
+        if (saved) {
+          toast.success(`📥 Downloaded! Saved to Documents: ${safeName}`, {
+            duration: 4000,
           })
-          toast.success(`📎 ${safeName} ready! Select "Save to device" or open.`)
           return
         }
       }
     } catch (nativeErr) {
-      if (nativeErr?.message?.includes('cancel') || nativeErr?.message?.includes('canceled')) {
-        return
-      }
-      console.warn('[attachmentHelper] Native download error, falling back:', nativeErr)
+      console.warn('[attachmentHelper] Native direct download error:', nativeErr)
+      toast.error(`Download failed: ${nativeErr.message || 'Storage error'}`)
+      return
     }
   }
 
@@ -180,9 +198,8 @@ export async function downloadAttachment(url, fileName = 'attachment') {
 
 /**
  * Shares an attachment directly to WhatsApp or native device share sheet.
- * - On Mobile APK: Writes file to device cache and triggers Android native share sheet
- *   with WhatsApp option, sending the actual image / PDF document and caption.
- * - On Laptop / Web: Opens WhatsApp Web / API with prefilled caption message.
+ * - On Mobile APK: Shares ONLY the photo / document file (without any text caption).
+ * - On Laptop / Web: Opens WhatsApp Web with notice reference.
  */
 export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attachment') {
   if (!attachment) return
@@ -205,15 +222,12 @@ export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attach
         })
 
         if (written?.uri) {
-          // Triggers Android Intent.ACTION_SEND with EXTRA_STREAM content URI
-          // Shows WhatsApp, WhatsApp Business, Drive, and Quick Share
+          // Shares ONLY the photo/document file into WhatsApp with NO text caption
           await Share.share({
-            title: title || safeName,
-            text: `*${title || 'College Notice Attachment'}*\n📎 Attached: ${safeName}\nSMDL Smart Attendance System`,
             files: [written.uri],
-            dialogTitle: 'Share to WhatsApp / Apps',
+            dialogTitle: 'Share to WhatsApp',
           })
-          toast.success('Sharing attachment...')
+          toast.success('Sharing photo...')
           return
         }
       }
@@ -221,14 +235,12 @@ export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attach
       if (err?.message?.includes('cancel') || err?.message?.includes('canceled')) {
         return
       }
-      console.warn('[attachmentHelper] Native file share error, falling back:', err.message)
+      console.warn('[attachmentHelper] Native photo share error:', err.message)
     }
 
-    // Direct WhatsApp URI scheme fallback on mobile
+    // Direct WhatsApp fallback if share fails
     try {
-      const msg = `*${title}*\nAttachment: ${rawName}\nSMDL Smart Attendance System`
-      window.location.href = `whatsapp://send?text=${encodeURIComponent(msg)}`
-      toast.success('Opening WhatsApp...')
+      window.location.href = `whatsapp://send`
       return
     } catch (_wErr) {}
   }
