@@ -13,6 +13,7 @@ const {
   getKolkataTimeString,
   getKolkataMinutes,
 } = require('../utils/dateUtils');
+const { isStatusColumnError } = require('../utils/statusFallback');
 
 const VALID_LECTURE_STATUSES = ['SCHEDULED', 'ACTIVE', 'ONGOING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED'];
 
@@ -398,9 +399,9 @@ async function attachTeacherNames(lectures) {
 }
 
 async function loadTeacherAccessContext(userId, res) {
-  const { data: teacherRec, error: tchErr } = await supabaseAdmin
+  let { data: teacherRec, error: tchErr } = await supabaseAdmin
     .from('teachers')
-    .select('id, teacher_id, user_id, department, users(id, full_name, email)')
+    .select('id, teacher_id, user_id, department')
     .eq('user_id', userId)
     .maybeSingle();
 
@@ -412,6 +413,16 @@ async function loadTeacherAccessContext(userId, res) {
   if (!teacherRec?.id) {
     return { teacherRec: null, assignedSubjectIds: new Set(), timetablePairs: new Set() };
   }
+
+  // Populate users safely without ambiguous relation embedding error
+  try {
+    const { data: u } = await supabaseAdmin
+      .from('users')
+      .select('id, full_name, email')
+      .eq('id', userId)
+      .maybeSingle();
+    teacherRec.users = u || null;
+  } catch (_e) {}
 
   const [{ data: tsRows, error: tsErr }, { data: ttRows, error: ttErr }] = await Promise.all([
     supabaseAdmin.from('teacher_subjects').select('subject_id').eq('teacher_id', teacherRec.id),
@@ -545,7 +556,34 @@ const getActiveLectures = asyncHandler(async (req, res) => {
     teacherCtx = await loadTeacherAccessContext(req.user.id, res);
   }
 
-  const { data: lectures, error } = await query;
+  let { data: lectures, error } = await query;
+  if (error && isStatusColumnError(error)) {
+    let retryQuery = supabaseAdmin
+      .from('lectures')
+      .select(`
+        id,
+        division_id,
+        subject_id,
+        teacher_id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        created_at,
+        subject:subjects(id, name, code, division_id),
+        division:divisions(id, name, division_name),
+        teacher:teachers(id, teacher_id, user_id)
+      `)
+      .eq('lecture_date', todayStr)
+      .order('start_time', { ascending: true });
+
+    if (req.user.role === 'student') {
+      retryQuery = retryQuery.eq('division_id', studentDivisionId);
+    }
+    const retryRes = await retryQuery;
+    lectures = retryRes.data;
+    error = retryRes.error;
+  }
   if (error) {
     res.status(500);
     throw new Error(error.message);
@@ -611,7 +649,7 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
   const currentTeacher = teacherCtx?.teacherRec || null;
 
   // Fetch all lectures for target date
-  const { data: lectures, error } = await supabaseAdmin
+  let { data: lectures, error } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
@@ -630,6 +668,29 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
     `)
     .eq('lecture_date', targetDateStr)
     .order('start_time', { ascending: true });
+
+  if (error && isStatusColumnError(error)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select(`
+        id,
+        division_id,
+        subject_id,
+        teacher_id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        created_at,
+        subject:subjects(id, name, code, division_id),
+        division:divisions(id, name, division_name),
+        teacher:teachers(id, teacher_id, user_id)
+      `)
+      .eq('lecture_date', targetDateStr)
+      .order('start_time', { ascending: true });
+    lectures = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     res.status(500);
@@ -732,7 +793,7 @@ const getAllLectures = asyncHandler(async (req, res) => {
     teacherCtx = await loadTeacherAccessContext(req.user.id, res);
   }
 
-  const { data: lectures, error } = await supabaseAdmin
+  let { data: lectures, error } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
@@ -750,6 +811,28 @@ const getAllLectures = asyncHandler(async (req, res) => {
       teachers:teachers(id, teacher_id, user_id)
     `)
     .order('lecture_date', { ascending: false });
+
+  if (error && isStatusColumnError(error)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select(`
+        id,
+        division_id,
+        subject_id,
+        teacher_id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        created_at,
+        subjects:subjects(id, name, code, division_id),
+        divisions:divisions(id, name, division_name),
+        teachers:teachers(id, teacher_id, user_id)
+      `)
+      .order('lecture_date', { ascending: false });
+    lectures = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     res.status(500);
@@ -902,11 +985,20 @@ const createLecture = asyncHandler(async (req, res) => {
   // automatically cancel the conflicting lecture and notify students & teacher.
   if (resolvedTeacherId) {
     try {
-      const { data: existingLectures } = await supabaseAdmin
+      let { data: existingLectures, error: exErr } = await supabaseAdmin
         .from('lectures')
         .select('id, start_time, end_time, status, topic, division_id, subject:subjects(name)')
         .eq('teacher_id', resolvedTeacherId)
         .eq('lecture_date', todayStr);
+
+      if (exErr && isStatusColumnError(exErr)) {
+        const retryEx = await supabaseAdmin
+          .from('lectures')
+          .select('id, start_time, end_time, topic, division_id, subject:subjects(name)')
+          .eq('teacher_id', resolvedTeacherId)
+          .eq('lecture_date', todayStr);
+        existingLectures = retryEx.data;
+      }
 
       const toMin = (t) => {
         if (!t) return 0;
@@ -931,10 +1023,17 @@ const createLecture = asyncHandler(async (req, res) => {
         // Mark each conflicting lecture as CANCELLED in DB
         for (const conf of conflicting) {
           const originalTopic = (conf.topic || 'Regular Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '');
-          await supabaseAdmin
+          let { error: cancelErr } = await supabaseAdmin
             .from('lectures')
             .update({ topic: `[CANCELLED] ${originalTopic}`, status: 'CANCELLED' })
             .eq('id', conf.id);
+
+          if (cancelErr && isStatusColumnError(cancelErr)) {
+            await supabaseAdmin
+              .from('lectures')
+              .update({ topic: `[CANCELLED] ${originalTopic}` })
+              .eq('id', conf.id);
+          }
         }
 
         // Dispatch cancellation notifications
@@ -970,7 +1069,7 @@ const createLecture = asyncHandler(async (req, res) => {
     insertData.teacher_id = resolvedTeacherId;
   }
 
-  const { data: lecture, error } = await supabaseAdmin
+  let { data: lecture, error } = await supabaseAdmin
     .from('lectures')
     .insert(insertData)
     .select(`
@@ -984,6 +1083,25 @@ const createLecture = asyncHandler(async (req, res) => {
       division:divisions(id, name, division_name)
     `)
     .single();
+
+  if (error && isStatusColumnError(error)) {
+    const { status: _ignored, ...insertWithoutStatus } = insertData;
+    const retryInsert = await supabaseAdmin
+      .from('lectures')
+      .insert(insertWithoutStatus)
+      .select(`
+        id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        subject:subjects(id, name, code),
+        division:divisions(id, name, division_name)
+      `)
+      .single();
+    lecture = retryInsert.data ? { ...retryInsert.data, status: 'SCHEDULED' } : null;
+    error = retryInsert.error;
+  }
 
   if (error) {
     res.status(500);
@@ -1040,11 +1158,21 @@ const updateLectureStatus = asyncHandler(async (req, res) => {
   }
   const normalizedStatus = normalizePersistedStatus(requestedStatus);
 
-  const { data: curr, error: fetchErr } = await supabaseAdmin
+  let { data: curr, error: fetchErr } = await supabaseAdmin
     .from('lectures')
     .select('id, division_id, subject_id, teacher_id, topic, status, lecture_date, start_time, end_time')
     .eq('id', id)
     .maybeSingle();
+
+  if (fetchErr && isStatusColumnError(fetchErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, division_id, subject_id, teacher_id, topic, lecture_date, start_time, end_time')
+      .eq('id', id)
+      .maybeSingle();
+    curr = retry.data;
+    fetchErr = retry.error;
+  }
 
   if (fetchErr) {
     res.status(500);
@@ -1084,12 +1212,24 @@ const updateLectureStatus = asyncHandler(async (req, res) => {
     updatePayload.end_time = resolvedTimes.end_time;
   }
 
-  const { data: updated, error } = await supabaseAdmin
+  let { data: updated, error } = await supabaseAdmin
     .from('lectures')
     .update(updatePayload)
     .eq('id', id)
     .select()
     .maybeSingle();
+
+  if (error && isStatusColumnError(error)) {
+    const { status: _ignored, ...updateWithoutStatus } = updatePayload;
+    const retryUpd = await supabaseAdmin
+      .from('lectures')
+      .update(updateWithoutStatus)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    updated = retryUpd.data ? { ...retryUpd.data, status: normalizedStatus } : null;
+    error = retryUpd.error;
+  }
 
   if (error) {
     res.status(500);
@@ -1247,7 +1387,7 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
       isFromTimetable = true;
 
       // Cross-reference today's persisted lectures deterministically and canonical attendance table
-      const { data: todayLectures, error: todayLecErr } = await supabaseAdmin
+      let { data: todayLectures, error: todayLecErr } = await supabaseAdmin
         .from('lectures')
         .select(`
           id,
@@ -1265,6 +1405,28 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
         .eq('division_id', divisionId)
         .eq('lecture_date', todayStr)
         .order('created_at', { ascending: true });
+
+      if (todayLecErr && isStatusColumnError(todayLecErr)) {
+        const retry = await supabaseAdmin
+          .from('lectures')
+          .select(`
+            id,
+            division_id,
+            subject_id,
+            start_time,
+            end_time,
+            lecture_date,
+            topic,
+            created_at,
+            subject:subjects(id, name, code),
+            teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
+          `)
+          .eq('division_id', divisionId)
+          .eq('lecture_date', todayStr)
+          .order('created_at', { ascending: true });
+        todayLectures = retry.data;
+        todayLecErr = retry.error;
+      }
 
       if (todayLecErr) {
         console.error('[lectureController] Failed loading today lectures for student:', todayLecErr.message);
@@ -1440,7 +1602,7 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
       await syncTodayLectures(todayStr);
     } catch (_e) {}
 
-    const { data: lectures, error: fallbackLecErr } = await supabaseAdmin
+    let { data: lectures, error: fallbackLecErr } = await supabaseAdmin
       .from('lectures')
       .select(`
         id,
@@ -1455,6 +1617,25 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
       .eq('lecture_date', todayStr)
       .eq('division_id', divisionId)
       .order('start_time', { ascending: true });
+
+    if (fallbackLecErr && isStatusColumnError(fallbackLecErr)) {
+      const retry = await supabaseAdmin
+        .from('lectures')
+        .select(`
+          id,
+          lecture_date,
+          start_time,
+          end_time,
+          topic,
+          subject:subjects(id, name, code),
+          teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
+        `)
+        .eq('lecture_date', todayStr)
+        .eq('division_id', divisionId)
+        .order('start_time', { ascending: true });
+      lectures = retry.data;
+      fallbackLecErr = retry.error;
+    }
 
     if (fallbackLecErr) {
       console.error('[lectureController] Failed loading fallback daily lectures:', fallbackLecErr.message);
@@ -1534,7 +1715,7 @@ const updateLecture = asyncHandler(async (req, res) => {
   let { teacher_id } = req.body;
 
   // 1. Fetch current lecture
-  const { data: currentLecture, error: fetchErr } = await supabaseAdmin
+  let { data: currentLecture, error: fetchErr } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
@@ -1552,6 +1733,28 @@ const updateLecture = asyncHandler(async (req, res) => {
     `)
     .eq('id', id)
     .maybeSingle();
+
+  if (fetchErr && isStatusColumnError(fetchErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select(`
+        id,
+        division_id,
+        subject_id,
+        teacher_id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        subject:subjects(id, name, code),
+        division:divisions(id, name, division_name),
+        teacher:teachers(id, teacher_id, user_id)
+      `)
+      .eq('id', id)
+      .maybeSingle();
+    currentLecture = retry.data;
+    fetchErr = retry.error;
+  }
 
   if (fetchErr) {
     res.status(500);
@@ -1647,12 +1850,23 @@ const updateLecture = asyncHandler(async (req, res) => {
   // 3. Conflict Resolution for the new teacher (if teacher or timing changed)
   if (resolvedTeacherId && (teacherChanged || start_time || end_time || lecture_date)) {
     try {
-      const { data: existingLectures, error: confErr } = await supabaseAdmin
+      let { data: existingLectures, error: confErr } = await supabaseAdmin
         .from('lectures')
         .select('id, start_time, end_time, status, topic, division_id, subject:subjects(name)')
         .eq('teacher_id', resolvedTeacherId)
         .eq('lecture_date', effectiveDate)
         .neq('id', id);
+
+      if (confErr && isStatusColumnError(confErr)) {
+        const retry = await supabaseAdmin
+          .from('lectures')
+          .select('id, start_time, end_time, topic, division_id, subject:subjects(name)')
+          .eq('teacher_id', resolvedTeacherId)
+          .eq('lecture_date', effectiveDate)
+          .neq('id', id);
+        existingLectures = retry.data;
+        confErr = retry.error;
+      }
 
       if (confErr) {
         console.warn('[lectureController] Conflict lookup warning:', confErr.message);
@@ -1678,13 +1892,21 @@ const updateLecture = asyncHandler(async (req, res) => {
           console.log(`[lectureController] Auto-cancelling ${conflictingIds.length} conflicting lecture(s) for substitute teacher ${resolvedTeacherId}:`, conflictingIds);
 
           for (const conf of conflicting) {
-            await supabaseAdmin
+            const cancelTopic = normalizeTopicForStatus(conf.topic || 'Regular Lecture', 'CANCELLED');
+            let { error: cancelErr } = await supabaseAdmin
               .from('lectures')
               .update({
-                topic: normalizeTopicForStatus(conf.topic || 'Regular Lecture', 'CANCELLED'),
+                topic: cancelTopic,
                 status: 'CANCELLED',
               })
               .eq('id', conf.id);
+
+            if (cancelErr && isStatusColumnError(cancelErr)) {
+              await supabaseAdmin
+                .from('lectures')
+                .update({ topic: cancelTopic })
+                .eq('id', conf.id);
+            }
           }
 
           const { notifyLectureCancellation } = require('../services/lectureScheduler');
@@ -1742,7 +1964,7 @@ const updateLecture = asyncHandler(async (req, res) => {
     }),
   };
 
-  const { data: updated, error: updErr } = await supabaseAdmin
+  let { data: updated, error: updErr } = await supabaseAdmin
     .from('lectures')
     .update(updatePayload)
     .eq('id', id)
@@ -1758,6 +1980,27 @@ const updateLecture = asyncHandler(async (req, res) => {
       teacher:teachers(id, teacher_id, user_id)
     `)
     .single();
+
+  if (updErr && isStatusColumnError(updErr)) {
+    const { status: _ignored, ...updateWithoutStatus } = updatePayload;
+    const retryUpd = await supabaseAdmin
+      .from('lectures')
+      .update(updateWithoutStatus)
+      .eq('id', id)
+      .select(`
+        id,
+        lecture_date,
+        start_time,
+        end_time,
+        topic,
+        subject:subjects(id, name, code),
+        division:divisions(id, name, division_name),
+        teacher:teachers(id, teacher_id, user_id)
+      `)
+      .single();
+    updated = retryUpd.data ? { ...retryUpd.data, status: resolvedStatus } : null;
+    updErr = retryUpd.error;
+  }
 
   if (updErr) {
     res.status(500);

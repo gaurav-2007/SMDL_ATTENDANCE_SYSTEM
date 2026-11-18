@@ -2,6 +2,7 @@ const { z } = require('zod');
 const { supabaseAdmin } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
 const { getKolkataDateString } = require('../utils/dateUtils');
+const { isStatusColumnError } = require('../utils/statusFallback');
 const {
   sendTeacherApprovalEmail,
   sendTeacherRejectionEmail,
@@ -819,10 +820,19 @@ const getLiveAttendanceSummary = asyncHandler(async (_req, res) => {
     .from('students')
     .select('*', { count: 'exact', head: true });
 
-  const { data: todayLectures, error: todayLecErr } = await supabaseAdmin
+  let { data: todayLectures, error: todayLecErr } = await supabaseAdmin
     .from('lectures')
     .select('id, start_time, end_time, status, topic, subject:subjects(name, code), division:divisions(name)')
     .eq('lecture_date', todayStr).neq('status', 'CANCELLED');
+
+  if (todayLecErr && isStatusColumnError(todayLecErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, start_time, end_time, topic, subject:subjects(name, code), division:divisions(name)')
+      .eq('lecture_date', todayStr);
+    todayLectures = retry.data;
+    todayLecErr = retry.error;
+  }
 
   if (todayLecErr) { res.status(500); throw new Error(todayLecErr.message); } const activeTodayLectures = (todayLectures || []).filter((l) => l.status !== 'CANCELLED' && !l.topic?.includes('[CANCELLED]')); const lectureIds = activeTodayLectures.map((l) => l.id);
 
