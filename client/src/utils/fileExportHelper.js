@@ -62,7 +62,7 @@ export async function exportReportFile({
         await Share.share({
           title: fileName,
           text: `SMDL College Official Report: ${fileName}`,
-          url: writtenFile.uri,
+          files: [writtenFile.uri],
           dialogTitle: dialogTitle,
         })
       }

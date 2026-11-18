@@ -22,6 +22,7 @@ allprojects {
         google()
         mavenCentral()
     }
+    layout.buildDirectory.set(file("${System.getProperty('user.home')}/.gradle/smld_build/${project.name}"))
 }
 
 task clean(type: Delete) {
