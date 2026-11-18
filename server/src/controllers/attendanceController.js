@@ -4,6 +4,7 @@ const { supabaseAdmin } = require('../config/db');
 const { assertActiveUser } = require('../middleware/roles');
 const { assertTeacherCanManageLecture } = require('./lectureController');
 const asyncHandler = require('../utils/asyncHandler');
+const { isStatusColumnError } = require('../utils/statusFallback');
 const {
   validateAndDecodeSelfie,
   uploadAttendanceSelfie,
@@ -69,13 +70,25 @@ async function assertTeacherAuthorizedForLecture(user, lecture, res) {
 }
 
 async function querySlotLectures(slot, todayStr, res) {
-  const { data: matches, error: matchErr } = await supabaseAdmin
+  let { data: matches, error: matchErr } = await supabaseAdmin
     .from('lectures')
     .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, created_at, subject:subjects(id, name)')
     .eq('division_id', slot.division_id)
     .eq('lecture_date', todayStr)
     .eq('start_time', slot.start_time)
     .order('created_at', { ascending: true });
+
+  if (matchErr && isStatusColumnError(matchErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, lecture_date, start_time, end_time, division_id, subject_id, topic, created_at, subject:subjects(id, name)')
+      .eq('division_id', slot.division_id)
+      .eq('lecture_date', todayStr)
+      .eq('start_time', slot.start_time)
+      .order('created_at', { ascending: true });
+    matches = retry.data;
+    matchErr = retry.error;
+  }
 
   if (matchErr) {
     console.error('[attendanceController] Slot lecture query failed:', {
@@ -132,13 +145,25 @@ async function resolveOrCreateLectureForSlot(slot, todayStr, userId, res) {
     }
 
     // Check whether this slot was rescheduled (and possibly progressed to ONGOING/COMPLETED) today
-    const { data: sameSubjectLectures, error: reschedErr } = await supabaseAdmin
+    let { data: sameSubjectLectures, error: reschedErr } = await supabaseAdmin
       .from('lectures')
       .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, created_at, subject:subjects(id, name)')
       .eq('division_id', slot.division_id)
       .eq('lecture_date', todayStr)
       .eq('subject_id', slot.subject_id)
       .order('created_at', { ascending: true });
+
+    if (reschedErr && isStatusColumnError(reschedErr)) {
+      const retry = await supabaseAdmin
+        .from('lectures')
+        .select('id, lecture_date, start_time, end_time, division_id, subject_id, topic, created_at, subject:subjects(id, name)')
+        .eq('division_id', slot.division_id)
+        .eq('lecture_date', todayStr)
+        .eq('subject_id', slot.subject_id)
+        .order('created_at', { ascending: true });
+      sameSubjectLectures = retry.data;
+      reschedErr = retry.error;
+    }
 
     if (reschedErr) {
       console.error('[attendanceController] Rescheduled slot lookup failed:', {
@@ -208,21 +233,34 @@ async function resolveOrCreateLectureForSlot(slot, todayStr, userId, res) {
       return offSlotRescheduled[0];
     }
 
-    const { data: newLec, error: createLecErr } = await supabaseAdmin
+    const newLecData = {
+      division_id: slot.division_id,
+      subject_id: slot.subject_id,
+      teacher_id: slot.teacher_id || null,
+      lecture_date: todayStr,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      status: 'SCHEDULED',
+      topic: slot.subject?.name || 'Class Lecture',
+      created_by: userId || null,
+    };
+
+    let { data: newLec, error: createLecErr } = await supabaseAdmin
       .from('lectures')
-      .insert({
-        division_id: slot.division_id,
-        subject_id: slot.subject_id,
-        teacher_id: slot.teacher_id || null,
-        lecture_date: todayStr,
-        start_time: slot.start_time,
-        end_time: slot.end_time,
-        status: 'SCHEDULED',
-        topic: slot.subject?.name || 'Class Lecture',
-        created_by: userId || null,
-      })
+      .insert(newLecData)
       .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, subject:subjects(id, name)')
       .single();
+
+    if (createLecErr && isStatusColumnError(createLecErr)) {
+      const { status: _ignored, ...insertWithoutStatus } = newLecData;
+      const retry = await supabaseAdmin
+        .from('lectures')
+        .insert(insertWithoutStatus)
+        .select('id, lecture_date, start_time, end_time, division_id, subject_id, topic, subject:subjects(id, name)')
+        .single();
+      newLec = retry.data ? { ...retry.data, status: 'SCHEDULED' } : null;
+      createLecErr = retry.error;
+    }
 
     if (createLecErr) {
       if (createLecErr.code === '23505') {
@@ -364,6 +402,16 @@ const markAttendance = asyncHandler(async (req, res) => {
     .select('id, lecture_date, start_time, end_time, division_id, subject_id, status, topic, division:divisions(id, course_id), subject:subjects(id, name)')
     .eq('id', resolvedLectureId)
     .maybeSingle();
+
+  if (lecErr && isStatusColumnError(lecErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, lecture_date, start_time, end_time, division_id, subject_id, topic, division:divisions(id, course_id), subject:subjects(id, name)')
+      .eq('id', resolvedLectureId)
+      .maybeSingle();
+    lecture = retry.data;
+    lecErr = retry.error;
+  }
 
   if (lecErr) {
     console.error('[attendanceController] Direct lecture lookup failed:', {
@@ -662,11 +710,21 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
   const { lectureId } = req.params;
 
   // 1. Get lecture with division
-  const { data: lecture, error: lecErr } = await supabaseAdmin
+  let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
     .select('id, division_id, subject_id, teacher_id, status, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
     .eq('id', lectureId)
     .maybeSingle();
+
+  if (lecErr && isStatusColumnError(lecErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, division_id, subject_id, teacher_id, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
+      .eq('id', lectureId)
+      .maybeSingle();
+    lecture = retry.data;
+    lecErr = retry.error;
+  }
 
   if (lecErr) {
     console.error('[attendanceController] Lecture roster lookup failed:', lecErr.message);
@@ -773,11 +831,21 @@ const overrideAttendance = asyncHandler(async (req, res) => {
   }
 
   // Fetch lecture info for authorization, cancelled protection & notification metadata
-  const { data: lecture, error: lecErr } = await supabaseAdmin
+  let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
     .select('id, division_id, lecture_date, subject_id, teacher_id, status, topic, subject:subjects(name)')
     .eq('id', lecture_id)
     .maybeSingle();
+
+  if (lecErr && isStatusColumnError(lecErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, division_id, lecture_date, subject_id, teacher_id, topic, subject:subjects(name)')
+      .eq('id', lecture_id)
+      .maybeSingle();
+    lecture = retry.data;
+    lecErr = retry.error;
+  }
 
   if (lecErr) {
     console.error('[attendanceController] Override lecture lookup failed:', lecErr.message);
@@ -1088,11 +1156,20 @@ const getReportsOverview = asyncHandler(async (req, res) => {
   const activeStudents = (students || []).filter((s) => s.users?.status === 'ACTIVE').length;
 
   // 3. Lectures in period (exclude cancelled)
-  const { data: lectures, error: repLecErr } = await supabaseAdmin
+  let { data: lectures, error: repLecErr } = await supabaseAdmin
     .from('lectures')
     .select('id, division_id, lecture_date, status, topic')
     .gte('lecture_date', cutoffDate)
     .neq('status', 'CANCELLED');
+
+  if (repLecErr && isStatusColumnError(repLecErr)) {
+    const retry = await supabaseAdmin
+      .from('lectures')
+      .select('id, division_id, lecture_date, topic')
+      .gte('lecture_date', cutoffDate);
+    lectures = retry.data;
+    repLecErr = retry.error;
+  }
 
   if (repLecErr) {
     console.error('[attendanceController] getReportsOverview lectures query failed:', repLecErr.message);
