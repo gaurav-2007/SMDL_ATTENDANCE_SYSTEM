@@ -167,6 +167,12 @@ export default function LoginPage() {
       if (user.role === 'teacher' && user.account_status === 'PENDING') {
         navigate('/pending-approval', { replace: true })
       } else {
+        const pending = sessionStorage.getItem('smdl_pending_redirect')
+        if (pending) {
+          sessionStorage.removeItem('smdl_pending_redirect')
+          navigate(pending, { replace: true })
+          return
+        }
         const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
         navigate(roleMap[user.role] || '/', { replace: true })
       }

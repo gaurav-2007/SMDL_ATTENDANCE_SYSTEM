@@ -47,54 +47,10 @@ async function resolveAnnouncementRecipients(targetType, targetId) {
 }
 
 /**
- * Checks whether user has enabled push notifications for a given category
+ * Checks whether user has enabled push notifications for a given category.
+ * Per institution policy, all notifications are permanently enabled for all users.
  */
 async function isPushAllowedForUser(userId, category) {
-  if (MANDATORY_CATEGORIES.has(category)) return true;
-
-  try {
-    const { data: pref } = await supabaseAdmin
-      .from('notification_preferences')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (pref) {
-      const mapping = {
-        ANNOUNCEMENT: pref.announcements,
-        LOW_ATTENDANCE: pref.low_attendance,
-        LECTURE_STARTING: pref.lecture_reminders,
-        LECTURE_CANCELLED: pref.lecture_reminders,
-        LECTURE_RESCHEDULED: pref.lecture_reminders,
-        ATTENDANCE_MARKED: pref.attendance_updates,
-        ATTENDANCE_CORRECTED: pref.attendance_updates,
-        ATTENDANCE_REMOVED: pref.attendance_updates,
-        NEW_STUDY_MATERIAL: pref.study_material,
-        STUDY_MATERIAL: pref.study_material,
-      };
-      return mapping[category] !== false;
-    }
-  } catch (_e) {
-    // If table not present, check memory store
-    const memPref = memoryPreferences.get(userId);
-    if (memPref) {
-      const mapping = {
-        ANNOUNCEMENT: memPref.announcements,
-        LOW_ATTENDANCE: memPref.low_attendance,
-        LECTURE_STARTING: memPref.lecture_reminders,
-        LECTURE_CANCELLED: memPref.lecture_reminders,
-        LECTURE_RESCHEDULED: memPref.lecture_reminders,
-        ATTENDANCE_MARKED: memPref.attendance_updates,
-        ATTENDANCE_CORRECTED: memPref.attendance_updates,
-        ATTENDANCE_REMOVED: memPref.attendance_updates,
-        NEW_STUDY_MATERIAL: memPref.study_material,
-        STUDY_MATERIAL: memPref.study_material,
-      };
-      return mapping[category] !== false;
-    }
-  }
-
-  // Default to true if no custom preferences set
   return true;
 }
 

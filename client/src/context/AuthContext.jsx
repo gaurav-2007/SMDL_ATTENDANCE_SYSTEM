@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import api from '../lib/api'
+import { Capacitor } from '@capacitor/core'
 import { unregisterWebPushToken, requestWebPushPermission, syncPushDeviceToken } from '../lib/firebase'
 
 const AuthContext = createContext(null)
@@ -16,7 +17,7 @@ export function AuthProvider({ children }) {
       try {
         const u = JSON.parse(stored)
         setUser(u)
-        // Automatically sync & keep FCM device token active in background
+        // Proactively sync & keep FCM device token active across Android & Web
         syncPushDeviceToken().catch(() => {})
       } catch {
         localStorage.removeItem('smdl_user')
@@ -82,13 +83,13 @@ export function AuthProvider({ children }) {
         account_status: raw.account_status,
         phone:          raw.phone,
         created_at:     raw.created_at,
-        roll_number:    raw.profile?.roll_number,
-        course:         raw.profile?.course,
-        course_code:    raw.profile?.course_code,
-        division:       raw.profile?.division,
-        class:          raw.profile?.class,
-        employee_id:    raw.profile?.employee_id,
-        department:     raw.profile?.department,
+        roll_number:    raw.roll_number || raw.profile?.roll_number,
+        course:         raw.course || raw.profile?.course,
+        course_code:    raw.course_code || raw.profile?.course_code,
+        division:       raw.division || raw.profile?.division,
+        class:          raw.class || raw.profile?.class,
+        employee_id:    raw.employee_id || raw.profile?.employee_id,
+        department:     raw.department || raw.profile?.department,
         profile:        raw.profile,
       }
       localStorage.setItem('smdl_user', JSON.stringify(userData))
@@ -107,25 +108,13 @@ export function AuthProvider({ children }) {
     return data
   }, [])
 
-  const sendOtp = useCallback(async (emailOrPayload, role = 'student', extra = {}) => {
-    let payload = {}
-    if (typeof emailOrPayload === 'object' && emailOrPayload !== null) {
-      payload = { ...emailOrPayload }
-    } else {
-      payload = { email: emailOrPayload, role, ...extra }
-    }
-    const { data } = await api.post('/auth/send-otp', payload)
+  const sendOtp = useCallback(async (email, role = 'student', extra = {}) => {
+    const { data } = await api.post('/auth/send-otp', { email, role, ...extra })
     return data
   }, [])
 
-  const verifyOtp = useCallback(async (emailOrPayload, otp) => {
-    let payload = {}
-    if (typeof emailOrPayload === 'object' && emailOrPayload !== null) {
-      payload = { ...emailOrPayload }
-    } else {
-      payload = { email: emailOrPayload, otp }
-    }
-    const { data } = await api.post('/auth/verify-otp', payload)
+  const verifyOtp = useCallback(async (email, otp) => {
+    const { data } = await api.post('/auth/verify-otp', { email, otp })
     return data
   }, [])
 
@@ -133,15 +122,30 @@ export function AuthProvider({ children }) {
   const isAdmin   = user?.role === 'admin'
   const isTeacher = user?.role === 'teacher'
   const isStudent = user?.role === 'student'
+  const isApproved = user?.role === 'teacher' ? user?.account_status === 'APPROVED' : true
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, register, sendOtp, verifyOtp, refreshUser, isAdmin, isTeacher, isStudent }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        register,
+        sendOtp,
+        verifyOtp,
+        refreshUser,
+        isAdmin,
+        isTeacher,
+        isStudent,
+        isApproved,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within AuthProvider')

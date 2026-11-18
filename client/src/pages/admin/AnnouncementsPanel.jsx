@@ -70,6 +70,10 @@ export default function AnnouncementsPanel() {
     }
   }
 
+  const allAttachments = announcements.flatMap(a =>
+    (a.attachments || []).map(att => ({ ...att, announcementTitle: a.title, announcementDate: a.created_at }))
+  )
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       {/* Header */}
@@ -122,7 +126,78 @@ export default function AnnouncementsPanel() {
           }
         />
       ) : (
-        <div className="space-y-3.5">
+        <div className="space-y-4">
+          {/* ── Quick Downloads & Attachments Gallery ── */}
+          {allAttachments.length > 0 && (
+            <Card className="p-3.5 sm:p-4 bg-surface border-brand/20 shadow-xs">
+              <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-line">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <Download size={14} />
+                  </div>
+                  <h3 className="text-xs sm:text-sm font-bold font-display text-ink flex items-center gap-1.5">
+                    <span>Notice Attachments & Downloads</span>
+                    <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                      {allAttachments.length}
+                    </span>
+                  </h3>
+                </div>
+                <span className="text-[11px] text-muted hidden sm:inline">1-Click View, Download & WhatsApp Share</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {allAttachments.map((att, idx) => {
+                  const isImg = att.file_type === 'IMAGE' || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i))
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-2 p-2 rounded-xl bg-bg border border-line hover:border-brand/40 shadow-2xs transition-all overflow-hidden"
+                    >
+                      <div
+                        className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
+                        onClick={() => setActiveAttachment(att)}
+                        title="Click to view full attachment"
+                      >
+                        {isImg && att.file_url ? (
+                          <div className="w-9 h-9 rounded-lg overflow-hidden border border-line shrink-0 bg-neutral-100 dark:bg-neutral-800">
+                            <img src={att.file_url} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand border border-brand/20 flex items-center justify-center shrink-0">
+                            <FileText size={16} />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-ink truncate leading-tight">{att.file_name}</p>
+                          <p className="text-[10px] text-muted truncate mt-0.5">{att.announcementTitle}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => shareAttachmentWhatsApp(att, att.announcementTitle)}
+                          className="p-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 cursor-pointer transition-all active:scale-95 shadow-2xs"
+                          title="Share on WhatsApp"
+                        >
+                          <WhatsAppIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => downloadAttachment(att.file_url, att.file_name)}
+                          className="p-1.5 rounded-lg border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 cursor-pointer transition-all active:scale-95 shadow-2xs"
+                          title="Save to device"
+                        >
+                          <Download size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
+
           {announcements.map(a => {
             const targetObj = TARGET_TYPES.find(t => t.value === a.target_type)
             const targetLabel = targetObj?.label || a.target_type

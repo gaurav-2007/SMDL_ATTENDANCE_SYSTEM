@@ -126,10 +126,48 @@ export const isTrustedHost = isTrustedDestination
 
 /**
  * Resolves the active API base URL.
- * User-configured custom URL takes highest precedence across all environments.
+ * - In Native Capacitor Android: Uses user-configured URL (localStorage) -> build-time VITE_API_URL -> prompts configuration.
+ * - In Web Browser (especially on localhost / loopback): Uses relative '/api' so Vite's proxy forwards to backend cleanly without LAN IP timeouts.
  */
 export const getBaseURL = () => {
-  // 1. Explicit user-configured URL from localStorage
+  // 1. Native Capacitor Android handling
+  if (Capacitor.isNativePlatform()) {
+    if (typeof localStorage !== 'undefined') {
+      const custom = localStorage.getItem('smdl_api_url')
+      if (custom) {
+        const normalized = normalizeApiUrl(custom)
+        if (normalized) return normalized
+      }
+    }
+    if (configuredApiUrl) {
+      return configuredApiUrl
+    }
+    return ''
+  }
+
+  // 2. Web browser: On localhost or loopback development, always use relative '/api'
+  // to prevent stale external Wi-Fi / hotspot LAN IPs from causing 15s connection timeouts.
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') {
+      if (typeof localStorage !== 'undefined') {
+        const custom = localStorage.getItem('smdl_api_url')
+        if (custom) {
+          try {
+            const parsed = new URL(custom)
+            if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+              return normalizeApiUrl(custom) || '/api'
+            }
+          } catch (_e) {}
+          // Stale non-localhost IP from a previous Wi-Fi network -> clean it up
+          localStorage.removeItem('smdl_api_url')
+        }
+      }
+      return '/api'
+    }
+  }
+
+  // 3. Web browser on LAN IP or remote domain
   if (typeof localStorage !== 'undefined') {
     const custom = localStorage.getItem('smdl_api_url')
     if (custom) {
@@ -138,19 +176,8 @@ export const getBaseURL = () => {
     }
   }
 
-  // 2. Build-time configured VITE_API_URL
-  if (configuredApiUrl) {
-    return configuredApiUrl
-  }
-
-  // 3. Native Capacitor Android handling
-  if (Capacitor.isNativePlatform()) {
-    // Return empty string to signify unconfigured state (no fake missing-api-url.invalid)
-    return ''
-  }
-
-  // 4. Web browser fallback (Vite proxy / reverse proxy)
-  return '/api'
+  // 4. Default web fallback (Vite proxy / reverse proxy)
+  return configuredApiUrl || '/api'
 }
 
 /**

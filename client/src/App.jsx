@@ -32,6 +32,14 @@ function RootRedirect() {
   if (user.role === 'teacher' && user.account_status === 'PENDING') {
     return <Navigate to="/pending-approval" replace />
   }
+
+  // Check if a notification click saved a pending target route
+  const pendingNav = sessionStorage.getItem('smdl_pending_redirect')
+  if (pendingNav) {
+    sessionStorage.removeItem('smdl_pending_redirect')
+    return <Navigate to={pendingNav} replace />
+  }
+
   const roleMap = { admin: '/admin', teacher: '/teacher', student: '/student' }
   return <Navigate to={roleMap[user.role] || '/login'} replace />
 }
@@ -94,38 +102,82 @@ import { Capacitor } from '@capacitor/core'
 import { App as CapApp } from '@capacitor/app'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { SplashScreen } from '@capacitor/splash-screen'
+import { setupNativePushListeners, setNotificationClickHandler } from './lib/firebase'
 
 function NativeBridgeListener() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return
-
-    // 1. Set clean daylight status bar matching academic theme
-    StatusBar.setStyle({ style: Style.Light }).catch(() => {})
-    StatusBar.setBackgroundColor({ color: '#F7F8FA' }).catch(() => {})
-
-    // 2. Hide splash screen after React mounts
-    SplashScreen.hide().catch(() => {})
-
-    // 3. Handle Android physical & gesture back button
-    let backListener = null
-    CapApp.addListener('backButton', ({ canGoBack }) => {
-      const path = window.location.pathname
-      const isRootPortal = path === '/login' || path === '/student' || path === '/teacher' || path === '/admin'
-      if (isRootPortal) {
-        CapApp.minimizeApp().catch(() => {})
-      } else if (canGoBack) {
-        window.history.back()
-      } else {
-        navigate(-1)
+    // 1. Listen for notification navigation events
+    const handleNotificationNav = (e) => {
+      const url = e?.detail?.url
+      if (url) {
+        console.log('🚀 [NativeBridge] Direct deep link to route:', url)
+        navigate(url)
       }
-    }).then((sub) => {
-      backListener = sub
-    })
+    }
+    window.addEventListener('app:notification-nav', handleNotificationNav)
+
+    // 2. Check if a pending notification redirect was saved
+    const pendingNav = sessionStorage.getItem('smdl_pending_redirect')
+    if (pendingNav) {
+      sessionStorage.removeItem('smdl_pending_redirect')
+      navigate(pendingNav)
+    }
+
+    // 3. Native Android / iOS integrations
+    if (Capacitor.isNativePlatform()) {
+      // Connect click handler so notification tap directs immediately
+      setNotificationClickHandler((targetUrl) => {
+        console.log('🎯 [Push Notification Clicked] Directly navigating to:', targetUrl)
+        navigate(targetUrl)
+      })
+      setupNativePushListeners((targetUrl) => {
+        navigate(targetUrl)
+      })
+
+      // Handle custom deep link URL open (e.g., smdl://... or https://...)
+      CapApp.addListener('appUrlOpen', (data) => {
+        try {
+          const url = new URL(data.url)
+          const path = url.pathname || data.url.replace(/^.*:\/\/[^/]+/, '')
+          if (path) navigate(path)
+        } catch (_e) {
+          if (data.url) navigate(data.url)
+        }
+      }).catch(() => {})
+
+      // Daylight status bar matching academic theme
+      StatusBar.setStyle({ style: Style.Light }).catch(() => {})
+      StatusBar.setBackgroundColor({ color: '#F7F8FA' }).catch(() => {})
+
+      // Hide splash screen after React mounts
+      SplashScreen.hide().catch(() => {})
+
+      // Handle Android physical & gesture back button
+      let backListener = null
+      CapApp.addListener('backButton', ({ canGoBack }) => {
+        const path = window.location.pathname
+        const isRootPortal = path === '/login' || path === '/student' || path === '/teacher' || path === '/admin'
+        if (isRootPortal) {
+          CapApp.minimizeApp().catch(() => {})
+        } else if (canGoBack) {
+          window.history.back()
+        } else {
+          navigate(-1)
+        }
+      }).then((sub) => {
+        backListener = sub
+      })
+
+      return () => {
+        window.removeEventListener('app:notification-nav', handleNotificationNav)
+        if (backListener) backListener.remove()
+      }
+    }
 
     return () => {
-      if (backListener) backListener.remove()
+      window.removeEventListener('app:notification-nav', handleNotificationNav)
     }
   }, [navigate])
 

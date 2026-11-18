@@ -30,7 +30,7 @@ export function dataUrlToBlob(dataUrl) {
 
 /**
  * Downloads an attachment to local device storage.
- * Works seamlessly across web browsers and mobile WebViews without forcing open share sheets.
+ * Works seamlessly across web browsers and mobile WebViews (Capacitor/Android).
  */
 export async function downloadAttachment(url, fileName = 'attachment') {
   if (!url) {
@@ -77,6 +77,25 @@ export async function downloadAttachment(url, fileName = 'attachment') {
     if (!blob) {
       toast.error('Unable to parse attachment data')
       return
+    }
+
+    // On Native Android / iOS, prompt native share sheet if file save is requested
+    if (Capacitor.isNativePlatform() && typeof navigator !== 'undefined' && navigator.canShare) {
+      try {
+        const file = new File([blob], fileName, { type: blob.type })
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: fileName,
+            text: `Attachment: ${fileName}`,
+          })
+          toast.success(`Saved / shared ${fileName}`)
+          return
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        console.warn('[attachmentHelper] Native share fallback to blob download:', err.message)
+      }
     }
 
     try {
@@ -130,7 +149,7 @@ export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attach
   const fileName = attachment.file_name || 'Notice_Attachment'
   const url = attachment.file_url
 
-  // 1. Try Native Share API with File (Supported on mobile Android WebView / Safari)
+  // 1. Try Native Share API with File (Supported on mobile Android WebView / iOS)
   if (url && url.startsWith('data:') && typeof navigator !== 'undefined' && navigator.canShare && navigator.share) {
     try {
       const blob = dataUrlToBlob(url)
@@ -152,9 +171,18 @@ export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attach
     }
   }
 
-  // 2. Direct WhatsApp Web / App intent
+  // 2. Direct WhatsApp Web / App intent with prefilled message
   const message = `*${title}*\nAttachment: ${fileName}\nFrom SMDL College Attendance Portal`
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+  
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await Browser.open({ url: whatsappUrl })
+      toast.success('Opening WhatsApp...')
+      return
+    } catch (_e) {}
+  }
+  
   window.open(whatsappUrl, '_blank')
   toast.success('Opening WhatsApp...')
 }

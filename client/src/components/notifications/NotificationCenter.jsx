@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
   CheckCheck,
-  Settings,
   Clock,
   AlertTriangle,
   CheckCircle,
@@ -22,7 +21,6 @@ import api from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { requestWebPushPermission, onMessageListener, setupNotificationTapListener } from '../../lib/firebase';
 import { getNotificationUrl } from '../../lib/notificationRouter';
-import NotificationPreferencesModal from './NotificationPreferencesModal';
 
 // Formats relative time
 function formatRelativeTime(dateStr) {
@@ -150,7 +148,6 @@ export default function NotificationCenter() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'unread'
   const [loading, setLoading] = useState(false);
-  const [prefsOpen, setPrefsOpen] = useState(false);
   const [pushStatus, setPushStatus] = useState('default'); // 'default' | 'granted' | 'denied'
   const [hidePushBanner, setHidePushBanner] = useState(false);
   const drawerRef = useRef(null);
@@ -390,15 +387,6 @@ export default function NotificationCenter() {
                 )}
                 <button
                   type="button"
-                  id="open-preferences-btn"
-                  onClick={() => setPrefsOpen(true)}
-                  title="Notification preferences"
-                  className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-bg transition-colors cursor-pointer"
-                >
-                  <Settings size={16} />
-                </button>
-                <button
-                  type="button"
                   onClick={() => setIsOpen(false)}
                   className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-bg transition-colors cursor-pointer"
                   aria-label="Close"
@@ -540,12 +528,12 @@ export default function NotificationCenter() {
             </div>
 
             {/* Drawer Footer */}
-            <div className="px-3 py-2.5 border-t border-line bg-surface text-center text-[11px] text-muted flex items-center justify-between shrink-0">
-              <span className="font-medium">SMDL Smart Attendance</span>
+            <div className="px-4 py-2.5 border-t border-line bg-surface text-center text-xs text-muted flex items-center justify-between shrink-0">
+              <span className="font-medium text-[11px] text-ink/70">All notifications enabled</span>
               <button
                 type="button"
                 onClick={() => fetchNotifications(false)}
-                className="text-brand hover:underline font-semibold cursor-pointer"
+                className="text-brand hover:underline font-semibold cursor-pointer py-1 text-xs"
               >
                 Refresh
               </button>
@@ -553,12 +541,6 @@ export default function NotificationCenter() {
           </div>
         </>
       )}
-
-      {/* Preferences Modal */}
-      <NotificationPreferencesModal
-        isOpen={prefsOpen}
-        onClose={() => setPrefsOpen(false)}
-      />
     </div>
   );
 }

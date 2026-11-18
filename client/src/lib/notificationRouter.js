@@ -4,9 +4,11 @@
  */
 export function getNotificationUrl(notification, userRole = 'student') {
   if (!notification) return '/';
+  if (notification.actionUrl) return notification.actionUrl;
+  if (notification.url) return notification.url;
   if (notification.metadata?.actionUrl) return notification.metadata.actionUrl;
 
-  const type = (notification.type || 'SYSTEM').toUpperCase();
+  const type = (notification.notificationType || notification.type || 'SYSTEM').toUpperCase();
 
   switch (type) {
     case 'ANNOUNCEMENT':
