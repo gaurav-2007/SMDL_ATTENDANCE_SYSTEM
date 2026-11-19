@@ -3,6 +3,91 @@ const env = require('../config/env');
 
 let transporter = null;
 
+/**
+ * Sends email via HTTP REST API (Port 443 - HTTPS).
+ * Bypasses cloud platform SMTP port restrictions (e.g., Render free tier blocking ports 25, 465, 587).
+ */
+async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
+  // 1. Resend API (https://resend.com - Free 3,000 emails/mo via Port 443 HTTPS)
+  if (env.RESEND_API_KEY) {
+    try {
+      const fromAddr = env.EMAIL_FROM && env.EMAIL_FROM.includes('@')
+        ? env.EMAIL_FROM
+        : 'SMDL Attendance <onboarding@resend.dev>';
+
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: fromAddr,
+          to: [toEmail],
+          subject,
+          html: htmlContent,
+          text: textContent,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData?.message || `Resend HTTP ${res.status}`);
+      }
+
+      return {
+        success: true,
+        delivered: true,
+        provider: 'resend_https',
+        messageId: resData.id,
+      };
+    } catch (err) {
+      console.warn('[emailService] Resend HTTPS delivery attempt failed:', err.message);
+      throw err;
+    }
+  }
+
+  // 2. Brevo API (https://brevo.com - Free 300 emails/day via Port 443 HTTPS)
+  if (env.BREVO_API_KEY) {
+    try {
+      const senderEmail = env.SMTP_USER && env.SMTP_USER.includes('@') ? env.SMTP_USER : 'noreply@smdl.ac.in';
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: 'SMDL College Smart Attendance', email: senderEmail },
+          to: [{ email: toEmail }],
+          subject,
+          htmlContent,
+          textContent,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData?.message || `Brevo HTTP ${res.status}`);
+      }
+
+      return {
+        success: true,
+        delivered: true,
+        provider: 'brevo_https',
+        messageId: resData.messageId,
+      };
+    } catch (err) {
+      console.warn('[emailService] Brevo HTTPS delivery attempt failed:', err.message);
+      throw err;
+    }
+  }
+
+  return null;
+}
+
 function getTransporter() {
   if (transporter) return transporter;
 
@@ -12,6 +97,14 @@ function getTransporter() {
   if (user && pass) {
     const isGmail = (env.SMTP_HOST || '').includes('gmail') || user.endsWith('@gmail.com');
     
+    // Strict connection timeouts to prevent cloud TCP SYN hanging when ports 465/587 are blocked
+    const timeoutConfig = {
+      connectionTimeout: 7000, // 7 seconds timeout (never hang 90s)
+      greetingTimeout: 7000,
+      socketTimeout: 8000,
+      dns: { family: 4 }, // Force IPv4 to avoid IPv6 blackholing on Linux/Render
+    };
+
     const config = isGmail
       ? {
           service: 'gmail',
@@ -19,6 +112,7 @@ function getTransporter() {
             user,
             pass,
           },
+          ...timeoutConfig,
         }
       : {
           host: env.SMTP_HOST,
@@ -28,6 +122,7 @@ function getTransporter() {
             user,
             pass,
           },
+          ...timeoutConfig,
         };
 
     transporter = nodemailer.createTransport(config);
@@ -44,17 +139,9 @@ function getTransporter() {
  * @param {string} role - 'student' or 'teacher'
  */
 async function sendOtpEmail(toEmail, otp, role = 'student') {
-  const mailTransporter = getTransporter();
-
-  // If no SMTP credentials configured, fail explicitly so dev mode is completely OFF
-  if (!mailTransporter) {
-    console.error('[emailService] Real SMTP is required. SMTP_USER or SMTP_PASS not set in server/.env');
-    throw new Error(
-      'Email SMTP not configured in server/.env. Please configure SMTP_USER (your Gmail) and SMTP_PASS (Google App Password) to send real OTP emails.'
-    );
-  }
-
   const roleTitle = role === 'teacher' ? 'Faculty / Teacher' : 'Student';
+  const subject = `[SMDL College] ${otp} is your Email Verification Code`;
+  const textContent = `Your SMDL College Attendance System verification code is: ${otp}. It expires in 10 minutes.`;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -190,11 +277,37 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
     </html>
   `;
 
+  // 1. Try HTTPS API first if configured (Port 443 - works everywhere including Render free tier)
+  if (env.RESEND_API_KEY || env.BREVO_API_KEY) {
+    try {
+      const httpResult = await sendViaHttpApi({
+        toEmail,
+        subject,
+        htmlContent,
+        textContent,
+      });
+      if (httpResult?.success) {
+        return httpResult;
+      }
+    } catch (httpErr) {
+      console.warn('[emailService] HTTPS API delivery failed, attempting SMTP fallback:', httpErr.message);
+    }
+  }
+
+  // 2. Fallback to standard SMTP (Localhost / standard server with open SMTP ports)
+  const mailTransporter = getTransporter();
+  if (!mailTransporter) {
+    console.error('[emailService] No email service configured. Please set RESEND_API_KEY (for cloud) or SMTP_USER/PASS (for localhost).');
+    throw new Error(
+      'Email service not configured. Please configure RESEND_API_KEY (for cloud) or SMTP_USER and SMTP_PASS (for localhost).'
+    );
+  }
+
   const mailOptions = {
     from: env.EMAIL_FROM,
     to: toEmail,
-    subject: `[SMDL College] ${otp} is your Email Verification Code`,
-    text: `Your SMDL College Attendance System verification code is: ${otp}. It expires in 10 minutes.`,
+    subject,
+    text: textContent,
     html: htmlContent,
   };
 
@@ -216,9 +329,10 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
         devFallback: true,
       };
     }
-    const sanitizedMsg = process.env.NODE_ENV === 'production'
-      ? 'Failed to deliver verification email. Please try again later or contact college admin.'
-      : `Failed to deliver verification email: ${error.message || 'SMTP delivery failed'}`;
+    const isTimeout = error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('greeting');
+    const sanitizedMsg = isTimeout
+      ? 'Email delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY in Render environment.'
+      : 'Failed to deliver verification email. Please try again later or contact college admin.';
     throw new Error(sanitizedMsg);
   }
 }
@@ -230,15 +344,6 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
  * @param {string} role - 'student' or 'teacher'
  */
 async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
-  const mailTransporter = getTransporter();
-
-  if (!mailTransporter) {
-    console.error('[emailService] SMTP_USER or SMTP_PASS not set in server/.env');
-    throw new Error(
-      'Email SMTP not configured in server/.env. Please configure SMTP_USER and SMTP_PASS.'
-    );
-  }
-
   const roleTitle = role === 'teacher' ? 'Faculty / Teacher' : 'Student';
 
   const htmlContent = `
@@ -383,11 +488,40 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
     </html>
   `;
 
+  const subject = `SMDL College - Password Reset Request`;
+  const textContent = `Hello, We received a request to reset your SMDL College account password. Please open this link to reset your password: ${resetUrl}. This link expires in 15 minutes. If you did not request this, please ignore this email.`;
+
+  // 1. Try HTTPS API first if configured (Port 443 - works everywhere including Render free tier)
+  if (env.RESEND_API_KEY || env.BREVO_API_KEY) {
+    try {
+      const httpResult = await sendViaHttpApi({
+        toEmail,
+        subject,
+        htmlContent,
+        textContent,
+      });
+      if (httpResult?.success) {
+        return httpResult;
+      }
+    } catch (httpErr) {
+      console.warn('[emailService] HTTPS API reset delivery failed, attempting SMTP fallback:', httpErr.message);
+    }
+  }
+
+  // 2. Fallback to standard SMTP
+  const mailTransporter = getTransporter();
+  if (!mailTransporter) {
+    console.error('[emailService] No email service configured. Please set RESEND_API_KEY (for cloud) or SMTP_USER/PASS (for localhost).');
+    throw new Error(
+      'Email service not configured. Please configure RESEND_API_KEY (for cloud) or SMTP_USER and SMTP_PASS (for localhost).'
+    );
+  }
+
   const mailOptions = {
     from: env.EMAIL_FROM,
     to: toEmail,
-    subject: `SMDL College - Password Reset Request`,
-    text: `Hello, We received a request to reset your SMDL College account password. Please open this link to reset your password: ${resetUrl}. This link expires in 15 minutes. If you did not request this, please ignore this email.`,
+    subject,
+    text: textContent,
     html: htmlContent,
   };
 
@@ -399,7 +533,7 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
       messageId: info.messageId,
     };
   } catch (error) {
-    console.error('[emailService] Failed to send password reset email:', error.message);
+    console.error('[emailService] Failed to send password reset email via SMTP:', error.message);
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[emailService] Non-production fallback: returning dev mock delivery due to SMTP limit (${error.message})`);
       return {
@@ -409,9 +543,10 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
         devFallback: true,
       };
     }
-    const sanitizedMsg = process.env.NODE_ENV === 'production'
-      ? 'Failed to deliver password reset email. Please try again later.'
-      : `Failed to deliver password reset email: ${error.message || 'SMTP delivery failed'}`;
+    const isTimeout = error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('greeting');
+    const sanitizedMsg = isTimeout
+      ? 'Password reset delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY in Render environment.'
+      : 'Failed to deliver password reset email. Please try again later.';
     throw new Error(sanitizedMsg);
   }
 }
@@ -420,10 +555,9 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
  * Sends a security notification email confirming password was changed
  */
 async function sendPasswordChangedSecurityEmail(toEmail, role = 'student') {
-  const mailTransporter = getTransporter();
-  if (!mailTransporter) return;
-
   const roleTitle = role === 'teacher' ? 'Faculty Member' : 'Student';
+  const subject = `SMDL College - Account Password Changed`;
+  const textContent = `Hello ${roleTitle}, Your SMDL College account password was successfully changed. If this was not you, please contact the college administrator immediately.`;
 
   const htmlContent = `
     <div style="font-family: sans-serif; max-width: 520px; margin: 20px auto; background: #111827; color: #f1f5f9; padding: 24px; border-radius: 12px; border: 1px solid #1f2937;">
@@ -440,6 +574,21 @@ async function sendPasswordChangedSecurityEmail(toEmail, role = 'student') {
       <p style="font-size: 11px; color: #6b7280; text-align: center;">SES's S. M. Dadasaheb Limaye College, Kalamboli</p>
     </div>
   `;
+
+  if (env.RESEND_API_KEY || env.BREVO_API_KEY) {
+    try {
+      await sendViaHttpApi({
+        toEmail,
+        subject,
+        htmlContent,
+        textContent,
+      });
+      return;
+    } catch (_e) {}
+  }
+
+  const mailTransporter = getTransporter();
+  if (!mailTransporter) return;
 
   try {
     await mailTransporter.sendMail({

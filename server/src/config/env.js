@@ -31,6 +31,8 @@ module.exports = {
   SMTP_SECURE: process.env.SMTP_SECURE === 'true',
   SMTP_USER: process.env.SMTP_USER || '',
   SMTP_PASS: process.env.SMTP_PASS || '',
+  RESEND_API_KEY: (process.env.RESEND_API_KEY || '').trim(),
+  BREVO_API_KEY: (process.env.BREVO_API_KEY || '').trim(),
   EMAIL_FROM: process.env.EMAIL_FROM || '"SMDL College Smart Attendance" <noreply@smdl.ac.in>',
   // Attendance rate limiting
   ATTENDANCE_LIMIT_WINDOW_MS: parseInt(process.env.ATTENDANCE_LIMIT_WINDOW_MS || '60000', 10),
