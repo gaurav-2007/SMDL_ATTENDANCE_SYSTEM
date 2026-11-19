@@ -55,6 +55,8 @@ function TeacherOverview() {
 
   const featuredLecture = todayData?.current_lecture || todayData?.next_lecture || todayData?.my_lectures?.[0] || todayData?.all_lectures?.[0]
   const isOngoing = featuredLecture?.status === 'ONGOING'
+  const isWindowOpen = Boolean(featuredLecture?.is_attendance_open)
+  const isCompleted = featuredLecture?.status === 'COMPLETED' || (!isWindowOpen && featuredLecture?.status !== 'UPCOMING')
 
   // Teacher profile details (fallback to user from auth context)
   const teacherProfile = profileData?.profile || user?.profile || {}
@@ -175,16 +177,22 @@ function TeacherOverview() {
       {/* ── FEATURED TODAY'S LECTURE CARD ── */}
       {featuredLecture && (
         <Card className={`p-5 border-2 ${
-          isOngoing
+          isOngoing && isWindowOpen
             ? 'border-present/50 bg-present/5'
+            : isCompleted
+            ? 'border-line bg-surface'
             : 'border-brand/30 bg-surface'
         }`}>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                {isOngoing ? (
+                {isOngoing && isWindowOpen ? (
                   <Badge variant="live" pulseDot size="sm">
                     LECTURE IN PROGRESS NOW
+                  </Badge>
+                ) : isCompleted ? (
+                  <Badge variant="neutral" size="sm">
+                    SESSION COMPLETED · WINDOW CLOSED
                   </Badge>
                 ) : (
                   <Badge variant="grace" size="sm">
@@ -194,6 +202,17 @@ function TeacherOverview() {
                 <span className="text-xs font-mono font-semibold text-muted bg-bg border border-line px-2 py-0.5 rounded">
                   {featuredLecture.start_time?.slice(0, 5)} - {featuredLecture.end_time?.slice(0, 5)}
                 </span>
+                {featuredLecture.window_expires_at && (
+                  <span className={`text-[11px] font-medium px-2 py-0.5 rounded border ${
+                    featuredLecture.is_attendance_open
+                      ? 'bg-present/10 text-present border-present/25'
+                      : 'bg-muted/10 text-muted border-line'
+                  }`}>
+                    {featuredLecture.is_attendance_open
+                      ? `Window open until ${featuredLecture.window_expires_at}`
+                      : `Window closed at ${featuredLecture.window_expires_at}`}
+                  </span>
+                )}
               </div>
 
               <h3 className="text-base sm:text-lg font-bold font-display text-ink leading-tight">
@@ -209,13 +228,13 @@ function TeacherOverview() {
 
             <div className="flex items-center gap-2.5 shrink-0">
               <Button
-                variant={isOngoing ? 'success' : 'primary'}
+                variant={isOngoing && isWindowOpen ? 'success' : isWindowOpen ? 'primary' : 'outline'}
                 size="md"
                 onClick={() => navigate('/teacher/attendance', { state: { lectureId: featuredLecture.id } })}
                 className="font-semibold shadow-xs"
               >
                 <Play className="w-3.5 h-3.5 fill-current mr-1.5" />
-                <span>{isOngoing ? 'Live Roster' : 'Open Attendance'}</span>
+                <span>{isOngoing && isWindowOpen ? 'Live Roster' : isWindowOpen ? 'Open Attendance' : 'View Attendance Roster'}</span>
               </Button>
 
               <Button

@@ -134,13 +134,16 @@ function resolveScheduleTimes({ currentStart, currentEnd, newStartInput, newEndI
 }
 
 function normalizeTopicForStatus(rawTopic, targetStatus, { preserveRescheduled = false } = {}) {
-  const cleanTopic = (rawTopic || 'Lecture').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '').trim() || 'Lecture';
+  const cleanTopic = (rawTopic || 'Lecture').replace(/\[(CANCELLED|RESCHEDULED|COMPLETED)\]\s*/g, '').trim() || 'Lecture';
   if (targetStatus === 'CANCELLED') {
     return `[CANCELLED] ${cleanTopic}`;
   }
+  if (targetStatus === 'COMPLETED') {
+    return `[COMPLETED] ${cleanTopic}`;
+  }
   const keepRescheduled =
     targetStatus === 'RESCHEDULED' ||
-    (preserveRescheduled && ['RESCHEDULED', 'ONGOING', 'COMPLETED'].includes(targetStatus));
+    (preserveRescheduled && ['RESCHEDULED', 'ONGOING'].includes(targetStatus));
   if (keepRescheduled) {
     return `[RESCHEDULED] ${cleanTopic}`;
   }
@@ -152,6 +155,13 @@ function isLectureCancelled(l) {
   if (l.status === 'CANCELLED') return true;
   const st = l.status ? String(l.status).toUpperCase() : 'SCHEDULED';
   return ['SCHEDULED', 'ACTIVE'].includes(st) && Boolean(l.topic && l.topic.includes('[CANCELLED]'));
+}
+
+function isLectureCompleted(l) {
+  if (!l) return false;
+  if (l.status === 'COMPLETED') return true;
+  const st = l.status ? String(l.status).toUpperCase() : 'SCHEDULED';
+  return ['SCHEDULED', 'ACTIVE', 'COMPLETED'].includes(st) && Boolean(l.topic && l.topic.includes('[COMPLETED]'));
 }
 
 function normalizePersistedStatus(status) {
@@ -289,6 +299,7 @@ async function assertTeacherCanManageLecture(user, lecture, res) {
 function calculateDynamicStatus(l) {
   if (!l) return 'SCHEDULED';
   if (isLectureCancelled(l)) return 'CANCELLED';
+  if (isLectureCompleted(l)) return 'COMPLETED';
 
   const persisted = normalizePersistedStatus(l.status);
   // Explicit terminal or live statuses take precedence over topic tags and clock heuristics
@@ -297,8 +308,16 @@ function calculateDynamicStatus(l) {
   }
 
   const today = getKolkataDateString();
+  const currentMinutes = getKolkataMinutes();
+  const parsedStart = parseStrictTime(String(l.start_time || ''));
+  const parsedEnd = parseStrictTime(String(l.end_time || ''));
+  const startMin = parsedStart ? parsedStart.minutes : 0;
+  const endMin = parsedEnd ? parsedEnd.minutes : 23 * 60 + 59;
+  const expirationMin = Math.min(endMin + 60, startMin + 120, 23 * 60 + 59);
+
   if (persisted === 'ONGOING') {
     if (l.lecture_date && l.lecture_date < today) return 'COMPLETED';
+    if (currentMinutes > expirationMin) return 'COMPLETED';
     return 'ONGOING';
   }
 
@@ -316,23 +335,23 @@ function calculateDynamicStatus(l) {
     return isRescheduled ? 'RESCHEDULED' : 'SCHEDULED';
   }
 
-  const currentMinutes = getKolkataMinutes();
-  const parsedStart = parseStrictTime(String(l.start_time || ''));
-  const parsedEnd = parseStrictTime(String(l.end_time || ''));
-  const startMin = parsedStart ? parsedStart.minutes : 0;
-  const endMin = parsedEnd ? parsedEnd.minutes : 23 * 60 + 59;
   if (currentMinutes > endMin) return 'COMPLETED';
   if (currentMinutes >= startMin) return 'ONGOING';
   return isRescheduled ? 'RESCHEDULED' : 'UPCOMING';
 }
 
-// Student attendance window rule:
+// Student & Teacher attendance window rule:
 // Attendance is open from start_time until:
 // min(end_time + 60 mins, start_time + 120 mins).
 // Max duration allowed is 2 hours from start time.
+// If lecture is manually or automatically COMPLETED, attendance window is strictly closed.
 function isLectureInAttendanceWindow(lecture, now = new Date()) {
   if (!lecture) return false;
   if (isLectureCancelled(lecture)) return false;
+  if (isLectureCompleted(lecture)) return false;
+  const persisted = normalizePersistedStatus(lecture.status);
+  if (persisted === 'COMPLETED') return false;
+
   const todayStr = getKolkataDateString(now);
   const lectureDateStr = (lecture.lecture_date || '').toString().slice(0, 10);
   if (lectureDateStr && lectureDateStr !== todayStr) {
@@ -376,7 +395,7 @@ async function attachTeacherNames(lectures) {
     const tObj = l.teachers || l.teacher;
     const teacherName = (tObj?.user_id && userMap[tObj.user_id]) || 'Assigned Teacher';
     const status = calculateDynamicStatus(l);
-    const cleanTopic = (l.topic || '').replace(/\[(CANCELLED|RESCHEDULED)\]\s*/g, '').trim() || l.topic;
+    const cleanTopic = (l.topic || '').replace(/\[(CANCELLED|RESCHEDULED|COMPLETED)\]\s*/g, '').trim() || l.topic;
     return {
       ...l,
       topic: cleanTopic,
@@ -592,6 +611,7 @@ const getActiveLectures = asyncHandler(async (req, res) => {
   let mapped = await attachTeacherNames(lectures || []);
 
   // For active lecture roster selection, only return lectures this teacher is actually authorized to manage
+  const now = new Date();
   if (req.user.role === 'teacher') {
     mapped = mapped.reduce((acc, l) => {
       const access = evaluateTeacherLectureAccess(teacherCtx, l);
@@ -601,22 +621,31 @@ const getActiveLectures = asyncHandler(async (req, res) => {
           is_owner: access.is_owner,
           can_manage: true,
           view_only: false,
+          is_attendance_open: isLectureInAttendanceWindow(l, now),
+          window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
         });
       }
       return acc;
     }, []);
   } else if (req.user.role === 'admin') {
-    mapped = mapped.map((l) => ({ ...l, is_owner: true, can_manage: true, view_only: false }));
+    mapped = mapped.map((l) => ({
+      ...l,
+      is_owner: true,
+      can_manage: true,
+      view_only: false,
+      is_attendance_open: isLectureInAttendanceWindow(l, now),
+      window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
+    }));
   }
 
   // Filter strictly for student: ONLY own division lectures currently within active attendance window
   if (req.user.role === 'student') {
-    const now = new Date();
     mapped = mapped
       .filter((l) => l.division_id === studentDivisionId && isLectureInAttendanceWindow(l, now))
       .map((l) => ({
         ...l,
         is_active_now: true,
+        is_attendance_open: true,
         window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
       }));
   }
@@ -701,6 +730,7 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
 
   let myLectures;
   let accessibleLectures;
+  const now = new Date();
 
   if (req.user.role === 'teacher') {
     if (!currentTeacher?.id) {
@@ -718,6 +748,8 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
           is_owner: e.access.is_owner,
           can_manage: true,
           view_only: false,
+          is_attendance_open: isLectureInAttendanceWindow(e.item, now),
+          window_expires_at: getWindowExpirationTime(e.item.start_time, e.item.end_time),
         }));
       accessibleLectures = evaluated
         .filter((e) => e.access.visible)
@@ -726,10 +758,19 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
           is_owner: e.access.is_owner,
           can_manage: e.access.can_manage,
           view_only: e.access.view_only,
+          is_attendance_open: isLectureInAttendanceWindow(e.item, now),
+          window_expires_at: getWindowExpirationTime(e.item.start_time, e.item.end_time),
         }));
     }
   } else if (req.user.role === 'admin') {
-    myLectures = mapped.map((l) => ({ ...l, is_owner: true, can_manage: true, view_only: false }));
+    myLectures = mapped.map((l) => ({
+      ...l,
+      is_owner: true,
+      can_manage: true,
+      view_only: false,
+      is_attendance_open: isLectureInAttendanceWindow(l, now),
+      window_expires_at: getWindowExpirationTime(l.start_time, l.end_time),
+    }));
     accessibleLectures = myLectures;
   } else {
     res.status(403);
@@ -872,7 +913,7 @@ const getAllLectures = asyncHandler(async (req, res) => {
 // @route  POST /api/lectures
 const createLecture = asyncHandler(async (req, res) => {
   assertActiveAdminOrTeacher(req.user, res);
-  const { subject_id, division_id, topic, start_time, end_time, lecture_date } = req.body;
+  const { subject_id, division_id, topic, start_time, end_time, lecture_date, duration_minutes } = req.body;
   let { teacher_id } = req.body;
 
   if (!subject_id || !division_id) {
@@ -973,7 +1014,10 @@ const createLecture = asyncHandler(async (req, res) => {
       res.status(400);
       throw new Error('Invalid start_time: lecture cannot start at or past 23:59 without end_time');
     }
-    const candidateEndMin = parsedStart.minutes + 60;
+    const duration = (duration_minutes && !isNaN(parseInt(duration_minutes, 10)) && parseInt(duration_minutes, 10) > 0)
+      ? parseInt(duration_minutes, 10)
+      : 60;
+    const candidateEndMin = parsedStart.minutes + duration;
     if (candidateEndMin > 23 * 60 + 59) {
       res.status(400);
       throw new Error('Invalid start_time: default lecture duration would exceed 23:59; please provide an explicit end_time');
@@ -2087,6 +2131,9 @@ module.exports = {
   assertTeacherCanManageLecture,
   loadTeacherAccessContext,
   evaluateTeacherLectureAccess,
+  isLectureInAttendanceWindow,
+  getWindowExpirationTime,
+  isLectureCompleted,
 };
 
 

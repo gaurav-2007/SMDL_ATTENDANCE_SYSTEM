@@ -9,6 +9,7 @@ const {
   overrideAttendance,
   getMyStats,
   getReportsOverview,
+  getSubjectStudentAttendanceReport,
   getGeofenceConfig,
 } = require('../controllers/attendanceController');
 const {
@@ -27,6 +28,7 @@ router.get('/lecture/:lectureId', restrictTo('teacher', 'admin'), restrictToActi
 router.get('/:attendanceId/selfie', restrictToActiveOnly, getAttendanceSelfie);
 router.post('/override', restrictTo('teacher', 'admin'), restrictToActiveOnly, overrideAttendance);
 router.get('/reports/overview', restrictTo('teacher', 'admin'), restrictToActiveOnly, getReportsOverview);
+router.get('/reports/subject-student-attendance', restrictTo('teacher', 'admin'), restrictToActiveOnly, getSubjectStudentAttendanceReport);
 router.get('/live-summary', restrictTo('teacher', 'admin'), restrictToActiveOnly, getLiveAttendanceSummary);
 router.get('/audit-logs', restrictTo('teacher', 'admin'), restrictToActiveOnly, getAttendanceAuditLogs);
 

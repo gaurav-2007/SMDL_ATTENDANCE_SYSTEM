@@ -3,7 +3,7 @@ import {
   Bell, Plus, X, Send, Users, BookOpen,
   Megaphone, Clock, Trash2, RefreshCw,
   Paperclip, FileText, Image as ImageIcon, Download,
-  CheckCircle2, Globe, GraduationCap
+  CheckCircle2, Globe, GraduationCap, AlertCircle
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
@@ -36,21 +36,33 @@ export default function AnnouncementsPanel() {
   const [divisions, setDivisions]         = useState([])
   const [courses, setCourses]             = useState([])
   const [loading, setLoading]             = useState(true)
+  const [loadError, setLoadError]         = useState(false)
   const [showForm, setShowForm]           = useState(false)
   const [activeAttachment, setActiveAttachment] = useState(null)
 
   const fetchAll = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
+      let failed = false
       const [aRes, dRes, cRes] = await Promise.all([
-        api.get('/announcements').catch(() => ({ data: { data: { announcements: [] } } })),
+        api.get('/announcements').catch((err) => {
+          console.error('[Announcements] Failed to fetch:', err)
+          failed = true
+          return { data: { data: { announcements: [] } } }
+        }),
         api.get('/academic/divisions').catch(() => ({ data: { data: { divisions: [] } } })),
         api.get('/academic/courses').catch(() => ({ data: { data: { courses: [] } } })),
       ])
+      setLoadError(failed)
+      if (failed) {
+        toast.error('Failed to load announcements. Please retry.')
+      }
       setAnnouncements(aRes.data.data?.announcements || [])
       setDivisions(dRes.data.data?.divisions || [])
       setCourses(cRes.data.data?.courses || [])
     } catch {
+      setLoadError(true)
       toast.error('Failed to load announcements')
     } finally {
       setLoading(false)
@@ -109,6 +121,22 @@ export default function AnnouncementsPanel() {
           <Card className="p-6"><Skeleton className="h-20 w-full" /></Card>
           <Card className="p-6"><Skeleton className="h-20 w-full" /></Card>
         </div>
+      ) : loadError ? (
+        <EmptyState
+          icon={AlertCircle}
+          title="Could not load announcements"
+          description="Failed to connect to the announcement service or the request timed out. Please check your network connection and click retry."
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchAll}
+              className="gap-1.5"
+            >
+              <RefreshCw size={14} /> Retry
+            </Button>
+          }
+        />
       ) : announcements.length === 0 ? (
         <EmptyState
           icon={Megaphone}

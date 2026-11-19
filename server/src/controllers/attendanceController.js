@@ -2,7 +2,12 @@ const crypto = require('crypto');
 const { getKolkataDateString, getKolkataDayName, getKolkataMinutes } = require('../utils/dateUtils');
 const { supabaseAdmin } = require('../config/db');
 const { assertActiveUser } = require('../middleware/roles');
-const { assertTeacherCanManageLecture } = require('./lectureController');
+const {
+  assertTeacherCanManageLecture,
+  isLectureInAttendanceWindow,
+  getWindowExpirationTime,
+  isLectureCompleted,
+} = require('./lectureController');
 const asyncHandler = require('../utils/asyncHandler');
 const { isStatusColumnError } = require('../utils/statusFallback');
 const {
@@ -802,10 +807,19 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
     })
   );
 
+  const now = new Date();
+  const completed = lecture ? isLectureCompleted(lecture) : false;
+  const enrichedLecture = lecture ? {
+    ...lecture,
+    status: completed ? 'COMPLETED' : lecture.status,
+    is_attendance_open: isLectureInAttendanceWindow(lecture, now),
+    window_expires_at: getWindowExpirationTime(lecture.start_time, lecture.end_time),
+  } : null;
+
   res.json({
     success: true,
     data: {
-      lecture,
+      lecture: enrichedLecture,
       roster,
       summary: {
         total: roster.length,
@@ -862,6 +876,14 @@ const overrideAttendance = asyncHandler(async (req, res) => {
   }
 
   await assertTeacherAuthorizedForLecture(req.user, lecture, res);
+
+  // For teachers, verify attendance window is open before allowing manual marking/override
+  const now = new Date();
+  if (req.user.role === 'teacher' && !isLectureInAttendanceWindow(lecture, now)) {
+    const expTime = getWindowExpirationTime(lecture.start_time, lecture.end_time);
+    res.status(400);
+    throw new Error(`Attendance window is closed for this lecture session. Attendance could only be marked during class or until ${expTime} (1 hr post-class, max 2h from start).`);
+  }
 
   // Verify target student exists before mutating attendance so orphaned records cannot be created
   const { data: targetStudent, error: targetStuErr } = await supabaseAdmin
@@ -1340,6 +1362,282 @@ const getAttendanceSelfie = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Get subject-wise student attendance report with lecture breakdown and download stats
+// @route  GET /api/attendance/reports/subject-student-attendance
+// @access Private (Teacher, Admin)
+const getSubjectStudentAttendanceReport = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (!['teacher', 'admin'].includes(req.user.role)) {
+    res.status(403);
+    throw new Error('Access Denied: Only faculty and administrators can access this report');
+  }
+
+  const { subject_id, division_id, days, student_id } = req.query;
+
+  // 1. If teacher, optionally fetch teacher record to know assigned subjects
+  let assignedSubjectIds = [];
+  if (req.user.role === 'teacher') {
+    const { data: t } = await supabaseAdmin
+      .from('teachers')
+      .select('id, teacher_id, department')
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (t) {
+      const { data: ts } = await supabaseAdmin
+        .from('teacher_subjects')
+        .select('subject_id')
+        .eq('teacher_id', t.id);
+      assignedSubjectIds = (ts || []).map((x) => x.subject_id).filter(Boolean);
+    }
+  }
+
+  // 2. Fetch all subjects available
+  const { data: availableSubjects, error: subErr } = await supabaseAdmin
+    .from('subjects')
+    .select('id, name, code, division_id, divisions:divisions(id, name, division_name, course_id, courses:courses(name))');
+
+  if (subErr) {
+    console.error('[attendanceController] getSubjectStudentAttendanceReport subjects fetch error:', subErr.message);
+    res.status(500);
+    throw new Error('Failed to load academic subjects');
+  }
+
+  const formattedSubjects = (availableSubjects || []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    code: s.code,
+    division_id: s.division_id,
+    division_name: s.divisions ? `${s.divisions.name} - Div ${s.divisions.division_name}` : 'Unknown Division',
+    course_name: s.divisions?.courses?.name || '',
+    is_assigned: assignedSubjectIds.includes(s.id),
+  }));
+
+  // Default to first assigned subject (if teacher) or first available subject
+  let targetSubjectId = subject_id;
+  if (!targetSubjectId) {
+    const defaultSubject = formattedSubjects.find((s) => s.is_assigned) || formattedSubjects[0];
+    targetSubjectId = defaultSubject?.id;
+  }
+
+  if (!targetSubjectId) {
+    return res.json({
+      success: true,
+      data: {
+        subjects: formattedSubjects,
+        selected_subject: null,
+        stats: {
+          total_lectures: 0,
+          total_students: 0,
+          class_average: 0,
+          defaulters_count: 0,
+        },
+        lectures: [],
+        students: [],
+      },
+    });
+  }
+
+  // 3. Find subject details and its division
+  const { data: subjectData, error: subLookupErr } = await supabaseAdmin
+    .from('subjects')
+    .select('id, name, code, division_id, divisions:divisions(id, name, division_name, course_id, courses:courses(name))')
+    .eq('id', targetSubjectId)
+    .single();
+
+  if (subLookupErr || !subjectData) {
+    res.status(404);
+    throw new Error('Selected subject not found');
+  }
+
+  const targetDivisionId = division_id || subjectData.division_id;
+
+  // 4. Fetch all active lectures for this subject
+  let lecturesQuery = supabaseAdmin
+    .from('lectures')
+    .select('id, subject_id, division_id, teacher_id, lecture_date, start_time, end_time, topic')
+    .eq('subject_id', targetSubjectId);
+
+  if (targetDivisionId) {
+    lecturesQuery = lecturesQuery.eq('division_id', targetDivisionId);
+  }
+
+  if (days && parseInt(days, 10) > 0) {
+    const daysNum = parseInt(days, 10);
+    const cutoffDate = getKolkataDateString(new Date(Date.now() - daysNum * 24 * 60 * 60 * 1000));
+    lecturesQuery = lecturesQuery.gte('lecture_date', cutoffDate);
+  }
+
+  lecturesQuery = lecturesQuery.order('lecture_date', { ascending: true }).order('start_time', { ascending: true });
+
+  const { data: rawLectures, error: lecErr } = await lecturesQuery;
+  if (lecErr) {
+    console.error('[attendanceController] getSubjectStudentAttendanceReport lectures error:', lecErr.message);
+    res.status(500);
+    throw new Error('Failed to load subject lectures');
+  }
+
+  const activeLectures = (rawLectures || []).filter((l) => !isLectureCancelled(l));
+  const activeLectureIds = activeLectures.map((l) => l.id);
+
+  // 5. Fetch all students enrolled in this division
+  let studentsQuery = supabaseAdmin
+    .from('students')
+    .select(`
+      id,
+      student_id,
+      division_id,
+      user_id,
+      users:users(id, full_name, email, phone, status),
+      divisions:divisions(id, name, division_name),
+      courses:courses(id, name, code)
+    `);
+
+  if (targetDivisionId) {
+    studentsQuery = studentsQuery.eq('division_id', targetDivisionId);
+  }
+
+  if (student_id) {
+    studentsQuery = studentsQuery.eq('id', student_id);
+  }
+
+  const { data: rawStudents, error: studErr } = await studentsQuery;
+  if (studErr) {
+    console.error('[attendanceController] getSubjectStudentAttendanceReport students error:', studErr.message);
+    res.status(500);
+    throw new Error('Failed to load enrolled students');
+  }
+
+  const enrolledStudents = (rawStudents || []).filter((s) => s.users?.status === 'ACTIVE' || !s.users?.status);
+
+  // 6. Fetch attendance records for all active lectures in this subject
+  let attendanceRecords = [];
+  if (activeLectureIds.length > 0) {
+    const { data: attList, error: attErr } = await supabaseAdmin
+      .from('attendance')
+      .select('id, lecture_id, student_id, status, marked_at')
+      .in('lecture_id', activeLectureIds);
+
+    if (attErr) {
+      console.error('[attendanceController] getSubjectStudentAttendanceReport attendance error:', attErr.message);
+      res.status(500);
+      throw new Error('Failed to load attendance records');
+    }
+    attendanceRecords = attList || [];
+  }
+
+  const studentPresentMap = new Map();
+  const studentLectureRecordMap = new Map();
+
+  attendanceRecords.forEach((att) => {
+    if (!studentLectureRecordMap.has(att.student_id)) {
+      studentLectureRecordMap.set(att.student_id, new Map());
+    }
+    studentLectureRecordMap.get(att.student_id).set(att.lecture_id, att);
+
+    if (att.status === 'PRESENT') {
+      if (!studentPresentMap.has(att.student_id)) {
+        studentPresentMap.set(att.student_id, new Set());
+      }
+      studentPresentMap.get(att.student_id).add(att.lecture_id);
+    }
+  });
+
+  const totalSubjectLectures = activeLectures.length;
+  let cumulativePercentages = 0;
+  let defaultersCount = 0;
+
+  const studentReportRows = enrolledStudents.map((s) => {
+    const presentSet = studentPresentMap.get(s.id) || new Set();
+    const attendedCount = presentSet.size;
+    const absentCount = Math.max(0, totalSubjectLectures - attendedCount);
+    const percentage = totalSubjectLectures > 0
+      ? Math.round((attendedCount / totalSubjectLectures) * 100 * 10) / 10
+      : 100;
+    const isSafe = percentage >= 75;
+
+    if (!isSafe && totalSubjectLectures > 0) {
+      defaultersCount++;
+    }
+    cumulativePercentages += percentage;
+
+    const history = activeLectures.map((l) => {
+      const rec = studentLectureRecordMap.get(s.id)?.get(l.id);
+      const isPresent = rec?.status === 'PRESENT';
+      return {
+        lecture_id: l.id,
+        date: l.lecture_date,
+        start_time: l.start_time,
+        end_time: l.end_time,
+        topic: l.topic ? l.topic.replace(/\[(CANCELLED|RESCHEDULED|COMPLETED)\]/g, '').trim() : 'Lecture',
+        status: isPresent ? 'PRESENT' : 'ABSENT',
+        marked_at: rec?.marked_at || null,
+      };
+    });
+
+    return {
+      student_id: s.id,
+      roll_number: s.student_id || 'N/A',
+      name: s.users?.full_name || 'Student',
+      email: s.users?.email || '',
+      phone: s.users?.phone || '',
+      division: s.divisions ? `${s.divisions.name} - ${s.divisions.division_name}` : 'A',
+      course: s.courses?.name || 'General',
+      total_lectures: totalSubjectLectures,
+      attended_lectures: attendedCount,
+      absent_lectures: absentCount,
+      percentage,
+      is_safe: isSafe,
+      status_label: isSafe ? 'SAFE' : 'DEFAULTER',
+      history,
+    };
+  });
+
+  studentReportRows.sort((a, b) => {
+    const rollA = a.roll_number.toString().toLowerCase();
+    const rollB = b.roll_number.toString().toLowerCase();
+    return rollA.localeCompare(rollB, undefined, { numeric: true });
+  });
+
+  const classAverage = studentReportRows.length > 0
+    ? Math.round((cumulativePercentages / studentReportRows.length) * 10) / 10
+    : 0;
+
+  const formattedLectures = activeLectures.map((l, idx) => ({
+    lecture_number: idx + 1,
+    lecture_id: l.id,
+    date: l.lecture_date,
+    start_time: l.start_time,
+    end_time: l.end_time,
+    topic: l.topic ? l.topic.replace(/\[(CANCELLED|RESCHEDULED|COMPLETED)\]/g, '').trim() : 'Lecture',
+  }));
+
+  res.json({
+    success: true,
+    data: {
+      subjects: formattedSubjects,
+      selected_subject: {
+        id: subjectData.id,
+        name: subjectData.name,
+        code: subjectData.code,
+        division_id: targetDivisionId,
+        division_name: subjectData.divisions
+          ? `${subjectData.divisions.name} - Div ${subjectData.divisions.division_name}`
+          : 'Division',
+        course_name: subjectData.divisions?.courses?.name || '',
+      },
+      stats: {
+        total_lectures: totalSubjectLectures,
+        total_students: studentReportRows.length,
+        class_average: classAverage,
+        defaulters_count: defaultersCount,
+      },
+      lectures: formattedLectures,
+      students: studentReportRows,
+    },
+  });
+});
+
 module.exports = {
   markAttendance,
   getLectureAttendance,
@@ -1347,6 +1645,7 @@ module.exports = {
   overrideAttendance,
   getMyStats,
   getReportsOverview,
+  getSubjectStudentAttendanceReport,
   getGeofenceConfig,
   getActiveGeofenceConfig,
 };

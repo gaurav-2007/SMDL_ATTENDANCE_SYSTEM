@@ -84,7 +84,8 @@ const getAnnouncements = asyncHandler(async (req, res) => {
 
     const dbAttachments = attachmentMap[a.id] || [];
     const attachments = [...dbAttachments];
-    if (parsedAttachment) {
+    // Only fall back to parsed inline attachment if no dbAttachments exist (prevents payload duplication)
+    if (attachments.length === 0 && parsedAttachment) {
       attachments.push({
         file_name: parsedAttachment.name || 'document',
         file_url: parsedAttachment.url || parsedAttachment.data,
@@ -130,23 +131,12 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     throw new Error(`Invalid target type. Must be one of: ${validTargetTypes.join(', ')}`);
   }
 
-  // Format content with inline attachment metadata for 100% resilient storage
-  let finalContent = content.trim();
-  if (attachment && (attachment.data || attachment.url)) {
-    const inlineMeta = {
-      name: attachment.name || 'file',
-      type: attachment.type || 'DOCUMENT',
-      size: attachment.size || 0,
-      url: attachment.data || attachment.url,
-    };
-    finalContent += `\n\n[ATTACHMENT:${JSON.stringify(inlineMeta)}]`;
-  }
-
+  // Insert announcement with clean content (prevents bloating text columns with megabytes of Base64)
   const { data: announcement, error } = await supabaseAdmin
     .from('announcements')
     .insert({
       title: title.trim(),
-      content: finalContent,
+      content: content.trim(),
       target_type: target,
       target_id: target_id || null,
       sent_by: req.user.id,
@@ -159,7 +149,7 @@ const createAnnouncement = asyncHandler(async (req, res) => {
     throw new Error(error.message);
   }
 
-  // Also try saving to announcement_attachments table if it exists
+  // Save attachment to announcement_attachments table
   if (attachment && (attachment.data || attachment.url)) {
     try {
       await supabaseAdmin.from('announcement_attachments').insert({
@@ -170,7 +160,21 @@ const createAnnouncement = asyncHandler(async (req, res) => {
         file_size: attachment.size || null,
       });
     } catch {
-      /* Silently continue; inline fallback is already saved */
+      // Fallback: If announcement_attachments table fails, save inline in content
+      try {
+        const inlineMeta = {
+          name: attachment.name || 'file',
+          type: attachment.type || 'DOCUMENT',
+          size: attachment.size || 0,
+          url: attachment.data || attachment.url,
+        };
+        await supabaseAdmin
+          .from('announcements')
+          .update({ content: `${content.trim()}\n\n[ATTACHMENT:${JSON.stringify(inlineMeta)}]` })
+          .eq('id', announcement.id);
+      } catch {
+        /* Silently continue */
+      }
     }
   }
 

@@ -3,11 +3,12 @@ import {
   BarChart2, Download, Filter, Calendar, Users,
   BookOpen, TrendingUp, TrendingDown, AlertTriangle,
   CheckCircle, Clock, RefreshCw, Printer, FileSpreadsheet,
-  ShieldAlert, ArrowRight, UserCheck
+  ShieldAlert, ArrowRight, UserCheck, Search, Eye, X
 } from 'lucide-react'
 import api from '../../lib/api'
 import toast from 'react-hot-toast'
 import { Capacitor } from '@capacitor/core'
+import { useAuth } from '../../context/AuthContext'
 import { exportReportFile } from '../../utils/fileExportHelper'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
@@ -15,7 +16,10 @@ import {
 } from '../../components/ui'
 
 export default function ReportsPanel() {
-  const [tab, setTab]           = useState('OVERVIEW') // 'OVERVIEW' | 'AUDIT_LOGS'
+  const { user } = useAuth()
+  const isTeacher = user?.role === 'teacher'
+
+  const [tab, setTab]           = useState(isTeacher ? 'STUDENT_SUBJECT' : 'OVERVIEW')
   const [stats, setStats]       = useState(null)
   const [loading, setLoading]   = useState(true)
   const [lowAtt, setLowAtt]     = useState([])
@@ -23,6 +27,42 @@ export default function ReportsPanel() {
   const [liveSummary, setLiveSummary] = useState(null)
   const [auditLogs, setAuditLogs] = useState([])
   const [showRegisterModal, setShowRegisterModal] = useState(false)
+
+  // Subject-wise Student Attendance State (for Teacher and Admin)
+  const [subjectReportData, setSubjectReportData] = useState(null)
+  const [selectedSubjectId, setSelectedSubjectId] = useState('')
+  const [selectedPeriodDays, setSelectedPeriodDays] = useState('all')
+  const [studentSearchQuery, setStudentSearchQuery] = useState('')
+  const [studentStatusFilter, setStudentStatusFilter] = useState('ALL') // 'ALL' | 'SAFE' | 'DEFAULTER'
+  const [loadingSubjectReport, setLoadingSubjectReport] = useState(false)
+  const [selectedStudentHistoryModal, setSelectedStudentHistoryModal] = useState(null)
+  const [showSubjectRegisterModal, setShowSubjectRegisterModal] = useState(false)
+
+  const fetchSubjectReport = useCallback(async (subjectId, days) => {
+    setLoadingSubjectReport(true)
+    try {
+      const params = new URLSearchParams()
+      if (subjectId) params.append('subject_id', subjectId)
+      if (days && days !== 'all') params.append('days', days)
+      const res = await api.get(`/attendance/reports/subject-student-attendance?${params.toString()}`)
+      if (res.data?.success) {
+        setSubjectReportData(res.data.data)
+        if (!subjectId && res.data.data?.selected_subject?.id) {
+          setSelectedSubjectId(res.data.data.selected_subject.id)
+        }
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to load subject attendance report')
+    } finally {
+      setLoadingSubjectReport(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'STUDENT_SUBJECT' && !subjectReportData) {
+      fetchSubjectReport(selectedSubjectId, selectedPeriodDays)
+    }
+  }, [tab, selectedSubjectId, selectedPeriodDays, subjectReportData, fetchSubjectReport])
 
   const fetchStats = useCallback(async () => {
     setLoading(true)
@@ -243,57 +283,282 @@ export default function ReportsPanel() {
     setShowRegisterModal(true)
   }
 
+  // Subject CSV Export
+  async function exportSubjectCSV() {
+    if (!subjectReportData?.selected_subject || !subjectReportData?.students?.length) {
+      return toast.error('No student attendance data available to export')
+    }
+    const subject = subjectReportData.selected_subject
+    const sStats = subjectReportData.stats || {}
+    const headers = [
+      'Sr No',
+      'Roll Number',
+      'Student Name',
+      'Course',
+      'Division',
+      'Lectures Conducted',
+      'Days Present',
+      'Days Absent',
+      'Attendance %',
+      'Status'
+    ]
+    const rows = subjectReportData.students.map((s, idx) => [
+      idx + 1,
+      `"${(s.roll_number || '').replace(/"/g, '""')}"`,
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      `"${(s.course || '').replace(/"/g, '""')}"`,
+      `"${(s.division || '').replace(/"/g, '""')}"`,
+      s.total_lectures ?? 0,
+      s.attended_lectures ?? 0,
+      s.absent_lectures ?? 0,
+      `${(s.percentage || 0).toFixed(1)}%`,
+      s.is_safe ? 'SAFE (>=75%)' : 'DEFAULTER (<75%)'
+    ])
+
+    const summaryRows = [
+      ['SMDL COLLEGE OF ARTS, SCIENCE & COMMERCE, KALAMBOLI'],
+      [`SUBJECT ATTENDANCE REGISTER - ${subject.name.toUpperCase()} (${subject.code || ''})`],
+      [`Class/Division: ${subject.division_name || ''}`, `Course: ${subject.course_name || ''}`],
+      [`Generated On: ${new Date().toLocaleString('en-IN')}`],
+      [`Filter Period: ${selectedPeriodDays === 'all' ? 'All Lectures' : `Last ${selectedPeriodDays} Days`}`],
+      [`Total Lectures Conducted: ${sStats.total_lectures || 0}`, `Total Students Enrolled: ${sStats.total_students || 0}`],
+      [`Class Average: ${sStats.class_average ? sStats.class_average.toFixed(1) + '%' : 'N/A'}`, `Defaulters (<75%): ${sStats.defaulters_count || 0}`],
+      [],
+      headers
+    ]
+
+    const csvContent = '\uFEFF' + [...summaryRows.map(r => r.join(',')), ...rows.map(r => r.join(','))].join('\r\n')
+    const cleanSubName = (subject.code || subject.name || 'Subject').replace(/[^a-zA-Z0-9]/g, '_')
+    const fileName = `SMDL_${cleanSubName}_Attendance_Report_${new Date().toISOString().slice(0, 10)}.csv`
+
+    await exportReportFile({
+      content: csvContent,
+      fileName,
+      mimeType: 'text/csv;charset=utf-8;',
+      dialogTitle: `Save / Open ${subject.name} Attendance CSV`,
+      mobileSuccessMsg: '📊 Subject CSV Report ready! Tap "Save to device" to save in Downloads, or open in Excel / Sheets.',
+      webSuccessMsg: '📊 Subject CSV Report downloaded! Check your browser Downloads folder.',
+    })
+  }
+
+  // Printable Subject Register HTML Generator
+  function getSubjectRegisterHTML() {
+    if (!subjectReportData?.selected_subject) return ''
+    const subject = subjectReportData.selected_subject
+    const sStats = subjectReportData.stats || {}
+    const studentRows = (subjectReportData.students || []).map((s, idx) => `
+      <tr style="${!s.is_safe ? 'background-color:#fff1f2;' : ''}">
+        <td style="border:1px solid #cbd5e1;padding:7px;text-align:center;">${idx + 1}</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;font-family:monospace;font-weight:600;">${s.roll_number}</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;font-weight:600;">${s.name}</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;text-align:center;">${s.total_lectures}</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;text-align:center;color:#15803d;font-weight:bold;">${s.attended_lectures}</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;text-align:center;color:#b91c1c;font-weight:bold;">${s.absent_lectures}</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;text-align:center;font-weight:bold;color:${s.is_safe ? '#15803d' : '#b91c1c'};">${s.percentage.toFixed(1)}%</td>
+        <td style="border:1px solid #cbd5e1;padding:7px;text-align:center;">
+          <span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:bold;${s.is_safe ? 'background-color:#dcfce7;color:#15803d;' : 'background-color:#fee2e2;color:#b91c1c;'}">
+            ${s.is_safe ? 'ELIGIBLE' : 'DEFAULTER'}
+          </span>
+        </td>
+      </tr>
+    `).join('')
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>SMDL Subject Attendance Register - ${subject.name}</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 15px; font-size: 12px; }
+          .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
+          .inst-name { font-size: 16px; font-weight: 800; text-transform: uppercase; margin: 0; letter-spacing: 0.5px; }
+          .doc-title { font-size: 13px; font-weight: 700; margin: 4px 0 0; color: #334155; }
+          .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-bottom: 12px; font-size: 11px; background: #f8fafc; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+          th { background-color: #0f172a; color: #ffffff; padding: 8px; border: 1px solid #0f172a; text-align: left; }
+          .sig-row { display: flex; justify-content: space-between; margin-top: 35px; padding-top: 15px; }
+          .sig-box { text-align: center; width: 160px; border-top: 1px dashed #64748b; padding-top: 6px; font-size: 11px; font-weight: 600; color: #334155; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="inst-name">SMDL College of Arts, Science & Commerce</h1>
+          <p style="margin:2px 0;font-size:10px;color:#64748b;">Plot No. 1, Sector 3E, CIDCO Colony, Kalamboli, Navi Mumbai - 410218</p>
+          <div class="doc-title">OFFICIAL SUBJECT ATTENDANCE REGISTER &amp; ELIGIBILITY REPORT</div>
+        </div>
+
+        <div class="meta-grid">
+          <div><strong>Subject:</strong> ${subject.name} (${subject.code || 'N/A'})</div>
+          <div><strong>Class / Division:</strong> ${subject.division_name || 'N/A'}</div>
+          <div><strong>Program / Course:</strong> ${subject.course_name || 'N/A'}</div>
+          <div><strong>Report Generated:</strong> ${new Date().toLocaleString('en-IN')}</div>
+          <div><strong>Total Lectures Held:</strong> ${sStats.total_lectures || 0}</div>
+          <div><strong>Total Students Enrolled:</strong> ${sStats.total_students || 0}</div>
+          <div><strong>Subject Average Attendance:</strong> ${sStats.class_average ? sStats.class_average.toFixed(1) + '%' : 'N/A'}</div>
+          <div><strong>Defaulters (&lt; 75%):</strong> ${sStats.defaulters_count || 0}</div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:35px;text-align:center;">Sr.</th>
+              <th style="width:85px;">Roll No</th>
+              <th>Student Name</th>
+              <th style="width:60px;text-align:center;">Lectures</th>
+              <th style="width:55px;text-align:center;">Present</th>
+              <th style="width:55px;text-align:center;">Absent</th>
+              <th style="width:70px;text-align:center;">Attendance %</th>
+              <th style="width:85px;text-align:center;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${studentRows}
+          </tbody>
+        </table>
+
+        <div class="sig-row">
+          <div class="sig-box">Faculty In-Charge</div>
+          <div class="sig-box">Head of Department</div>
+          <div class="sig-box">Principal / Vice-Principal</div>
+        </div>
+      </body>
+      </html>
+    `
+  }
+
+  async function downloadSubjectRegisterHTML() {
+    if (!subjectReportData?.selected_subject) return toast.error('No report data available')
+    const html = getSubjectRegisterHTML()
+    const cleanName = (subjectReportData.selected_subject.code || subjectReportData.selected_subject.name || 'Subject').replace(/[^a-zA-Z0-9]/g, '_')
+    const fileName = `SMDL_${cleanName}_Register_${new Date().toISOString().slice(0, 10)}.html`
+
+    await exportReportFile({
+      content: html,
+      fileName,
+      mimeType: 'text/html;charset=utf-8;',
+      dialogTitle: 'Save / Open Subject Register',
+      mobileSuccessMsg: '📄 Subject Register ready! Tap "Save to device" to save in Downloads, or open in browser.',
+      webSuccessMsg: '📄 Subject Register downloaded! Check your browser Downloads folder.',
+    })
+  }
+
+  function handlePrintSubjectRegisterClick() {
+    if (!subjectReportData?.selected_subject) return toast.error('No report data available')
+    const html = getSubjectRegisterHTML()
+    try {
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = '0'
+      document.body.appendChild(iframe)
+
+      const doc = iframe.contentWindow.document
+      doc.open()
+      doc.write(html)
+      doc.close()
+
+      iframe.contentWindow.focus()
+      setTimeout(() => {
+        try {
+          iframe.contentWindow.print()
+        } catch (e) {
+          console.warn('Iframe print fallback:', e)
+        }
+      }, 350)
+      toast.success('Opening print dialog...')
+    } catch (e) {
+      toast.error('Print unavailable on this device. Use Save HTML option.')
+    }
+  }
+
+  const filteredStudents = (subjectReportData?.students || []).filter((s) => {
+    const matchesSearch = !studentSearchQuery ||
+      s.name.toLowerCase().includes(studentSearchQuery.toLowerCase()) ||
+      s.roll_number.toLowerCase().includes(studentSearchQuery.toLowerCase())
+    const matchesStatus =
+      studentStatusFilter === 'ALL' ||
+      (studentStatusFilter === 'SAFE' && s.is_safe) ||
+      (studentStatusFilter === 'DEFAULTER' && !s.is_safe)
+    return matchesSearch && matchesStatus
+  })
+
   return (
     <div className="space-y-6 animate-fade-in pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">
-            Institutional Reports & Analytics
+            {isTeacher ? 'Faculty Subject & Academic Reports' : 'Institutional Reports & Analytics'}
           </h1>
           <p className="text-xs sm:text-sm text-muted mt-0.5">
-            College-wide attendance registers, examination eligibility thresholds, and audit trails
+            {isTeacher
+              ? 'Subject-wise student attendance registers, eligibility percentages, and class analytics'
+              : 'College-wide attendance registers, examination eligibility thresholds, and audit trails'}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            id="period-filter"
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
-            className="px-3 py-1.5 text-xs rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
-          >
-            <option value="7">Last 7 days</option>
-            <option value="30">Last 30 days</option>
-            <option value="90">Last 90 days</option>
-          </select>
-          <Button onClick={fetchStats} variant="outline" size="sm" className="gap-1.5" title="Refresh metrics">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </Button>
-          <Button
-            onClick={exportToCSV}
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-xs"
-            title="Download CSV spreadsheet"
-          >
-            <FileSpreadsheet size={14} className="text-emerald-600" />
-            <span>Export CSV</span>
-          </Button>
-          <Button
-            onClick={handlePrintRegisterClick}
-            variant="primary"
-            size="sm"
-            className="gap-1.5 text-xs"
-            title="Print official register"
-          >
-            <Printer size={14} />
-            <span>Print Register</span>
-          </Button>
-        </div>
+        {tab !== 'STUDENT_SUBJECT' && (
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              id="period-filter"
+              value={period}
+              onChange={e => setPeriod(e.target.value)}
+              className="px-3 py-1.5 text-xs rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+            >
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+            <Button onClick={fetchStats} variant="outline" size="sm" className="gap-1.5" title="Refresh metrics">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </Button>
+            <Button
+              onClick={exportToCSV}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              title="Download CSV spreadsheet"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-600" />
+              <span>Export CSV</span>
+            </Button>
+            <Button
+              onClick={handlePrintRegisterClick}
+              variant="primary"
+              size="sm"
+              className="gap-1.5 text-xs"
+              title="Print official register"
+            >
+              <Printer size={14} />
+              <span>Print Register</span>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex gap-1.5 p-1 bg-bg border border-line rounded-lg w-fit">
+      <div className="flex flex-wrap gap-1.5 p-1 bg-bg border border-line rounded-lg w-fit">
+        <button
+          onClick={() => setTab('STUDENT_SUBJECT')}
+          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            tab === 'STUDENT_SUBJECT'
+              ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+              : 'text-muted hover:text-ink hover:bg-surface/50'
+          }`}
+        >
+          <UserCheck size={13} /> Student Subject Attendance
+          {subjectReportData?.students?.length ? (
+            <span className="text-[11px] bg-brand/10 text-brand px-1.5 py-0.2 rounded-full font-semibold">
+              {subjectReportData.students.length}
+            </span>
+          ) : null}
+        </button>
+
         <button
           onClick={() => setTab('OVERVIEW')}
           className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -304,22 +569,364 @@ export default function ReportsPanel() {
         >
           <BarChart2 size={13} /> Analytics & Defaulters
         </button>
-        <button
-          onClick={() => setTab('AUDIT_LOGS')}
-          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-            tab === 'AUDIT_LOGS'
-              ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
-              : 'text-muted hover:text-ink hover:bg-surface/50'
-          }`}
-        >
-          <Clock size={13} /> Faculty Overrides Audit Log
-          <span className="text-[11px] bg-brand/10 text-brand px-1.5 py-0.2 rounded-full font-semibold">
-            {auditLogs.length}
-          </span>
-        </button>
+
+        {!isTeacher && (
+          <button
+            onClick={() => setTab('AUDIT_LOGS')}
+            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+              tab === 'AUDIT_LOGS'
+                ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
+                : 'text-muted hover:text-ink hover:bg-surface/50'
+            }`}
+          >
+            <Clock size={13} /> Faculty Overrides Audit Log
+            <span className="text-[11px] bg-brand/10 text-brand px-1.5 py-0.2 rounded-full font-semibold">
+              {auditLogs.length}
+            </span>
+          </button>
+        )}
       </div>
 
-      {loading ? (
+      {tab === 'STUDENT_SUBJECT' ? (
+        <div className="space-y-4">
+          {/* Controls Bar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 bg-surface border border-line rounded-xl shadow-xs">
+            <div className="flex flex-wrap items-center gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                  Select Subject
+                </label>
+                <select
+                  value={selectedSubjectId}
+                  onChange={(e) => {
+                    setSelectedSubjectId(e.target.value)
+                    fetchSubjectReport(e.target.value, selectedPeriodDays)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-line bg-bg text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer min-w-[200px]"
+                >
+                  {(subjectReportData?.subjects || []).map((sub) => (
+                    <option key={sub.id} value={sub.id}>
+                      {sub.name} ({sub.code || 'SUB'}) · {sub.division_name} {sub.is_assigned ? '★' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
+                  Time Period
+                </label>
+                <select
+                  value={selectedPeriodDays}
+                  onChange={(e) => {
+                    setSelectedPeriodDays(e.target.value)
+                    fetchSubjectReport(selectedSubjectId, e.target.value)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-line bg-bg text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                >
+                  <option value="all">All Lectures</option>
+                  <option value="30">Last 30 Days</option>
+                  <option value="90">Last 90 Days</option>
+                  <option value="7">Last 7 Days</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-end">
+              <Button
+                onClick={() => fetchSubjectReport(selectedSubjectId, selectedPeriodDays)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+                title="Refresh Report"
+              >
+                <RefreshCw size={13} className={loadingSubjectReport ? 'animate-spin' : ''} />
+                <span>Refresh</span>
+              </Button>
+              <Button
+                onClick={exportSubjectCSV}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs text-emerald-600 hover:text-emerald-700"
+                title="Download CSV Spreadsheet"
+              >
+                <FileSpreadsheet size={14} />
+                <span>Export CSV</span>
+              </Button>
+              <Button
+                onClick={() => setShowSubjectRegisterModal(true)}
+                variant="primary"
+                size="sm"
+                className="gap-1.5 text-xs"
+                title="Print Subject Register"
+              >
+                <Printer size={14} />
+                <span>Print Register</span>
+              </Button>
+            </div>
+          </div>
+
+          {loadingSubjectReport ? (
+            <div className="p-8 space-y-4">
+              <Skeleton className="h-24 w-full" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+              </div>
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : !subjectReportData?.selected_subject ? (
+            <EmptyState
+              icon={BookOpen}
+              title="No Subject Selected"
+              description="Please select a subject from the dropdown above to view student attendance and analytics."
+            />
+          ) : (
+            <>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Card className="p-3.5 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+                    <BookOpen size={18} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted font-medium">Lectures Held</p>
+                    <p className="text-lg font-bold font-display text-ink">
+                      {subjectReportData?.stats?.total_lectures ?? 0}
+                    </p>
+                  </div>
+                </Card>
+
+                <Card className="p-3.5 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted font-medium">Total Students</p>
+                    <p className="text-lg font-bold font-display text-ink">
+                      {subjectReportData?.stats?.total_students ?? 0}
+                    </p>
+                  </div>
+                </Card>
+
+                <Card className="p-3.5 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+                    <TrendingUp size={18} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted font-medium">Subject Average</p>
+                    <p className="text-lg font-bold font-display text-ink">
+                      {subjectReportData?.stats?.class_average != null ? `${subjectReportData.stats.class_average}%` : 'N/A'}
+                    </p>
+                  </div>
+                </Card>
+
+                <Card className="p-3.5 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-red-500/10 text-red-600 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={18} />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted font-medium">Defaulters (&lt;75%)</p>
+                    <p className="text-lg font-bold font-display text-red-600">
+                      {subjectReportData?.stats?.defaulters_count ?? 0}
+                    </p>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Search & Filters */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="relative flex-1 max-w-sm">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    type="text"
+                    placeholder="Search by student name or roll number..."
+                    value={studentSearchQuery}
+                    onChange={(e) => setStudentSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-line bg-surface text-ink placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-bg p-1 rounded-lg border border-line text-xs self-start sm:self-auto">
+                  <button
+                    onClick={() => setStudentStatusFilter('ALL')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer ${
+                      studentStatusFilter === 'ALL' ? 'bg-surface font-semibold text-ink shadow-xs border border-line' : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    All ({subjectReportData?.students?.length || 0})
+                  </button>
+                  <button
+                    onClick={() => setStudentStatusFilter('SAFE')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer ${
+                      studentStatusFilter === 'SAFE' ? 'bg-green-100 text-green-700 font-semibold shadow-xs' : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    Eligible &ge;75%
+                  </button>
+                  <button
+                    onClick={() => setStudentStatusFilter('DEFAULTER')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer ${
+                      studentStatusFilter === 'DEFAULTER' ? 'bg-red-100 text-red-700 font-semibold shadow-xs' : 'text-muted hover:text-ink'
+                    }`}
+                  >
+                    Defaulters &lt;75%
+                  </button>
+                </div>
+              </div>
+
+              {/* Student Table */}
+              <Card className="overflow-hidden">
+                <div className="p-3.5 border-b border-line bg-bg/50 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-ink text-sm">
+                      {subjectReportData.selected_subject.name} ({subjectReportData.selected_subject.code || 'N/A'})
+                    </h3>
+                    <p className="text-xs text-muted mt-0.5">
+                      Class: {subjectReportData.selected_subject.division_name} · Program: {subjectReportData.selected_subject.course_name}
+                    </p>
+                  </div>
+                  <Badge variant="brand">{filteredStudents.length} Students</Badge>
+                </div>
+
+                {filteredStudents.length === 0 ? (
+                  <EmptyState
+                    icon={Users}
+                    title="No students match criteria"
+                    description="Try adjusting your search query or status filter."
+                  />
+                ) : (
+                  <div>
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left text-sm border-collapse">
+                        <thead>
+                          <tr className="border-b border-line bg-bg/30 text-xs font-semibold text-muted uppercase tracking-wider">
+                            <th className="py-3 px-4">Roll No</th>
+                            <th className="py-3 px-4">Student</th>
+                            <th className="py-3 px-4 text-center">Lectures Held</th>
+                            <th className="py-3 px-4 text-center">Present Days</th>
+                            <th className="py-3 px-4 text-center">Absent Days</th>
+                            <th className="py-3 px-4 text-center">Attendance %</th>
+                            <th className="py-3 px-4 text-center">Status</th>
+                            <th className="py-3 px-4 text-right">Lecture History</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line">
+                          {filteredStudents.map((s) => (
+                            <tr key={s.student_id} className="hover:bg-bg/40 transition-colors">
+                              <td className="py-3 px-4">
+                                <span className="font-mono text-xs font-semibold px-2 py-0.5 bg-bg border border-line rounded">
+                                  {s.roll_number}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <p className="font-semibold text-ink text-xs">{s.name}</p>
+                                <p className="text-[11px] text-muted truncate">{s.email}</p>
+                              </td>
+                              <td className="py-3 px-4 text-center text-xs font-medium text-ink">
+                                {s.total_lectures}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                                  {s.attended_lectures}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+                                  {s.absent_lectures}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className={`text-xs font-bold font-mono ${s.is_safe ? 'text-emerald-600' : 'text-red-600'}`}>
+                                    {s.percentage.toFixed(1)}%
+                                  </span>
+                                  <div className="w-16 h-1.5 bg-bg border border-line rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${s.is_safe ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                      style={{ width: `${Math.min(100, Math.max(0, s.percentage))}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <Badge variant={s.is_safe ? 'present' : 'absent'} size="sm">
+                                  {s.is_safe ? 'Eligible' : 'Defaulter'}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <Button
+                                  onClick={() => setSelectedStudentHistoryModal(s)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="gap-1 text-xs"
+                                >
+                                  <Eye size={12} />
+                                  <span>View History</span>
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="md:hidden divide-y divide-line">
+                      {filteredStudents.map((s) => (
+                        <div key={s.student_id} className="p-3.5 space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[11px] font-semibold px-1.5 py-0.2 bg-bg border border-line rounded">
+                                  {s.roll_number}
+                                </span>
+                                <p className="font-semibold text-ink text-xs">{s.name}</p>
+                              </div>
+                              <p className="text-[11px] text-muted truncate mt-0.5">{s.email}</p>
+                            </div>
+                            <Badge variant={s.is_safe ? 'present' : 'absent'} size="sm">
+                              {s.percentage.toFixed(1)}%
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 p-2 bg-bg/50 rounded-lg border border-line text-center text-xs">
+                            <div>
+                              <p className="text-[10px] text-muted">Held</p>
+                              <p className="font-bold text-ink">{s.total_lectures}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-green-700">Present</p>
+                              <p className="font-bold text-green-700">{s.attended_lectures}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-red-700">Absent</p>
+                              <p className="font-bold text-red-700">{s.absent_lectures}</p>
+                            </div>
+                          </div>
+
+                          <Button
+                            onClick={() => setSelectedStudentHistoryModal(s)}
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-1.5 text-xs justify-center"
+                          >
+                            <Eye size={12} />
+                            <span>View Detailed Lecture History</span>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </>
+          )}
+        </div>
+      ) : loading ? (
         <div className="p-8 space-y-4">
           <Skeleton className="h-28 w-full" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -749,6 +1356,123 @@ export default function ReportsPanel() {
               Close
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Student Lecture History Modal */}
+      <Modal
+        isOpen={Boolean(selectedStudentHistoryModal)}
+        onClose={() => setSelectedStudentHistoryModal(null)}
+        title={selectedStudentHistoryModal ? `${selectedStudentHistoryModal.name} · Attendance Timeline` : 'Attendance Timeline'}
+        description={
+          selectedStudentHistoryModal
+            ? `Roll No: ${selectedStudentHistoryModal.roll_number} · ${subjectReportData?.selected_subject?.name || ''}`
+            : ''
+        }
+        size="lg"
+      >
+        {selectedStudentHistoryModal && (
+          <div className="space-y-4">
+            {/* Summary Strip */}
+            <div className="grid grid-cols-3 gap-2 p-3 bg-bg border border-line rounded-xl text-center">
+              <div>
+                <p className="text-[11px] text-muted">Lectures Held</p>
+                <p className="text-base font-bold text-ink">{selectedStudentHistoryModal.total_lectures}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-green-700">Days Present</p>
+                <p className="text-base font-bold text-green-700">{selectedStudentHistoryModal.attended_lectures}</p>
+              </div>
+              <div>
+                <p className="text-[11px] text-muted">Percentage</p>
+                <p className={`text-base font-bold ${selectedStudentHistoryModal.is_safe ? 'text-green-700' : 'text-red-700'}`}>
+                  {selectedStudentHistoryModal.percentage.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+
+            {/* Lecture list */}
+            {selectedStudentHistoryModal.history?.length === 0 ? (
+              <EmptyState
+                icon={Calendar}
+                title="No lectures conducted"
+                description="No lectures have been scheduled or recorded for this subject in the selected period."
+              />
+            ) : (
+              <div className="max-h-[350px] overflow-y-auto divide-y divide-line border border-line rounded-xl bg-surface">
+                {selectedStudentHistoryModal.history.map((lec, idx) => (
+                  <div key={lec.lecture_id || idx} className="p-3 flex items-center justify-between gap-3 text-xs">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-ink">#{idx + 1}</span>
+                        <span className="font-semibold text-ink font-mono">{lec.date}</span>
+                        <span className="text-muted text-[11px] font-mono">{lec.start_time?.slice(0, 5)}</span>
+                      </div>
+                      <p className="text-muted text-[11px]">{lec.topic || 'Class Lecture'}</p>
+                    </div>
+
+                    <Badge variant={lec.status === 'PRESENT' ? 'present' : 'absent'} size="sm">
+                      {lec.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => setSelectedStudentHistoryModal(null)} variant="outline" size="sm">
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Official Subject Register Modal */}
+      <Modal
+        isOpen={showSubjectRegisterModal}
+        onClose={() => setShowSubjectRegisterModal(false)}
+        title={subjectReportData?.selected_subject ? `Official Register: ${subjectReportData.selected_subject.name}` : 'Subject Attendance Register'}
+        description="Official SMDL Academic Subject Attendance Register & Examination Eligibility"
+        size="xl"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-bg border border-line rounded-xl">
+            <div className="flex items-center gap-2">
+              <Badge variant="brand" size="sm">
+                {subjectReportData?.students?.length || 0} Students
+              </Badge>
+              <span className="text-xs text-muted">
+                Held: {subjectReportData?.stats?.total_lectures || 0} Lectures · Avg: {subjectReportData?.stats?.class_average || 0}%
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handlePrintSubjectRegisterClick}
+                variant="primary"
+                size="sm"
+                className="gap-1.5 text-xs"
+              >
+                <Printer size={13} />
+                <span>Print Document</span>
+              </Button>
+              <Button
+                onClick={downloadSubjectRegisterHTML}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs"
+              >
+                <Download size={13} />
+                <span>Save HTML</span>
+              </Button>
+            </div>
+          </div>
+
+          <div
+            className="border border-line rounded-xl p-4 bg-white text-slate-900 max-h-[420px] overflow-y-auto text-xs font-sans shadow-inner"
+            dangerouslySetInnerHTML={{ __html: getSubjectRegisterHTML() }}
+          />
         </div>
       </Modal>
     </div>

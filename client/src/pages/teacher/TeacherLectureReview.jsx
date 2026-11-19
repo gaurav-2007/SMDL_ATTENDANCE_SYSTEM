@@ -23,7 +23,7 @@ export default function TeacherLectureReview() {
   const [subjects, setSubjects] = useState([])
   const [divisions, setDivisions] = useState([])
   const [showStartModal, setShowStartModal] = useState(false)
-  const [startForm, setStartForm] = useState({ subject_id: '', division_id: '', topic: '' })
+  const [startForm, setStartForm] = useState({ subject_id: '', division_id: '', topic: '', duration_minutes: 60 })
   const [starting, setStarting] = useState(false)
 
   const [roster, setRoster] = useState([])
@@ -136,7 +136,7 @@ export default function TeacherLectureReview() {
       const newLec = data?.data?.lecture
       toast.success(`✅ ${newLec?.subject?.name || 'Lecture'} started successfully!`)
       setShowStartModal(false)
-      setStartForm({ subject_id: '', division_id: '', topic: '' })
+      setStartForm({ subject_id: '', division_id: '', topic: '', duration_minutes: 60 })
       await loadLectures()
       if (newLec?.id) {
         setSelectedLecture(newLec.id)
@@ -145,6 +145,24 @@ export default function TeacherLectureReview() {
       toast.error(e?.response?.data?.message || 'Failed to start lecture')
     } finally {
       setStarting(false)
+    }
+  }
+
+  const [closingWindow, setClosingWindow] = useState(false)
+
+  async function handleCloseWindow() {
+    if (!selectedLecture) return
+    if (!confirm('Close the attendance window for this lecture session now? Students will no longer be able to mark attendance.')) return
+    try {
+      setClosingWindow(true)
+      await api.patch(`/lectures/${selectedLecture}/status`, { status: 'COMPLETED' })
+      toast.success('Attendance window closed successfully')
+      await loadRoster(selectedLecture)
+      await loadLectures()
+    } catch (e) {
+      toast.error(e?.response?.data?.message || 'Failed to close attendance window')
+    } finally {
+      setClosingWindow(false)
     }
   }
 
@@ -279,11 +297,17 @@ export default function TeacherLectureReview() {
                   className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink pr-8 focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer appearance-none"
                 >
                   <option value="">— Select a lecture to review roster —</option>
-                  {lectures.map(l => (
-                    <option key={l.id} value={l.id}>
-                      {l.subject?.name || 'Subject'} · {l.division?.name} Div {l.division?.division_name || ''} ({l.start_time || 'Session'})
-                    </option>
-                  ))}
+                  {lectures.map(l => {
+                    const startFmt = l.start_time?.slice(0, 5) || 'Session'
+                    const endFmt = l.end_time?.slice(0, 5) || ''
+                    const timeLabel = endFmt ? `${startFmt} - ${endFmt}` : startFmt
+                    const statusTag = l.is_attendance_open ? '🟢 Open' : '⚪ Closed'
+                    return (
+                      <option key={l.id} value={l.id}>
+                        {statusTag} · {l.subject?.name || 'Subject'} · {l.division?.name} Div {l.division?.division_name || ''} ({timeLabel})
+                      </option>
+                    )
+                  })}
                 </select>
                 <ChevronDown className="w-4 h-4 text-muted absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
@@ -292,7 +316,7 @@ export default function TeacherLectureReview() {
 
           {lectureMeta && (
             <div className="lg:col-span-2 bg-bg/70 border border-line rounded-lg p-3 sm:p-3.5 text-xs">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
                   <span className="text-muted block">Subject:</span>
                   <span className="font-semibold text-ink">{lectureMeta.subject?.name}</span>
@@ -303,12 +327,44 @@ export default function TeacherLectureReview() {
                   <span className="font-semibold text-ink">{lectureMeta.division?.name} Div {lectureMeta.division?.division_name || ''}</span>
                 </div>
                 <div>
-                  <span className="text-muted block">Topic:</span>
-                  <span className="font-semibold text-ink truncate block" title={lectureMeta.topic || ''}>{lectureMeta.topic || 'Regular lecture'}</span>
+                  <span className="text-muted block">Timing:</span>
+                  <span className="font-semibold font-mono text-ink">
+                    {lectureMeta.start_time?.slice(0, 5)} - {lectureMeta.end_time?.slice(0, 5)}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted block">Conducted Date:</span>
                   <span className="font-semibold text-ink">{lectureMeta.lecture_date ? new Date(lectureMeta.lecture_date).toLocaleDateString('en-IN') : 'Today'}</span>
+                </div>
+                <div>
+                  <span className="text-muted block">Attendance Window:</span>
+                  <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {lectureMeta.is_attendance_open ? (
+                      <>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-present/15 text-present border border-present/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-present animate-pulse" />
+                          <span>Open until {lectureMeta.window_expires_at || 'end'}</span>
+                        </span>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={handleCloseWindow}
+                          disabled={closingWindow}
+                          loading={closingWindow}
+                          className="h-5 text-[10px] px-2 font-semibold shadow-2xs"
+                          title="Manually end attendance window now"
+                        >
+                          End Window
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-absent/15 text-absent border border-absent/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-absent" />
+                        <span>Closed {lectureMeta.window_expires_at ? `(${lectureMeta.window_expires_at})` : ''}</span>
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted block mt-0.5">1 hr post-class, max 2h</span>
                 </div>
               </div>
             </div>
@@ -485,6 +541,17 @@ export default function TeacherLectureReview() {
           </div>
         ) : (
           <div>
+            {lectureMeta && !lectureMeta.is_attendance_open && (
+              <div className="mx-4 sm:mx-6 mt-4 mb-2 p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-700 dark:text-amber-300">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Attendance Window Closed:</strong> This lecture's window expired at <strong>{lectureMeta.window_expires_at || 'scheduled end'}</strong>. Student and direct classroom attendance marking are closed.
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* ── DESKTOP VIEW: CLEAN DATA TABLE (Hidden on small screens) ── */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs sm:text-sm">
@@ -572,23 +639,24 @@ export default function TeacherLectureReview() {
                           {r.status === 'ABSENT' ? (
                             <div className="flex items-center justify-end gap-1.5">
                               <Button
-                                variant="success"
+                                variant={lectureMeta?.is_attendance_open ? "success" : "ghost"}
                                 size="sm"
                                 onClick={() => directMarkPresent(r)}
-                                disabled={directMarkingId === r.student_pk}
+                                disabled={!lectureMeta?.is_attendance_open || directMarkingId === r.student_pk}
                                 loading={directMarkingId === r.student_pk}
-                                className="h-7 text-xs px-2.5 font-medium"
-                                title="Student has no phone: Direct mark Present in classroom"
+                                className={`h-7 text-xs px-2.5 font-medium ${!lectureMeta?.is_attendance_open ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                title={!lectureMeta?.is_attendance_open ? 'Attendance window is closed' : 'Student has no phone: Direct mark Present in classroom'}
                               >
                                 <Zap className="w-3 h-3 mr-1" />
-                                <span>{directMarkingId === r.student_pk ? 'Marking...' : 'Mark (No Phone)'}</span>
+                                <span>{directMarkingId === r.student_pk ? 'Marking...' : !lectureMeta?.is_attendance_open ? 'Window Closed' : 'Mark (No Phone)'}</span>
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openOverride(r)}
-                                className="h-7 w-7 p-0"
-                                title="Custom status override"
+                                disabled={!lectureMeta?.is_attendance_open}
+                                className={`h-7 w-7 p-0 ${!lectureMeta?.is_attendance_open ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                title={!lectureMeta?.is_attendance_open ? 'Attendance window is closed' : 'Custom status override'}
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </Button>
@@ -598,8 +666,9 @@ export default function TeacherLectureReview() {
                               variant="outline"
                               size="sm"
                               onClick={() => openOverride(r)}
-                              className="h-7 text-xs px-2.5"
-                              title="Teacher override or correction"
+                              disabled={!lectureMeta?.is_attendance_open}
+                              className={`h-7 text-xs px-2.5 ${!lectureMeta?.is_attendance_open ? 'opacity-40 cursor-not-allowed' : ''}`}
+                              title={!lectureMeta?.is_attendance_open ? 'Attendance window is closed' : 'Teacher override or correction'}
                             >
                               <Edit3 className="w-3 h-3 mr-1" />
                               <span>Override</span>
@@ -676,22 +745,25 @@ export default function TeacherLectureReview() {
                       <div className="flex items-center gap-1.5">
                         {r.status === 'ABSENT' ? (
                           <Button
-                            variant="success"
+                            variant={lectureMeta?.is_attendance_open ? "success" : "ghost"}
                             size="sm"
                             onClick={() => directMarkPresent(r)}
-                            disabled={directMarkingId === r.student_pk}
+                            disabled={!lectureMeta?.is_attendance_open || directMarkingId === r.student_pk}
                             loading={directMarkingId === r.student_pk}
-                            className="h-7 text-xs px-2.5"
+                            className={`h-7 text-xs px-2.5 ${!lectureMeta?.is_attendance_open ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            title={!lectureMeta?.is_attendance_open ? 'Attendance window is closed' : 'Mark (No Phone)'}
                           >
                             <Zap className="w-3 h-3 mr-1" />
-                            <span>No Phone</span>
+                            <span>{!lectureMeta?.is_attendance_open ? 'Closed' : 'No Phone'}</span>
                           </Button>
                         ) : null}
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => openOverride(r)}
-                          className="h-7 text-xs px-2.5"
+                          disabled={!lectureMeta?.is_attendance_open}
+                          className={`h-7 text-xs px-2.5 ${!lectureMeta?.is_attendance_open ? 'opacity-40 cursor-not-allowed' : ''}`}
+                          title={!lectureMeta?.is_attendance_open ? 'Attendance window is closed' : 'Edit status'}
                         >
                           <Edit3 className="w-3 h-3 mr-1" />
                           <span>Edit</span>
@@ -762,6 +834,31 @@ export default function TeacherLectureReview() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5 flex items-center justify-between">
+              <span>Lecture Duration & Attendance Window</span>
+              <span className="text-[10px] text-brand font-mono font-medium lowercase">
+                window: duration + 1h (max 2h)
+              </span>
+            </label>
+            <select
+              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
+              value={startForm.duration_minutes || 60}
+              onChange={e => setStartForm(s => ({ ...s, duration_minutes: parseInt(e.target.value, 10) }))}
+            >
+              <option value={30}>30 Minutes (Window: 1.5 hrs from start / 1 hr after class)</option>
+              <option value={45}>45 Minutes (Window: 1 hr 45 min / 1 hr after class)</option>
+              <option value={60}>60 Minutes (Standard 1 Hour / Max 2 hrs window)</option>
+              <option value={90}>90 Minutes (1.5 Hours / Max 2 hrs window)</option>
+              <option value={120}>120 Minutes (2 Hours Block / Max 2 hrs window)</option>
+            </select>
+            <p className="text-[11px] text-muted mt-1">
+              {startForm.duration_minutes === 30
+                ? '⏱️ 30-min lecture: Student attendance window stays open during class + 1 hour after class ends (total 90 mins from start).'
+                : `⏱️ ${startForm.duration_minutes || 60}-min lecture: Student attendance window stays open during class + 1 hour after class ends (capped at max 2 hours).`}
+            </p>
           </div>
 
           <div>
