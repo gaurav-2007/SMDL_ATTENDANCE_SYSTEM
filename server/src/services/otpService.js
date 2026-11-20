@@ -272,14 +272,40 @@ async function verifyOtp(rawEmail, enteredCode) {
         otpToken,
         token: otpToken,
       };
-    } else if (!isDev) {
-      // In production, record was not found or already verified
-      return {
-        success: false,
-        valid: false,
-        reason: 'NOT_FOUND',
-        message: 'No pending verification found or OTP has already been used. Please request a new code.',
-      };
+    } else {
+      // If code was already verified and not yet consumed, allow idempotent verification within validity window
+      const { data: recentVerified } = await supabaseAdmin
+        .from('email_verifications')
+        .select('*')
+        .eq('email', email)
+        .eq('is_verified', true)
+        .is('consumed_at', null)
+        .order('verified_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentVerified && recentVerified.otp_code === cleanEntered) {
+        const elapsed = now - new Date(recentVerified.verified_at).getTime();
+        if (elapsed <= VERIFICATION_VALIDITY_MS) {
+          return {
+            success: true,
+            valid: true,
+            message: 'Email address verified successfully.',
+            otpToken: recentVerified.otp_token,
+            token: recentVerified.otp_token,
+          };
+        }
+      }
+
+      if (!isDev) {
+        // In production, record was not found or already verified
+        return {
+          success: false,
+          valid: false,
+          reason: 'NOT_FOUND',
+          message: 'No pending verification found or OTP has already been used. Please request a new code.',
+        };
+      }
     }
   } catch (err) {
     if (!isDev) {
@@ -407,12 +433,11 @@ async function isEmailVerified(rawEmail, providedToken) {
                 .update(`${record.id}:${email}:${record.verified_at}`)
                 .digest('hex');
 
-              if (expectedSig === providedSig) {
-                const isConsumed = record.consumed_at != null;
-                const withinWindow = now - new Date(record.verified_at).getTime() <= VERIFICATION_VALIDITY_MS;
-                if (!isConsumed && withinWindow) {
-                  return true;
-                }
+              const isTokenMatched = record.otp_token === providedToken || expectedSig === providedSig;
+              const isConsumed = record.consumed_at != null;
+              const withinWindow = now - new Date(record.verified_at).getTime() <= VERIFICATION_VALIDITY_MS;
+              if (isTokenMatched && !isConsumed && withinWindow) {
+                return true;
               }
             }
           } catch (_e) {}
@@ -436,11 +461,12 @@ async function isEmailVerified(rawEmail, providedToken) {
       .select('*')
       .eq('email', email)
       .eq('is_verified', true)
+      .is('consumed_at', null)
       .order('verified_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (activeVerified && activeVerified.verified_at && !activeVerified.consumed_at) {
+    if (activeVerified && activeVerified.verified_at) {
       const elapsed = now - new Date(activeVerified.verified_at).getTime();
       if (elapsed <= VERIFICATION_VALIDITY_MS) {
         return true;
