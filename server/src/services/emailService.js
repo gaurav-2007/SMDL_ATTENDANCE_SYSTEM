@@ -2,6 +2,7 @@ const nodemailer = require('nodemailer');
 const env = require('../config/env');
 
 let transporter = null;
+let lastHttpErrorDetails = '';
 
 /**
  * Sends email via HTTP REST API (Port 443 - HTTPS).
@@ -9,6 +10,8 @@ let transporter = null;
  */
 async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
   let resendError = null;
+  let brevoError = null;
+  lastHttpErrorDetails = '';
 
   // 1. Resend API (https://resend.com - Free 3,000 emails/mo via Port 443 HTTPS)
   if (env.RESEND_API_KEY) {
@@ -46,6 +49,7 @@ async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
       };
     } catch (err) {
       resendError = err;
+      lastHttpErrorDetails = `Resend: ${err.message}`;
       console.warn('[emailService] Resend HTTPS delivery attempt failed:', err.message);
       // Fall through to Brevo or SMTP rather than aborting immediately
     }
@@ -54,7 +58,16 @@ async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
   // 2. Brevo API (https://brevo.com - Free 300 emails/day via Port 443 HTTPS)
   if (env.BREVO_API_KEY) {
     try {
-      const senderEmail = env.SMTP_USER && env.SMTP_USER.includes('@') ? env.SMTP_USER : 'collegesmdl@gmail.com';
+      let senderEmail = 'collegesmdl@gmail.com';
+      if (env.BREVO_SENDER_EMAIL && env.BREVO_SENDER_EMAIL.includes('@')) {
+        senderEmail = env.BREVO_SENDER_EMAIL.trim();
+      } else if (env.EMAIL_FROM && env.EMAIL_FROM.includes('@')) {
+        const match = env.EMAIL_FROM.match(/<([^>]+)>/);
+        senderEmail = match ? match[1].trim() : env.EMAIL_FROM.trim();
+      } else if (env.SMTP_USER && env.SMTP_USER.includes('@')) {
+        senderEmail = env.SMTP_USER.trim();
+      }
+
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
@@ -83,6 +96,8 @@ async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
         messageId: resData.messageId,
       };
     } catch (err) {
+      brevoError = err;
+      lastHttpErrorDetails = lastHttpErrorDetails ? `${lastHttpErrorDetails} | Brevo: ${err.message}` : `Brevo: ${err.message}`;
       console.warn('[emailService] Brevo HTTPS delivery attempt failed:', err.message);
       if (!env.SMTP_USER && resendError) {
         throw resendError;
@@ -338,9 +353,14 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
       };
     }
     const isTimeout = error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('greeting');
-    const sanitizedMsg = isTimeout
-      ? 'Email delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY with verified domain or BREVO_API_KEY.'
-      : (error.message || 'Failed to deliver verification email. Please try again later or contact college admin.');
+    let sanitizedMsg = isTimeout
+      ? 'Email delivery timed out on cloud network (Render blocks SMTP ports 465/587).'
+      : (error.message || 'Failed to deliver verification email.');
+    if (lastHttpErrorDetails) {
+      sanitizedMsg += ` (${lastHttpErrorDetails})`;
+    } else if (isTimeout) {
+      sanitizedMsg += ' Please ensure BREVO_API_KEY is configured in Render environment variables (and IP blocking is deactivated in Brevo settings).';
+    }
     const err = new Error(sanitizedMsg);
     err.statusCode = 503;
     throw err;
@@ -587,9 +607,14 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', reset
       };
     }
     const isTimeout = error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('greeting');
-    const sanitizedMsg = isTimeout
-      ? 'Password reset delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY with verified domain or BREVO_API_KEY.'
-      : 'Failed to deliver password reset email. Please try again later.';
+    let sanitizedMsg = isTimeout
+      ? 'Password reset delivery timed out on cloud network (Render blocks SMTP ports 465/587).'
+      : (error.message || 'Failed to deliver password reset email.');
+    if (lastHttpErrorDetails) {
+      sanitizedMsg += ` (${lastHttpErrorDetails})`;
+    } else if (isTimeout) {
+      sanitizedMsg += ' Please ensure BREVO_API_KEY is configured in Render environment variables (and IP blocking is deactivated in Brevo settings).';
+    }
     const err = new Error(sanitizedMsg);
     err.statusCode = 503;
     throw err;
