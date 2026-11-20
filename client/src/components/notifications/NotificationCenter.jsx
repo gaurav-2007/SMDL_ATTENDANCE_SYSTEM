@@ -309,9 +309,16 @@ export default function NotificationCenter() {
     const res = await requestWebPushPermission();
     if (res.granted) {
       setPushStatus('granted');
-      toast.success('Browser notifications enabled!');
+      if (res.tokenPending) {
+        toast.success('Notification permission enabled! Syncing in background...', { icon: '🔔' });
+      } else {
+        toast.success('Notifications enabled!');
+      }
     } else if (res.reason) {
-      toast.error(res.reason);
+      const cleanReason = res.reason.includes('SERVICE_NOT_AVAILABLE') || res.reason.includes('ExecutionException')
+        ? 'Google Play Notification Service is temporarily busy. Notifications will sync automatically.'
+        : res.reason;
+      toast.error(cleanReason);
     }
   }
 

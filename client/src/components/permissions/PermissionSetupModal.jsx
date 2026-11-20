@@ -108,10 +108,20 @@ export default function PermissionSetupModal() {
     // 1. Notification Permission & FCM Registration
     try {
       const pushRes = await requestWebPushPermission()
-      updated.notifications = pushRes.granted ? 'granted' : 'denied'
+      if (Capacitor.isNativePlatform()) {
+        const notifCheck = await PushNotifications.checkPermissions().catch(() => null)
+        updated.notifications = (notifCheck?.receive === 'granted' || pushRes.granted) ? 'granted' : 'denied'
+      } else {
+        updated.notifications = pushRes.granted ? 'granted' : 'denied'
+      }
     } catch (err) {
       console.warn('[Perms] Notification request error:', err)
-      updated.notifications = 'denied'
+      if (Capacitor.isNativePlatform()) {
+        const notifCheck = await PushNotifications.checkPermissions().catch(() => null)
+        updated.notifications = notifCheck?.receive === 'granted' ? 'granted' : 'denied'
+      } else {
+        updated.notifications = 'denied'
+      }
     }
     setPerms({ ...updated })
 

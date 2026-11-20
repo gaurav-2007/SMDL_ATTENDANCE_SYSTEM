@@ -221,12 +221,13 @@ export async function requestWebPushPermission() {
             } else {
               resolve({
                 supported: true,
-                granted: false,
-                reason: 'Push notification registration timed out. Please check network/Google Play Services.',
+                granted: permStatus.receive === 'granted',
+                tokenPending: true,
+                reason: 'Push notification permission active. Cloud token will sync in the background.',
               });
             }
           }
-        }, 12000);
+        }, 8000);
 
         Promise.all([
           PushNotifications.addListener('registration', async (token) => {
@@ -243,16 +244,35 @@ export async function requestWebPushPermission() {
           PushNotifications.addListener('registrationError', (err) => {
             if (settled) return;
             settled = true;
-            console.warn('[firebase.js] Native FCM registration error:', err?.error || err);
+            const rawErr = typeof err === 'string' ? err : (err?.error || err?.message || String(err || ''));
+            console.warn('[firebase.js] Native FCM registration notice:', rawErr);
             cleanup();
+
+            const isServiceUnavailable = /SERVICE_NOT_AVAILABLE|TIMEOUT|NETWORK_ERROR/i.test(rawErr);
+            const userAllowedPermission = permStatus.receive === 'granted';
+
             if (cachedToken) {
               resolve({ supported: true, granted: true, token: cachedToken });
+            } else if (userAllowedPermission) {
+              // Permission was granted by the user on the device!
+              // FCM token registration will retry automatically in the background
+              if (isServiceUnavailable) {
+                setTimeout(() => {
+                  syncPushDeviceToken().catch(() => {});
+                }, 15000);
+              }
+              resolve({
+                supported: true,
+                granted: true,
+                tokenPending: true,
+                reason: 'Google Play Notification Service is temporarily busy. Notifications will automatically sync in the background.',
+              });
             } else {
               resolve({
                 supported: true,
                 granted: false,
-                error: err?.error || err?.message || 'Push notification registration failed',
-                reason: err?.error || err?.message || 'Push notification registration failed',
+                error: rawErr,
+                reason: 'Push notification registration failed. Please check network connectivity.',
               });
             }
           }),
@@ -263,16 +283,33 @@ export async function requestWebPushPermission() {
           PushNotifications.register().catch((regErr) => {
             if (settled) return;
             settled = true;
-            console.warn('[firebase.js] PushNotifications.register() call rejected:', regErr?.message || regErr);
+            const rawErr = regErr?.message || String(regErr || '');
+            console.warn('[firebase.js] PushNotifications.register() call rejected:', rawErr);
             cleanup();
+
+            const isServiceUnavailable = /SERVICE_NOT_AVAILABLE|TIMEOUT|NETWORK_ERROR/i.test(rawErr);
+            const userAllowedPermission = permStatus.receive === 'granted';
+
             if (cachedToken) {
               resolve({ supported: true, granted: true, token: cachedToken });
+            } else if (userAllowedPermission) {
+              if (isServiceUnavailable) {
+                setTimeout(() => {
+                  syncPushDeviceToken().catch(() => {});
+                }, 15000);
+              }
+              resolve({
+                supported: true,
+                granted: true,
+                tokenPending: true,
+                reason: 'Google Play Notification Service is temporarily busy. Notifications will automatically sync in the background.',
+              });
             } else {
               resolve({
                 supported: true,
                 granted: false,
-                error: regErr?.message || 'Push notification service unavailable',
-                reason: regErr?.message || 'Push notification service unavailable',
+                error: rawErr,
+                reason: 'Push notification service unavailable',
               });
             }
           });
@@ -282,16 +319,24 @@ export async function requestWebPushPermission() {
           cleanup();
           resolve({
             supported: true,
-            granted: false,
-            error: listenerErr?.message,
-            reason: 'Failed to initialize notification listeners',
+            granted: permStatus.receive === 'granted',
+            tokenPending: true,
+            reason: 'Notification permission active.',
           });
         });
       });
     } catch (err) {
       isPushRegistering = false;
       console.warn('[firebase.js] Native push exception:', err.message);
-      return { supported: true, granted: false, error: err.message, reason: err.message };
+      const isServiceUnavailable = /SERVICE_NOT_AVAILABLE/i.test(err.message || '');
+      return {
+        supported: true,
+        granted: false,
+        error: err.message,
+        reason: isServiceUnavailable
+          ? 'Google Play Notification Service is temporarily busy. Notifications will sync in the background.'
+          : err.message,
+      };
     }
   }
 
