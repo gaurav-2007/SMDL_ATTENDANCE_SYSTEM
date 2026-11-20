@@ -316,6 +316,16 @@ export default function ForgotPasswordPage() {
                 <span>Send Recovery Code</span>
               </Button>
 
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSubmitted(true)}
+                  className="text-xs text-brand hover:underline font-semibold"
+                >
+                  Already have a 6-digit recovery code? Click here to enter code
+                </button>
+              </div>
+
               <div className="border-t border-line pt-3 text-center">
                 <Link
                   to="/login"

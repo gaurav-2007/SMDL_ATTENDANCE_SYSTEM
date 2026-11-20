@@ -377,6 +377,8 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
 async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', resetCode = '') {
   const roleTitle = role === 'teacher' ? 'Faculty / Teacher' : 'Student';
 
+  const isRealPublicWebUrl = resetUrl && !resetUrl.includes('localhost') && !resetUrl.includes('127.0.0.1');
+
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="en">
@@ -436,20 +438,20 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', reset
           background: #1e293b;
           border: 2px dashed #0284c7;
           border-radius: 12px;
-          padding: 20px;
+          padding: 24px 20px;
           text-align: center;
           margin: 20px 0;
         }
         .code-label {
-          font-size: 11px;
+          font-size: 12px;
           text-transform: uppercase;
           letter-spacing: 1.5px;
           color: #38bdf8;
           font-weight: 600;
-          margin-bottom: 6px;
+          margin-bottom: 8px;
         }
         .code-val {
-          font-size: 36px;
+          font-size: 38px;
           font-family: 'Courier New', Courier, monospace;
           font-weight: 800;
           letter-spacing: 8px;
@@ -515,17 +517,18 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', reset
           <div class="greeting">Hello, <strong>${roleTitle}</strong></div>
           <p class="message">
             We received a request to reset your SMDL College account password.
-            You can enter the 6-digit recovery code directly in the mobile app, or click the reset button below if using a computer browser:
+            Please use the 6-digit recovery code below directly in the <strong>SMDL College Attendance App</strong> to set your new password:
           </p>
           
           ${resetCode ? `
           <div class="code-box">
-            <div class="code-label">6-Digit Password Reset Code (Mobile App)</div>
+            <div class="code-label">6-Digit Password Reset Code</div>
             <div class="code-val">${resetCode}</div>
-            <div style="font-size: 12px; color: #f59e0b; margin-top: 6px;">&#9200; Valid for 15 minutes only</div>
+            <div style="font-size: 12px; color: #f59e0b; margin-top: 8px;">&#9200; Valid for 15 minutes only</div>
           </div>
           ` : ''}
 
+          ${isRealPublicWebUrl ? `
           <div class="button-box">
             <a href="${resetUrl}" class="reset-btn" target="_blank">Reset Password via Web Browser</a>
             <div class="link-fallback">
@@ -533,9 +536,14 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', reset
               <span style="color: #38bdf8;">${resetUrl}</span>
             </div>
           </div>
+          ` : `
+          <div style="background: rgba(2, 132, 199, 0.1); border: 1px solid rgba(2, 132, 199, 0.25); border-radius: 8px; padding: 14px; text-align: center; margin: 20px 0; font-size: 13px; color: #bae6fd;">
+            📱 <strong>Mobile App Instruction:</strong> Enter this 6-digit code in the SMDL Attendance App on your phone to update your password.
+          </div>
+          `}
 
           <div class="expiry">
-            &#9200; <strong>Note:</strong> Both the 6-digit code and link are valid for <strong>15 minutes only</strong> and can be used once.
+            &#9200; <strong>Note:</strong> This verification code is valid for <strong>15 minutes only</strong> and can be used once.
           </div>
 
           <div class="security-notice">
@@ -552,7 +560,7 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', reset
   `;
 
   const subject = `[SMDL College] ${resetCode ? resetCode + ' is your ' : ''}Password Reset Request`;
-  const textContent = `Hello, We received a request to reset your SMDL College account password. ${resetCode ? `Your 6-digit reset code is: ${resetCode}. ` : ''}Alternatively, open this link in your browser: ${resetUrl}. This expires in 15 minutes.`;
+  const textContent = `Hello, We received a request to reset your SMDL College account password. ${resetCode ? `Your 6-digit reset code is: ${resetCode}. Enter this code in the SMDL Attendance mobile app to reset your password.` : ''} ${isRealPublicWebUrl ? `Web reset link: ${resetUrl}.` : ''} This expires in 15 minutes.`;
 
   // 1. Try HTTPS API first if configured (Port 443 - works everywhere including Render free tier)
   if (env.RESEND_API_KEY || env.BREVO_API_KEY) {
