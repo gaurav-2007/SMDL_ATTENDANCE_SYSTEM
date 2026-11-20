@@ -1,18 +1,42 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { KeyRound, Mail, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { KeyRound, Mail, ArrowLeft, CheckCircle2, AlertCircle, Eye, EyeOff, ShieldCheck, RotateCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import api from '../../lib/api'
 import { Card, Button, Input } from '../../components/ui'
 
 export default function ForgotPasswordPage() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(e) {
-    e.preventDefault()
+  // In-app Recovery Form state (Step 2)
+  const [resetCode, setResetCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState('')
+  const [resendTimer, setResendTimer] = useState(60)
+
+  // Countdown timer for code resend
+  useEffect(() => {
+    let interval = null
+    if (submitted && resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer(t => (t > 0 ? t - 1 : 0))
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [submitted, resendTimer])
+
+  async function handleSendLink(e) {
+    if (e && e.preventDefault) e.preventDefault()
     const cleanEmail = email.trim().toLowerCase()
 
     if (!cleanEmail) {
@@ -31,13 +55,65 @@ export default function ForgotPasswordPage() {
     try {
       await api.post('/auth/forgot-password', { email: cleanEmail })
       setSubmitted(true)
-      toast.success('Password reset instructions sent to your email.')
+      setResendTimer(60)
+      setResetError('')
+      toast.success('6-Digit recovery code sent to your email!')
     } catch (err) {
       const msg = err.response?.data?.message || 'Something went wrong. Please try again later.'
       setError(msg)
       toast.error(msg)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleResetPassword(e) {
+    e.preventDefault()
+    const cleanCode = resetCode.trim()
+
+    if (!cleanCode) {
+      setResetError('Please enter the 6-digit recovery code from your email.')
+      return
+    }
+    if (cleanCode.length !== 6 && cleanCode.length < 4) {
+      setResetError('Recovery code must be 6 digits.')
+      return
+    }
+
+    if (!newPassword) {
+      setResetError('New password is required.')
+      return
+    }
+    if (newPassword.length < 8) {
+      setResetError('Password must be at least 8 characters long.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError('Passwords do not match.')
+      return
+    }
+
+    setResetError('')
+    setResetLoading(true)
+
+    try {
+      await api.post('/auth/reset-password', {
+        token: cleanCode,
+        password: newPassword,
+        confirm_password: confirmPassword,
+      })
+
+      toast.success('Password changed successfully! You can now log in.')
+      navigate('/login', {
+        replace: true,
+        state: { prefillEmail: email.trim().toLowerCase() }
+      })
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Invalid or expired recovery code. Please check your email or request a new code.'
+      setResetError(msg)
+      toast.error(msg)
+    } finally {
+      setResetLoading(false)
     }
   }
 
@@ -59,45 +135,152 @@ export default function ForgotPasswordPage() {
 
         <Card className="p-6 sm:p-7 shadow-sm">
           {submitted ? (
-            <div className="text-center space-y-4 animate-fade-in">
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-present/15 text-present border border-present/30 mx-auto">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-
-              <h2 className="text-lg font-bold font-display text-ink">Check Your Inbox</h2>
-
-              <div className="bg-bg border border-line rounded-lg p-3.5 text-xs text-muted leading-relaxed text-left space-y-1.5">
-                <p className="text-ink font-medium">If an account exists for this email, password reset instructions have been dispatched.</p>
-                <p className="text-[11px] text-muted">
-                  The security link is valid for <strong>15 minutes</strong>. If you do not see it in your inbox, please verify your Spam/Junk folder.
-                </p>
-              </div>
-
-              <div className="pt-2 flex flex-col gap-2">
-                <Button
-                  variant="outline"
-                  size="md"
+            <div className="space-y-5 animate-fade-in">
+              <div className="flex items-center gap-3 p-3 bg-present/10 border border-present/30 rounded-xl">
+                <CheckCircle2 className="w-5 h-5 text-present shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-ink font-semibold truncate">Code sent to: {email}</p>
+                  <p className="text-[11px] text-muted">Check your inbox or spam folder</p>
+                </div>
+                <button
+                  type="button"
                   onClick={() => {
                     setSubmitted(false)
-                    setEmail('')
+                    setResetError('')
                   }}
-                  className="w-full"
+                  className="text-[11px] text-brand hover:underline font-semibold shrink-0"
                 >
-                  Send another link
+                  Change
+                </button>
+              </div>
+
+              {resetError && (
+                <div className="flex items-center gap-2 p-3 bg-absent/10 border border-absent/30 rounded-xl text-xs text-absent">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{resetError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleResetPassword} noValidate className="space-y-4">
+                <div>
+                  <label htmlFor="recovery-code" className="block text-xs font-semibold text-ink mb-1.5">
+                    6-Digit Recovery Code
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="recovery-code"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="e.g. 482910"
+                      value={resetCode}
+                      onChange={e => {
+                        const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 6)
+                        setResetCode(val)
+                        if (resetError) setResetError('')
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-bg border border-line rounded-lg text-ink text-center tracking-[6px] font-mono font-bold text-lg focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all"
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted mt-1 text-center">
+                    Valid for 15 minutes. Enter the numeric code from your email.
+                  </p>
+                </div>
+
+                <div>
+                  <label htmlFor="new-password" className="block text-xs font-semibold text-ink mb-1.5">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="new-password"
+                      type={showPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="At least 8 characters"
+                      value={newPassword}
+                      onChange={e => {
+                        setNewPassword(e.target.value)
+                        if (resetError) setResetError('')
+                      }}
+                      className="w-full px-3.5 py-2.5 pr-10 bg-bg border border-line rounded-lg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(p => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="confirm-new-password" className="block text-xs font-semibold text-ink mb-1.5">
+                    Confirm New Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="confirm-new-password"
+                      type={showConfirm ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      placeholder="Re-type your new password"
+                      value={confirmPassword}
+                      onChange={e => {
+                        setConfirmPassword(e.target.value)
+                        if (resetError) setResetError('')
+                      }}
+                      className="w-full px-3.5 py-2.5 pr-10 bg-bg border border-line rounded-lg text-ink text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-all"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(p => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-ink transition-colors"
+                      tabIndex={-1}
+                    >
+                      {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  id="reset-password-btn"
+                  variant="primary"
+                  size="md"
+                  loading={resetLoading}
+                  disabled={resetLoading || resetCode.length < 4 || newPassword.length < 8}
+                  className="w-full font-semibold shadow-xs mt-2"
+                >
+                  <ShieldCheck className="w-4 h-4 mr-1.5" />
+                  <span>Update Password</span>
                 </Button>
 
-                <Link to="/login" className="w-full">
-                  <Button variant="primary" size="md" className="w-full">
-                    <ArrowLeft className="w-4 h-4 mr-1.5" />
-                    <span>Back to Sign In</span>
-                  </Button>
-                </Link>
-              </div>
+                <div className="flex items-center justify-between pt-2 border-t border-line text-xs">
+                  <button
+                    type="button"
+                    disabled={resendTimer > 0 || loading}
+                    onClick={() => handleSendLink()}
+                    className="inline-flex items-center gap-1 text-brand hover:underline font-semibold disabled:text-muted disabled:no-underline"
+                  >
+                    <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    <span>{resendTimer > 0 ? `Resend code (${resendTimer}s)` : 'Resend Code'}</span>
+                  </button>
+
+                  <Link to="/login" className="text-muted hover:text-ink hover:underline">
+                    Back to Sign In
+                  </Link>
+                </div>
+              </form>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            <form onSubmit={handleSendLink} noValidate className="space-y-4">
               <p className="text-xs text-muted leading-relaxed">
-                Enter your registered college email address and we&apos;ll send you a secure link to reset your credentials.
+                Enter your registered college email address and we&apos;ll send you a 6-digit verification code to reset your password.
               </p>
 
               <div>
@@ -130,7 +313,7 @@ export default function ForgotPasswordPage() {
                 className="w-full font-semibold shadow-xs"
               >
                 <Mail className="w-4 h-4 mr-1.5" />
-                <span>Send Reset Link</span>
+                <span>Send Recovery Code</span>
               </Button>
 
               <div className="border-t border-line pt-3 text-center">

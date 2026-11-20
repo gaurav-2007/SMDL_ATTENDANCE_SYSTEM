@@ -101,6 +101,10 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
     // 3. Generate cryptographically secure random token (32 bytes = 64 hex chars)
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenH = hashToken(rawToken);
+
+    // Generate 6-digit numeric OTP code for mobile APK in-app recovery
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const codeH = hashToken(resetCode);
     const expiresAt = Date.now() + TOKEN_EXPIRY_MS;
 
     // 4. Invalidate any previous in-memory tokens for this user
@@ -110,24 +114,39 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
       }
     }
 
-    // Store in in-memory map
-    tokenStore.set(tokenH, {
+    // Store in in-memory map (both 64-char web token and 6-digit mobile code)
+    const basePayload = {
       userId: user.id,
       email: user.email,
       role: user.role,
       expiresAt,
       used: false,
+    };
+    tokenStore.set(tokenH, {
+      ...basePayload,
       rawToken: process.env.NODE_ENV !== 'production' ? rawToken : undefined,
     });
+    tokenStore.set(codeH, {
+      ...basePayload,
+      rawToken: process.env.NODE_ENV !== 'production' ? resetCode : undefined,
+    });
 
-    // 5. Attempt to persist in Supabase if table exists
+    // 5. Attempt to persist both in Supabase if table exists
     try {
-      await supabaseAdmin.from('password_reset_tokens').insert({
-        user_id: user.id,
-        token_hash: tokenH,
-        expires_at: new Date(expiresAt).toISOString(),
-        used: false,
-      });
+      await supabaseAdmin.from('password_reset_tokens').insert([
+        {
+          user_id: user.id,
+          token_hash: tokenH,
+          expires_at: new Date(expiresAt).toISOString(),
+          used: false,
+        },
+        {
+          user_id: user.id,
+          token_hash: codeH,
+          expires_at: new Date(expiresAt).toISOString(),
+          used: false,
+        },
+      ]);
     } catch (_dbErr) {
       // Graceful fallback to tokenStore
     }
@@ -136,8 +155,8 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
     const clientBaseUrl = (env.CLIENT_URL || 'http://localhost:3000').replace(/\/+$/, '');
     const resetUrl = `${clientBaseUrl}/reset-password?token=${rawToken}`;
 
-    // 7. Send branded HTML password reset email
-    await sendPasswordResetEmail(user.email, resetUrl, user.role);
+    // 7. Send branded HTML password reset email with both web link and 6-digit recovery code
+    await sendPasswordResetEmail(user.email, resetUrl, user.role, resetCode);
 
     // 8. Create in-app security notification
     try {
@@ -146,7 +165,7 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
         userId: user.id,
         type: 'PASSWORD_RESET',
         title: 'Password Reset Requested',
-        message: 'A password reset link was requested for your account. If this was not you, please contact the administrator.',
+        message: 'A password reset link and code were requested for your account. If this was not you, please contact the administrator.',
         relatedType: 'security',
         metadata: { client_ip: clientIp },
       });
@@ -155,7 +174,7 @@ async function requestPasswordReset(rawEmail, clientIp = '') {
     return {
       success: true,
       message: genericMessage,
-      ...(process.env.NODE_ENV !== 'production' ? { dev_token: rawToken } : {}),
+      ...(process.env.NODE_ENV !== 'production' ? { dev_token: rawToken, dev_code: resetCode } : {}),
     };
   } catch (error) {
     console.error('[passwordResetService] Error processing reset request:', error.message);
@@ -290,7 +309,7 @@ async function executePasswordReset(rawToken, newPassword) {
         used: true,
         used_at: new Date().toISOString(),
       })
-      .eq('token_hash', tokenH);
+      .eq('user_id', userId);
   } catch (_e) {
     // Table may not exist yet
   }

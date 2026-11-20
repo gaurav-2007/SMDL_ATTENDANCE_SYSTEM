@@ -8,6 +8,8 @@ let transporter = null;
  * Bypasses cloud platform SMTP port restrictions (e.g., Render free tier blocking ports 25, 465, 587).
  */
 async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
+  let resendError = null;
+
   // 1. Resend API (https://resend.com - Free 3,000 emails/mo via Port 443 HTTPS)
   if (env.RESEND_API_KEY) {
     try {
@@ -43,15 +45,16 @@ async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
         messageId: resData.id,
       };
     } catch (err) {
+      resendError = err;
       console.warn('[emailService] Resend HTTPS delivery attempt failed:', err.message);
-      throw err;
+      // Fall through to Brevo or SMTP rather than aborting immediately
     }
   }
 
   // 2. Brevo API (https://brevo.com - Free 300 emails/day via Port 443 HTTPS)
   if (env.BREVO_API_KEY) {
     try {
-      const senderEmail = env.SMTP_USER && env.SMTP_USER.includes('@') ? env.SMTP_USER : 'noreply@smdl.ac.in';
+      const senderEmail = env.SMTP_USER && env.SMTP_USER.includes('@') ? env.SMTP_USER : 'collegesmdl@gmail.com';
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: {
@@ -81,7 +84,12 @@ async function sendViaHttpApi({ toEmail, subject, htmlContent, textContent }) {
       };
     } catch (err) {
       console.warn('[emailService] Brevo HTTPS delivery attempt failed:', err.message);
-      throw err;
+      if (!env.SMTP_USER && resendError) {
+        throw resendError;
+      }
+      if (!env.SMTP_USER) {
+        throw err;
+      }
     }
   }
 
@@ -331,19 +339,22 @@ async function sendOtpEmail(toEmail, otp, role = 'student') {
     }
     const isTimeout = error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('greeting');
     const sanitizedMsg = isTimeout
-      ? 'Email delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY in Render environment.'
-      : 'Failed to deliver verification email. Please try again later or contact college admin.';
-    throw new Error(sanitizedMsg);
+      ? 'Email delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY with verified domain or BREVO_API_KEY.'
+      : (error.message || 'Failed to deliver verification email. Please try again later or contact college admin.');
+    const err = new Error(sanitizedMsg);
+    err.statusCode = 503;
+    throw err;
   }
 }
 
 /**
- * Sends a secure password reset link to user's registered email
+ * Sends a secure password reset link and 6-digit recovery code to user's registered email
  * @param {string} toEmail 
  * @param {string} resetUrl - Complete frontend URL with recovery token
  * @param {string} role - 'student' or 'teacher'
+ * @param {string} resetCode - Optional 6-digit numeric OTP code for mobile APK in-app recovery
  */
-async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
+async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student', resetCode = '') {
   const roleTitle = role === 'teacher' ? 'Faculty / Teacher' : 'Student';
 
   const htmlContent = `
@@ -399,11 +410,35 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
           font-size: 14px;
           line-height: 1.6;
           color: #94a3b8;
-          margin-bottom: 28px;
+          margin-bottom: 24px;
+        }
+        .code-box {
+          background: #1e293b;
+          border: 2px dashed #0284c7;
+          border-radius: 12px;
+          padding: 20px;
+          text-align: center;
+          margin: 20px 0;
+        }
+        .code-label {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 1.5px;
+          color: #38bdf8;
+          font-weight: 600;
+          margin-bottom: 6px;
+        }
+        .code-val {
+          font-size: 36px;
+          font-family: 'Courier New', Courier, monospace;
+          font-weight: 800;
+          letter-spacing: 8px;
+          color: #ffffff;
+          text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
         }
         .button-box {
           text-align: center;
-          margin: 32px 0;
+          margin: 28px 0;
         }
         .reset-btn {
           display: inline-block;
@@ -460,11 +495,19 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
           <div class="greeting">Hello, <strong>${roleTitle}</strong></div>
           <p class="message">
             We received a request to reset your SMDL College account password.
-            Please click the button below to choose a new password:
+            You can enter the 6-digit recovery code directly in the mobile app, or click the reset button below if using a computer browser:
           </p>
           
+          ${resetCode ? `
+          <div class="code-box">
+            <div class="code-label">6-Digit Password Reset Code (Mobile App)</div>
+            <div class="code-val">${resetCode}</div>
+            <div style="font-size: 12px; color: #f59e0b; margin-top: 6px;">&#9200; Valid for 15 minutes only</div>
+          </div>
+          ` : ''}
+
           <div class="button-box">
-            <a href="${resetUrl}" class="reset-btn" target="_blank">Reset Password</a>
+            <a href="${resetUrl}" class="reset-btn" target="_blank">Reset Password via Web Browser</a>
             <div class="link-fallback">
               Or copy this link in your browser:<br/>
               <span style="color: #38bdf8;">${resetUrl}</span>
@@ -472,7 +515,7 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
           </div>
 
           <div class="expiry">
-            &#9200; <strong>Note:</strong> This link is valid for <strong>15 minutes only</strong> and can be used once.
+            &#9200; <strong>Note:</strong> Both the 6-digit code and link are valid for <strong>15 minutes only</strong> and can be used once.
           </div>
 
           <div class="security-notice">
@@ -488,8 +531,8 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
     </html>
   `;
 
-  const subject = `SMDL College - Password Reset Request`;
-  const textContent = `Hello, We received a request to reset your SMDL College account password. Please open this link to reset your password: ${resetUrl}. This link expires in 15 minutes. If you did not request this, please ignore this email.`;
+  const subject = `[SMDL College] ${resetCode ? resetCode + ' is your ' : ''}Password Reset Request`;
+  const textContent = `Hello, We received a request to reset your SMDL College account password. ${resetCode ? `Your 6-digit reset code is: ${resetCode}. ` : ''}Alternatively, open this link in your browser: ${resetUrl}. This expires in 15 minutes.`;
 
   // 1. Try HTTPS API first if configured (Port 443 - works everywhere including Render free tier)
   if (env.RESEND_API_KEY || env.BREVO_API_KEY) {
@@ -545,9 +588,11 @@ async function sendPasswordResetEmail(toEmail, resetUrl, role = 'student') {
     }
     const isTimeout = error.code === 'ETIMEDOUT' || error.message?.includes('timeout') || error.message?.includes('greeting');
     const sanitizedMsg = isTimeout
-      ? 'Password reset delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY in Render environment.'
+      ? 'Password reset delivery timed out on cloud network (Render blocks SMTP ports 465/587). Please configure RESEND_API_KEY with verified domain or BREVO_API_KEY.'
       : 'Failed to deliver password reset email. Please try again later.';
-    throw new Error(sanitizedMsg);
+    const err = new Error(sanitizedMsg);
+    err.statusCode = 503;
+    throw err;
   }
 }
 
