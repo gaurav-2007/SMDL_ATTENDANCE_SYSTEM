@@ -11,6 +11,7 @@ const lectureRoutes = require('./routes/lectureRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const appVersionRoutes = require('./routes/appVersionRoutes');
 const { initLectureScheduler } = require('./services/lectureScheduler');
 const { initSelfieCleanupJob } = require('./services/selfieCleanupJob');
 const { initNotificationCleanupJob } = require('./services/notificationCleanupJob');
@@ -100,6 +101,7 @@ app.use('/api/lectures', lectureRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/app', appVersionRoutes);
 
 // Initialize atomic lecture reminder scheduler (runs every minute in Asia/Kolkata timezone)
 initLectureScheduler();

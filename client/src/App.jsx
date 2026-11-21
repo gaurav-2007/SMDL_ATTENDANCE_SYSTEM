@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import AppUpdateModal from './components/update/AppUpdateModal'
 
 // Lazy-loaded pages (will be created step by step)
 import LoginPage from './pages/auth/LoginPage'
@@ -191,6 +192,7 @@ export default function App() {
       <NativeBridgeListener />
       <AuthProvider>
         <AppRoutes />
+        <AppUpdateModal />
         <Toaster
           position="top-right"
           toastOptions={{
