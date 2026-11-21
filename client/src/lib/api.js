@@ -66,8 +66,9 @@ export const isPrivateLanHost = (hostname) => {
 // Backward-compatible alias
 export const isDevPrivateHost = isPrivateLanHost
 
-const configuredApiUrl = normalizeApiUrl(import.meta.env?.VITE_API_URL)
-const configuredOrigin = configuredApiUrl ? new URL(configuredApiUrl).origin : null
+const DEFAULT_FALLBACK_API = 'https://smdl-attendance-api.onrender.com/api'
+const configuredApiUrl = normalizeApiUrl(import.meta.env?.VITE_API_URL) || DEFAULT_FALLBACK_API
+const configuredOrigin = configuredApiUrl ? new URL(configuredApiUrl).origin : 'https://smdl-attendance-api.onrender.com'
 
 /**
  * Checks whether a target URL is trusted to receive requests and Authorization headers (JWT tokens).
@@ -142,7 +143,7 @@ export const getBaseURL = () => {
     if (configuredApiUrl) {
       return configuredApiUrl
     }
-    return ''
+    return DEFAULT_FALLBACK_API
   }
 
   // 2. Web browser: On localhost or loopback development, always use relative '/api'

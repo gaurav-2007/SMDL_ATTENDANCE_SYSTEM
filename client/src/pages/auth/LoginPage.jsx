@@ -17,7 +17,8 @@ import {
   Edit3,
   Wifi,
   Server,
-  KeyRound
+  KeyRound,
+  Sparkles
 } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -236,7 +237,7 @@ export default function LoginPage() {
 
     // If native Capacitor and no server URL is configured, prompt configuration
     if (!getBaseURL() && Capacitor.isNativePlatform()) {
-      toast.error('Server URL is not configured. Please tap "The Pride" below to configure your server IP.')
+      toast.error('Server URL is not configured. Please tap "Server" below to configure your server IP.')
       setServerUrlInput('')
       setShowServerModal(true)
       return
@@ -1266,8 +1267,8 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* ── THE PRIDE BRANDING & HIDDEN SERVER SETTINGS FOOTER ── */}
-        <div className="flex flex-col items-center justify-center pt-2 pb-6 text-center select-none">
+        {/* ── BRAND FOOTER BADGE ("The Pride ") ── */}
+        <div className="flex justify-center">
           <button
             type="button"
             id="server-config-btn"
@@ -1275,15 +1276,10 @@ export default function LoginPage() {
               setServerUrlInput(getBaseURL() || '')
               setShowServerModal(true)
             }}
-            className="group flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer opacity-80 hover:opacity-100 focus:outline-none"
-            title="The Pride"
+            className="inline-flex items-center gap-2 bg-surface hover:bg-bg border border-line rounded-full px-4 py-1.5 transition-colors text-xs text-muted shadow-xs cursor-pointer group"
           >
-            <span className="text-xs font-bold tracking-wider uppercase text-muted group-hover:text-brand transition-colors">
-              The Pride
-            </span>
-            <span className="text-[11px] text-muted/70 font-mono mt-0.5">
-              Version 1.0.3
-            </span>
+            <Sparkles className="w-3.5 h-3.5 text-brand" />
+            <span className="font-semibold text-ink tracking-wide">The Pride </span>
           </button>
         </div>
 
@@ -1292,7 +1288,7 @@ export default function LoginPage() {
           isOpen={showServerModal}
           onClose={() => setShowServerModal(false)}
           title="Server Configuration"
-          description="Enter your backend API URL (e.g. your Laptop/Server IP on the same Wi-Fi network)."
+          description="Backend API Endpoint for SMDL Attendance Portal."
         >
           <div className="space-y-4">
             <Input
@@ -1301,8 +1297,8 @@ export default function LoginPage() {
               id="server-url-input"
               value={serverUrlInput}
               onChange={e => setServerUrlInput(e.target.value)}
-              placeholder="http://10.226.108.19:5000/api"
-              helperText="Example: http://10.226.108.19:5000/api or https://api.smdl.edu.in/api"
+              placeholder="https://smdl-attendance-api.onrender.com/api"
+              helperText="Default: https://smdl-attendance-api.onrender.com/api"
               icon={Server}
             />
 
