@@ -137,11 +137,20 @@ export const getBaseURL = () => {
       const custom = localStorage.getItem('smdl_api_url')
       if (custom) {
         const normalized = normalizeApiUrl(custom)
-        if (normalized) return normalized
+        if (normalized) {
+          try {
+            const parsed = new URL(normalized)
+            // If saved URL is a local private LAN IP, purge it so app connects to Render cloud
+            if (isPrivateLanHost(parsed.hostname)) {
+              localStorage.removeItem('smdl_api_url')
+            } else {
+              return normalized
+            }
+          } catch (_e) {
+            localStorage.removeItem('smdl_api_url')
+          }
+        }
       }
-    }
-    if (configuredApiUrl) {
-      return configuredApiUrl
     }
     return DEFAULT_FALLBACK_API
   }
