@@ -101,7 +101,7 @@ export default function DashboardLayout({ children }) {
         `}
       >
         {/* Brand / Institution Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-line">
+        <div className="flex items-center gap-3 px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))] border-b border-line">
           <div className="w-9 h-9 rounded-lg bg-brand text-white flex items-center justify-center shrink-0 shadow-xs">
             <GraduationCap className="w-5 h-5" />
           </div>
@@ -165,7 +165,7 @@ export default function DashboardLayout({ children }) {
         </nav>
 
         {/* Logout in Sidebar */}
-        <div className="p-3 border-t border-line">
+        <div className="p-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] border-t border-line">
           <button
             id="logout-btn"
             onClick={handleLogout}
@@ -189,7 +189,7 @@ export default function DashboardLayout({ children }) {
       {/* ── MAIN CONTENT AREA ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Sticky Header */}
-        <header className="sticky top-0 z-20 bg-surface/90 backdrop-blur-md border-b border-line px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-xs">
+        <header className="sticky top-0 z-20 bg-surface/90 backdrop-blur-md border-b border-line px-4 sm:px-6 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center gap-3">
             {/* Mobile Hamburger (Only for admin or as extra drawer toggle) */}
             <button
@@ -273,8 +273,8 @@ export default function DashboardLayout({ children }) {
         </header>
 
         {/* Dynamic Page Content */}
-        {/* pb-20 on mobile ensures bottom navigation doesn't hide page buttons */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto pb-24 lg:pb-8">
+        {/* pb-28 on mobile ensures bottom navigation doesn't hide page buttons */}
+        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto pb-28 lg:pb-8">
           {children}
         </main>
       </div>
@@ -292,7 +292,7 @@ export default function DashboardLayout({ children }) {
       {/* ── MOBILE BOTTOM NAVIGATION BAR (Height 56px + Safe-Area) ── */}
       <nav
         aria-label="Mobile Navigation"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface/95 backdrop-blur-md border-t border-line safe-area-bottom shadow-lg"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-surface/95 backdrop-blur-md border-t border-line shadow-lg pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       >
         <div className="flex items-center justify-around h-14 max-w-md mx-auto px-2">
           {navItems.map(({ to, label, shortLabel, Icon }) => (

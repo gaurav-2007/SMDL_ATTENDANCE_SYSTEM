@@ -32,33 +32,43 @@ export function dataUrlToBlob(dataUrl) {
  */
 async function resolveBase64AndName(url, rawFileName = 'Notice_Attachment') {
   let safeName = String(rawFileName || 'Notice_Attachment')
+    .replace(/\s+/g, '_')
     .replace(/[/\\?%*:|"<>]/g, '_')
     .trim()
+
+  const dotIndex = safeName.lastIndexOf('.')
+  let baseName = dotIndex !== -1 ? safeName.substring(0, dotIndex) : safeName
+  let ext = dotIndex !== -1 ? safeName.substring(dotIndex + 1).toLowerCase() : ''
 
   let base64Data = null
   let mimeType = 'application/octet-stream'
 
   if (url && typeof url === 'string') {
     if (url.startsWith('data:')) {
-      const match = url.match(/^data:([^;]+);base64,(.+)$/)
-      if (match) {
-        mimeType = match[1]
-        base64Data = match[2]
-      } else {
-        const parts = url.split(',')
-        base64Data = parts[1] || parts[0]
+      const commaIdx = url.indexOf(',')
+      if (commaIdx !== -1) {
+        const header = url.substring(0, commaIdx)
+        const match = header.match(/data:([^;]+)/)
+        if (match) mimeType = match[1].toLowerCase()
+        base64Data = url.substring(commaIdx + 1).replace(/[\r\n\s]/g, '')
       }
-    } else if (/^https?:\/\//i.test(url)) {
+    } else {
+      let targetUrl = url
+      if (targetUrl.startsWith('/')) {
+        const origin = window.location.origin
+        targetUrl = origin && !origin.includes('localhost') ? `${origin}${url}` : `http://10.102.211.172:5000${url}`
+      }
       try {
-        const res = await fetch(url)
+        const res = await fetch(targetUrl)
         const blob = await res.blob()
-        mimeType = blob.type || mimeType
+        if (blob.type) mimeType = blob.type.toLowerCase()
         base64Data = await new Promise((resolve, reject) => {
           const reader = new FileReader()
           reader.onloadend = () => {
             const result = reader.result
             if (typeof result === 'string') {
-              resolve(result.includes(',') ? result.split(',')[1] : result)
+              const cIdx = result.indexOf(',')
+              resolve(cIdx !== -1 ? result.substring(cIdx + 1).replace(/[\r\n\s]/g, '') : result)
             } else {
               resolve(null)
             }
@@ -72,14 +82,16 @@ async function resolveBase64AndName(url, rawFileName = 'Notice_Attachment') {
     }
   }
 
-  // Ensure appropriate extension if none exists
-  if (!safeName.includes('.')) {
-    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) safeName += '.jpg'
-    else if (mimeType.includes('png')) safeName += '.png'
-    else if (mimeType.includes('webp')) safeName += '.webp'
-    else if (mimeType.includes('pdf')) safeName += '.pdf'
-    else safeName += '.bin'
+  // Ensure appropriate lowercase extension if none exists or invalid
+  if (!ext) {
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg'
+    else if (mimeType.includes('png')) ext = 'png'
+    else if (mimeType.includes('webp')) ext = 'webp'
+    else if (mimeType.includes('pdf')) ext = 'pdf'
+    else ext = 'bin'
   }
+
+  safeName = `${baseName}.${ext}`.replace(/[^a-zA-Z0-9._-]/g, '_')
 
   return { base64Data, safeName, mimeType }
 }
@@ -204,8 +216,13 @@ export async function downloadAttachment(url, fileName = 'attachment') {
 export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attachment') {
   if (!attachment) return
 
-  const rawName = attachment.file_name || 'Notice_Attachment'
-  const url = attachment.file_url
+  const rawName = attachment.file_name || attachment.name || 'Notice_Attachment'
+  const url = attachment.file_url || attachment.url || attachment.data || (typeof attachment === 'string' ? attachment : null)
+
+  if (!url) {
+    toast.error('No attachment file found to share')
+    return
+  }
 
   // 1. Mobile Android APK (Capacitor Native Platform)
   if (Capacitor.isNativePlatform()) {
@@ -230,19 +247,18 @@ export async function shareAttachmentWhatsApp(attachment, title = 'Notice Attach
           toast.success('Sharing photo...')
           return
         }
+      } else {
+        toast.error('Could not prepare file for sharing')
+        return
       }
     } catch (err) {
       if (err?.message?.includes('cancel') || err?.message?.includes('canceled')) {
         return
       }
       console.warn('[attachmentHelper] Native photo share error:', err.message)
-    }
-
-    // Direct WhatsApp fallback if share fails
-    try {
-      window.location.href = `whatsapp://send`
+      toast.error(`Share error: ${err.message || 'Unable to share'}`)
       return
-    } catch (_wErr) {}
+    }
   }
 
   // 2. Desktop Web Browser / Laptop

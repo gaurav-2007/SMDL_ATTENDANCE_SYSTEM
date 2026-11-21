@@ -17,7 +17,8 @@ import {
   Edit3,
   Wifi,
   Server,
-  KeyRound
+  KeyRound,
+  Sparkles
 } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -1266,7 +1267,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* ── SERVER CONNECTION FOOTER BADGE ── */}
+        {/* ── BRAND FOOTER BADGE ("The Pride ") ── */}
         <div className="flex justify-center">
           <button
             type="button"
@@ -1275,15 +1276,10 @@ export default function LoginPage() {
               setServerUrlInput(getBaseURL() || '')
               setShowServerModal(true)
             }}
-            className="inline-flex items-center gap-2 bg-surface hover:bg-bg border border-line rounded-full px-3.5 py-1.5 transition-colors text-xs text-muted shadow-xs cursor-pointer"
+            className="inline-flex items-center gap-2 bg-surface hover:bg-bg border border-line rounded-full px-4 py-1.5 transition-colors text-xs text-muted shadow-xs cursor-pointer group"
           >
-            <Wifi className={`w-3.5 h-3.5 shrink-0 ${getBaseURL() ? "text-present animate-pulse" : "text-grace"}`} />
-            <span>
-              Server: <span className="font-mono text-ink font-semibold">{getBaseURL() || 'Not Configured'}</span>
-            </span>
-            <span className="text-[10px] bg-bg border border-line px-1.5 py-0.5 rounded text-brand font-medium">
-              {getBaseURL() ? 'Settings' : 'Configure'}
-            </span>
+            <Sparkles className="w-3.5 h-3.5 text-brand" />
+            <span className="font-semibold text-ink tracking-wide">The Pride </span>
           </button>
         </div>
 
@@ -1292,7 +1288,7 @@ export default function LoginPage() {
           isOpen={showServerModal}
           onClose={() => setShowServerModal(false)}
           title="Server Configuration"
-          description="Enter your backend API URL (e.g. your Laptop/Server IP on the same Wi-Fi network)."
+          description="Backend API Endpoint for SMDL Attendance Portal."
         >
           <div className="space-y-4">
             <Input
@@ -1301,8 +1297,8 @@ export default function LoginPage() {
               id="server-url-input"
               value={serverUrlInput}
               onChange={e => setServerUrlInput(e.target.value)}
-              placeholder="http://10.226.108.19:5000/api"
-              helperText="Example: http://10.226.108.19:5000/api or https://api.smdl.edu.in/api"
+              placeholder="https://smdl-attendance-api.onrender.com/api"
+              helperText="Default: https://smdl-attendance-api.onrender.com/api"
               icon={Server}
             />
 

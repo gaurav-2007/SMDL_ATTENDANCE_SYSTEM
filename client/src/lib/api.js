@@ -66,8 +66,9 @@ export const isPrivateLanHost = (hostname) => {
 // Backward-compatible alias
 export const isDevPrivateHost = isPrivateLanHost
 
-const configuredApiUrl = normalizeApiUrl(import.meta.env?.VITE_API_URL)
-const configuredOrigin = configuredApiUrl ? new URL(configuredApiUrl).origin : null
+const DEFAULT_FALLBACK_API = 'https://smdl-attendance-api.onrender.com/api'
+const configuredApiUrl = normalizeApiUrl(import.meta.env?.VITE_API_URL) || DEFAULT_FALLBACK_API
+const configuredOrigin = configuredApiUrl ? new URL(configuredApiUrl).origin : 'https://smdl-attendance-api.onrender.com'
 
 /**
  * Checks whether a target URL is trusted to receive requests and Authorization headers (JWT tokens).
@@ -136,13 +137,22 @@ export const getBaseURL = () => {
       const custom = localStorage.getItem('smdl_api_url')
       if (custom) {
         const normalized = normalizeApiUrl(custom)
-        if (normalized) return normalized
+        if (normalized) {
+          try {
+            const parsed = new URL(normalized)
+            // If saved URL is a local private LAN IP, purge it so app connects to Render cloud
+            if (isPrivateLanHost(parsed.hostname)) {
+              localStorage.removeItem('smdl_api_url')
+            } else {
+              return normalized
+            }
+          } catch (_e) {
+            localStorage.removeItem('smdl_api_url')
+          }
+        }
       }
     }
-    if (configuredApiUrl) {
-      return configuredApiUrl
-    }
-    return ''
+    return DEFAULT_FALLBACK_API
   }
 
   // 2. Web browser: On localhost or loopback development, always use relative '/api'
