@@ -38,6 +38,8 @@
 
   html {
     @apply scroll-smooth;
+    overflow-x: hidden;
+    max-width: 100vw;
   }
 
   body {
@@ -47,6 +49,8 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
+    overflow-x: hidden;
+    max-width: 100vw;
     -webkit-tap-highlight-color: transparent;
   }
 

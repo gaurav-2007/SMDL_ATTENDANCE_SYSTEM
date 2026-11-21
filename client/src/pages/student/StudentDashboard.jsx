@@ -630,10 +630,6 @@ function StudentAnnouncements() {
   const [loading, setLoading] = useState(true)
   const [activeAttachment, setActiveAttachment] = useState(null)
 
-  const allAttachments = announcements.flatMap(a =>
-    (a.attachments || []).map(att => ({ ...att, announcementTitle: a.title, announcementDate: a.created_at }))
-  )
-
   async function fetchAnnouncements() {
     setLoading(true)
     try {
@@ -678,77 +674,6 @@ function StudentAnnouncements() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {/* ── Quick Downloads & Attachments Gallery ── */}
-          {allAttachments.length > 0 && (
-            <Card className="p-3.5 sm:p-4 bg-surface border-brand/20 shadow-xs">
-              <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-line">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                    <Download size={14} />
-                  </div>
-                  <h3 className="text-xs sm:text-sm font-bold font-display text-ink flex items-center gap-1.5">
-                    <span>Notice Attachments & Downloads</span>
-                    <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full bg-brand/10 text-brand">
-                      {allAttachments.length}
-                    </span>
-                  </h3>
-                </div>
-                <span className="text-[11px] text-muted hidden sm:inline">1-Click View, Download & WhatsApp Share</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                {allAttachments.map((att, idx) => {
-                  const isImg = att.file_type === 'IMAGE' || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i))
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-2 p-2 rounded-xl bg-bg border border-line hover:border-brand/40 shadow-2xs transition-all overflow-hidden"
-                    >
-                      <div
-                        className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
-                        onClick={() => setActiveAttachment(att)}
-                        title="Click to view full attachment"
-                      >
-                        {isImg && att.file_url ? (
-                          <div className="w-9 h-9 rounded-lg overflow-hidden border border-line shrink-0 bg-neutral-100 dark:bg-neutral-800">
-                            <img src={att.file_url} alt="" className="w-full h-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-9 h-9 rounded-lg bg-brand/10 text-brand border border-brand/20 flex items-center justify-center shrink-0">
-                            <FileText size={16} />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-ink truncate leading-tight">{att.file_name}</p>
-                          <p className="text-[10px] text-muted truncate mt-0.5">{att.announcementTitle}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => shareAttachmentWhatsApp(att, att.announcementTitle)}
-                          className="p-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 cursor-pointer transition-all active:scale-95 shadow-2xs"
-                          title="Share on WhatsApp"
-                        >
-                          <WhatsAppIcon className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => downloadAttachment(att.file_url, att.file_name)}
-                          className="p-1.5 rounded-lg border border-brand/30 bg-brand/10 text-brand hover:bg-brand/20 cursor-pointer transition-all active:scale-95 shadow-2xs"
-                          title="Save to device"
-                        >
-                          <Download size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </Card>
-          )}
-
           {announcements.map((a) => (
             <Card key={a.id} className="p-4 sm:p-5">
               <div className="flex items-start gap-3 sm:gap-4">
@@ -764,52 +689,57 @@ function StudentAnnouncements() {
 
                   <p className="text-xs sm:text-sm text-muted whitespace-pre-line leading-relaxed">{a.content}</p>
 
-                  {/* Attachment Downloads — Responsive & No Overflow */}
+                  {/* Attachment Downloads — Clean Preview & Dedicated Action Grid */}
                   {a.attachments && a.attachments.length > 0 && (
-                    <div className="mt-3.5 space-y-2 w-full max-w-full">
+                    <div className="mt-3.5 space-y-2.5 w-full max-w-full">
                       {a.attachments.map((att, i) => {
                         const isImg = att.file_type === 'IMAGE' || att.file_url?.startsWith('data:image/') || (att.file_name && att.file_name.match(/\.(png|jpe?g|webp|gif)$/i))
                         return (
                           <div
                             key={i}
-                            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2.5 sm:p-3 bg-bg border border-line hover:border-brand/40 rounded-xl w-full max-w-full overflow-hidden transition-all shadow-2xs group"
+                            className="p-3 bg-bg border border-line hover:border-brand/40 rounded-xl w-full max-w-full overflow-hidden transition-all shadow-2xs space-y-2.5"
                           >
-                            {/* Left: Thumbnail & Name */}
+                            {/* Top: Thumbnail & Filename (Click to Enlarge / View) */}
                             <div
-                              className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer"
+                              className="flex items-center gap-3 min-w-0 cursor-pointer group/att"
                               onClick={() => setActiveAttachment({ ...att, announcementTitle: a.title })}
-                              title="Click to view full photo / document"
+                              title="Tap to view full photo / document"
                             >
                               {isImg && att.file_url ? (
-                                <div className="w-10 h-10 rounded-lg overflow-hidden border border-line shrink-0 bg-neutral-100 dark:bg-neutral-800 shadow-2xs group-hover:scale-105 transition-transform">
+                                <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-line shrink-0 bg-neutral-100 dark:bg-neutral-800 shadow-2xs group-hover/att:opacity-90 transition-opacity">
                                   <img src={att.file_url} alt={att.file_name} className="w-full h-full object-cover" />
+                                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover/att:opacity-100 transition-opacity">
+                                    <Eye size={16} className="text-white drop-shadow" />
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="w-10 h-10 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center text-brand shrink-0">
-                                  <FileText size={18} />
+                                <div className="w-12 h-12 rounded-lg bg-brand/10 border border-brand/20 flex items-center justify-center text-brand shrink-0">
+                                  <FileText size={20} />
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs sm:text-sm font-semibold text-ink group-hover:text-brand transition-colors truncate leading-tight">
+                                <p className="text-xs sm:text-sm font-semibold text-ink group-hover/att:text-brand transition-colors truncate leading-tight">
                                   {att.file_name}
                                 </p>
-                                <p className="text-[11px] text-muted font-mono flex items-center gap-1.5 mt-0.5">
-                                  <span>{att.file_type || (isImg ? 'Photo' : 'PDF')}</span>
+                                <p className="text-[11px] text-muted font-mono flex items-center gap-1.5 mt-1">
+                                  <span className="px-1.5 py-0.2 rounded bg-line/60 text-ink font-semibold text-[10px]">
+                                    {isImg ? 'IMAGE' : (att.file_type || 'DOC')}
+                                  </span>
                                   <span>•</span>
                                   <span className="text-brand font-medium">Tap to view</span>
                                 </p>
                               </div>
                             </div>
 
-                            {/* Right: Quick Action Buttons */}
-                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                            {/* Bottom: 3 Dedicated Action Buttons (View, Share, Save) */}
+                            <div className="grid grid-cols-3 gap-2 w-full pt-1 border-t border-line/60">
                               <button
                                 type="button"
                                 onClick={() => setActiveAttachment({ ...att, announcementTitle: a.title })}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-line bg-surface hover:bg-bg text-ink text-xs font-medium cursor-pointer shadow-2xs active:scale-95 transition-all"
+                                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border border-line bg-surface hover:bg-line/30 text-ink text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
                                 title="View inside app"
                               >
-                                <Eye size={12} className="text-muted" />
+                                <Eye size={13} className="text-muted shrink-0" />
                                 <span>View</span>
                               </button>
                               <button
@@ -818,10 +748,10 @@ function StudentAnnouncements() {
                                   e.stopPropagation()
                                   shareAttachmentWhatsApp(att, a.title)
                                 }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold cursor-pointer shadow-2xs hover:bg-emerald-100 dark:hover:bg-emerald-900/40 active:scale-95 transition-all"
+                                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold cursor-pointer shadow-2xs hover:bg-emerald-100 dark:hover:bg-emerald-900/40 active:scale-95 transition-all"
                                 title="Share on WhatsApp"
                               >
-                                <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                 <span>Share</span>
                               </button>
                               <button
@@ -830,10 +760,10 @@ function StudentAnnouncements() {
                                   e.stopPropagation()
                                   downloadAttachment(att.file_url, att.file_name)
                                 }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-brand/30 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
-                                title="Save to device"
+                                className="flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg border border-brand/30 bg-brand/10 hover:bg-brand/20 text-brand text-xs font-semibold cursor-pointer shadow-2xs active:scale-95 transition-all"
+                                title="Save to device Documents folder"
                               >
-                                <Download size={12} />
+                                <Download size={13} className="shrink-0" />
                                 <span>Save</span>
                               </button>
                             </div>
@@ -892,7 +822,7 @@ function StudentAnnouncements() {
               <button
                 type="button"
                 onClick={() => shareAttachmentWhatsApp(activeAttachment, activeAttachment?.announcementTitle || activeAttachment?.file_name)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs active:scale-95 transition-all"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold cursor-pointer shadow-xs active:scale-95 transition-all"
                 title="Share on WhatsApp"
               >
                 <WhatsAppIcon className="w-4 h-4 text-white" />
@@ -903,15 +833,16 @@ function StudentAnnouncements() {
                 variant="primary"
                 size="sm"
                 onClick={() => downloadAttachment(activeAttachment.file_url, activeAttachment.file_name)}
-                className="gap-1.5 font-semibold"
+                className="flex-1 sm:flex-initial justify-center gap-1.5 font-semibold"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Save / Download</span>
+                <span>Save</span>
               </Button>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setActiveAttachment(null)}
+                className="sm:flex-initial"
               >
                 Close
               </Button>

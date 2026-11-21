@@ -194,20 +194,28 @@ export default function App() {
         <AppRoutes />
         <AppUpdateModal />
         <Toaster
-          position="top-right"
+          position="top-center"
+          containerStyle={{
+            top: 'calc(env(safe-area-inset-top, 0px) + 3.75rem)',
+            left: '1rem',
+            right: '1rem',
+          }}
           toastOptions={{
-            duration: 4000,
+            duration: 3500,
             style: {
-              background: '#FFFFFF',
-              color: '#111827',
-              border: '1px solid #E5E7EB',
-              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.06)',
-              borderRadius: '12px',
-              fontSize: '13px',
+              background: '#0F172A',
+              color: '#F8FAFC',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.25)',
+              borderRadius: '9999px',
+              padding: '8px 16px',
+              fontSize: '12.5px',
               fontWeight: 500,
+              maxWidth: '90vw',
+              letterSpacing: '0.01em',
             },
-            success: { iconTheme: { primary: '#16a34a', secondary: '#FFFFFF' } },
-            error:   { iconTheme: { primary: '#dc2626', secondary: '#FFFFFF' } },
+            success: { iconTheme: { primary: '#10B981', secondary: '#0F172A' } },
+            error:   { iconTheme: { primary: '#EF4444', secondary: '#0F172A' } },
           }}
         />
       </AuthProvider>
