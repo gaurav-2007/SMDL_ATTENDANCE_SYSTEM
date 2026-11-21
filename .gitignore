@@ -31,6 +31,8 @@ client/dist/
 server/dist/
 server/build/
 *.apk
+!server/public/*.apk
+!client/public/*.apk
 
 # IDE & Editor
 .idea/

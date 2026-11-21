@@ -12,7 +12,13 @@ function getApkFilePath() {
     path.resolve(__dirname, '../../public/SMDL_Attendance_Latest.apk'),
     path.resolve(__dirname, '../../public/app-debug.apk'),
     path.resolve(__dirname, '../../../SMDL_Attendance_Latest.apk'),
+    path.resolve(__dirname, '../../../client/public/SMDL_Attendance_Latest.apk'),
+    path.resolve(__dirname, '../../../client/public/app-debug.apk'),
     path.resolve(__dirname, '../../client/public/app-debug.apk'),
+    path.resolve(process.cwd(), 'public/SMDL_Attendance_Latest.apk'),
+    path.resolve(process.cwd(), 'public/app-debug.apk'),
+    path.resolve(process.cwd(), 'server/public/SMDL_Attendance_Latest.apk'),
+    path.resolve(process.cwd(), 'client/public/app-debug.apk'),
   ];
 
   for (const p of candidatePaths) {
