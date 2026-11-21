@@ -22,11 +22,6 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-    sourceSets {
-        main {
-            assets.srcDirs = [file("${System.getProperty('user.home')}/.gradle/smld_assets")]
-        }
-    }
 }
 
 repositories {
