@@ -55,8 +55,7 @@ async function resolveBase64AndName(url, rawFileName = 'Notice_Attachment') {
     } else {
       let targetUrl = url
       if (targetUrl.startsWith('/')) {
-        const origin = window.location.origin
-        targetUrl = origin && !origin.includes('localhost') ? `${origin}${url}` : `http://10.102.211.172:5000${url}`
+        targetUrl = `https://smdl-attendance-api.onrender.com${url}`
       }
       try {
         const res = await fetch(targetUrl)
@@ -155,15 +154,15 @@ export async function downloadAttachment(url, fileName = 'attachment') {
         }
 
         if (saved) {
-          toast.success(`📥 Downloaded! Saved to Documents: ${safeName}`, {
-            duration: 4000,
+          toast.success('Downloaded to Documents', {
+            duration: 3000,
           })
           return
         }
       }
     } catch (nativeErr) {
       console.warn('[attachmentHelper] Native direct download error:', nativeErr)
-      toast.error(`Download failed: ${nativeErr.message || 'Storage error'}`)
+      toast.error('Download failed. Check storage permissions.')
       return
     }
   }
@@ -185,7 +184,7 @@ export async function downloadAttachment(url, fileName = 'attachment') {
       a.click()
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
-      toast.success(`Downloaded ${fileName || 'attachment'}`)
+      toast.success('File saved to Downloads')
       return
     } catch (blobErr) {
       console.warn('[attachmentHelper] Blob download failed:', blobErr.message)
@@ -202,7 +201,7 @@ export async function downloadAttachment(url, fileName = 'attachment') {
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
-    toast.success(`Downloading ${fileName}...`)
+    toast.success('Starting download...')
   } catch (_err) {
     window.open(url, '_blank')
   }

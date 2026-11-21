@@ -274,7 +274,7 @@ export default function DashboardLayout({ children }) {
 
         {/* Dynamic Page Content */}
         {/* pb-28 on mobile ensures bottom navigation doesn't hide page buttons */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto pb-28 lg:pb-8">
+        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto pb-28 lg:pb-8 overflow-x-hidden min-w-0">
           {children}
         </main>
       </div>

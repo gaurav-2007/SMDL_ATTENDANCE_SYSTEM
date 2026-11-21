@@ -489,7 +489,7 @@ export default function ReportsPanel() {
   })
 
   return (
-    <div className="space-y-6 animate-fade-in pb-12">
+    <div className="space-y-6 animate-fade-in pb-12 max-w-full overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -503,7 +503,7 @@ export default function ReportsPanel() {
           </p>
         </div>
         {tab !== 'STUDENT_SUBJECT' && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <select
               id="period-filter"
               value={period}
@@ -542,10 +542,10 @@ export default function ReportsPanel() {
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex flex-wrap gap-1.5 p-1 bg-bg border border-line rounded-lg w-fit">
+      <div className="flex flex-wrap gap-1.5 p-1 bg-bg border border-line rounded-lg w-full sm:w-fit max-w-full overflow-x-auto">
         <button
           onClick={() => setTab('STUDENT_SUBJECT')}
-          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
             tab === 'STUDENT_SUBJECT'
               ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
               : 'text-muted hover:text-ink hover:bg-surface/50'
@@ -561,7 +561,7 @@ export default function ReportsPanel() {
 
         <button
           onClick={() => setTab('OVERVIEW')}
-          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+          className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
             tab === 'OVERVIEW'
               ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
               : 'text-muted hover:text-ink hover:bg-surface/50'
@@ -573,7 +573,7 @@ export default function ReportsPanel() {
         {!isTeacher && (
           <button
             onClick={() => setTab('AUDIT_LOGS')}
-            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
               tab === 'AUDIT_LOGS'
                 ? 'bg-surface text-ink font-semibold shadow-xs border border-line'
                 : 'text-muted hover:text-ink hover:bg-surface/50'
@@ -588,11 +588,11 @@ export default function ReportsPanel() {
       </div>
 
       {tab === 'STUDENT_SUBJECT' ? (
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-full min-w-0">
           {/* Controls Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-4 bg-surface border border-line rounded-xl shadow-xs">
-            <div className="flex flex-wrap items-center gap-3">
-              <div>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 p-4 bg-surface border border-line rounded-xl shadow-xs max-w-full overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto min-w-0">
+              <div className="w-full sm:w-auto min-w-0 flex-1">
                 <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
                   Select Subject
                 </label>
@@ -602,7 +602,7 @@ export default function ReportsPanel() {
                     setSelectedSubjectId(e.target.value)
                     fetchSubjectReport(e.target.value, selectedPeriodDays)
                   }}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-line bg-bg text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer min-w-[200px]"
+                  className="w-full sm:max-w-xs md:max-w-sm truncate px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-line bg-bg text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
                 >
                   {(subjectReportData?.subjects || []).map((sub) => (
                     <option key={sub.id} value={sub.id}>
@@ -612,7 +612,7 @@ export default function ReportsPanel() {
                 </select>
               </div>
 
-              <div>
+              <div className="w-full sm:w-auto min-w-0">
                 <label className="block text-[11px] font-semibold text-muted uppercase tracking-wider mb-1">
                   Time Period
                 </label>
@@ -622,7 +622,7 @@ export default function ReportsPanel() {
                     setSelectedPeriodDays(e.target.value)
                     fetchSubjectReport(selectedSubjectId, e.target.value)
                   }}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-line bg-bg text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                  className="w-full sm:w-auto px-3 py-2 sm:py-1.5 text-xs rounded-lg border border-line bg-bg text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
                 >
                   <option value="all">All Lectures</option>
                   <option value="30">Last 30 Days</option>
@@ -632,12 +632,12 @@ export default function ReportsPanel() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 self-start md:self-end">
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto self-stretch sm:self-start md:self-end pt-1 md:pt-0">
               <Button
                 onClick={() => fetchSubjectReport(selectedSubjectId, selectedPeriodDays)}
                 variant="outline"
                 size="sm"
-                className="gap-1.5 text-xs"
+                className="gap-1.5 text-xs flex-1 sm:flex-initial justify-center min-w-[90px]"
                 title="Refresh Report"
               >
                 <RefreshCw size={13} className={loadingSubjectReport ? 'animate-spin' : ''} />
@@ -647,7 +647,7 @@ export default function ReportsPanel() {
                 onClick={exportSubjectCSV}
                 variant="outline"
                 size="sm"
-                className="gap-1.5 text-xs text-emerald-600 hover:text-emerald-700"
+                className="gap-1.5 text-xs text-emerald-600 hover:text-emerald-700 flex-1 sm:flex-initial justify-center min-w-[100px]"
                 title="Download CSV Spreadsheet"
               >
                 <FileSpreadsheet size={14} />
@@ -657,7 +657,7 @@ export default function ReportsPanel() {
                 onClick={() => setShowSubjectRegisterModal(true)}
                 variant="primary"
                 size="sm"
-                className="gap-1.5 text-xs"
+                className="gap-1.5 text-xs flex-1 sm:flex-initial justify-center min-w-[110px]"
                 title="Print Subject Register"
               >
                 <Printer size={14} />
@@ -738,7 +738,7 @@ export default function ReportsPanel() {
 
               {/* Search & Filters */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-                <div className="relative flex-1 max-w-sm">
+                <div className="relative flex-1 max-w-sm w-full">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
                   <input
                     type="text"
@@ -749,10 +749,10 @@ export default function ReportsPanel() {
                   />
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-bg p-1 rounded-lg border border-line text-xs self-start sm:self-auto">
+                <div className="flex items-center gap-1.5 bg-bg p-1 rounded-lg border border-line text-xs w-full sm:w-auto overflow-x-auto">
                   <button
                     onClick={() => setStudentStatusFilter('ALL')}
-                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer ${
+                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer shrink-0 ${
                       studentStatusFilter === 'ALL' ? 'bg-surface font-semibold text-ink shadow-xs border border-line' : 'text-muted hover:text-ink'
                     }`}
                   >
@@ -760,7 +760,7 @@ export default function ReportsPanel() {
                   </button>
                   <button
                     onClick={() => setStudentStatusFilter('SAFE')}
-                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer ${
+                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer shrink-0 ${
                       studentStatusFilter === 'SAFE' ? 'bg-green-100 text-green-700 font-semibold shadow-xs' : 'text-muted hover:text-ink'
                     }`}
                   >
@@ -768,7 +768,7 @@ export default function ReportsPanel() {
                   </button>
                   <button
                     onClick={() => setStudentStatusFilter('DEFAULTER')}
-                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer ${
+                    className={`px-2.5 py-1 rounded text-xs font-medium cursor-pointer shrink-0 ${
                       studentStatusFilter === 'DEFAULTER' ? 'bg-red-100 text-red-700 font-semibold shadow-xs' : 'text-muted hover:text-ink'
                     }`}
                   >
@@ -1206,7 +1206,7 @@ export default function ReportsPanel() {
         description="SMDL College Official Academic Record (< 75% Requirement)"
         size="xl"
       >
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-full min-w-0">
           {/* Action Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-bg border border-line rounded-xl">
             <div className="flex items-center gap-2">
@@ -1250,7 +1250,7 @@ export default function ReportsPanel() {
           </div>
 
           {/* Register Document Preview */}
-          <div className="border border-line rounded-xl p-4 sm:p-6 bg-surface shadow-xs space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="border border-line rounded-xl p-4 sm:p-6 bg-surface shadow-xs space-y-4 max-h-[60vh] overflow-y-auto overflow-x-hidden max-w-full">
             {/* College Header */}
             <div className="text-center pb-3 border-b-2 border-line">
               <h2 className="text-base sm:text-lg font-bold font-display text-ink uppercase tracking-wide">
@@ -1372,7 +1372,7 @@ export default function ReportsPanel() {
         size="lg"
       >
         {selectedStudentHistoryModal && (
-          <div className="space-y-4">
+          <div className="space-y-4 max-w-full min-w-0">
             {/* Summary Strip */}
             <div className="grid grid-cols-3 gap-2 p-3 bg-bg border border-line rounded-xl text-center">
               <div>
@@ -1399,19 +1399,19 @@ export default function ReportsPanel() {
                 description="No lectures have been scheduled or recorded for this subject in the selected period."
               />
             ) : (
-              <div className="max-h-[350px] overflow-y-auto divide-y divide-line border border-line rounded-xl bg-surface">
+              <div className="max-h-[350px] overflow-y-auto overflow-x-hidden divide-y divide-line border border-line rounded-xl bg-surface">
                 {selectedStudentHistoryModal.history.map((lec, idx) => (
-                  <div key={lec.lecture_id || idx} className="p-3 flex items-center justify-between gap-3 text-xs">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-ink">#{idx + 1}</span>
-                        <span className="font-semibold text-ink font-mono">{lec.date}</span>
-                        <span className="text-muted text-[11px] font-mono">{lec.start_time?.slice(0, 5)}</span>
+                  <div key={lec.lecture_id || idx} className="p-3 flex items-center justify-between gap-2.5 text-xs min-w-0">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="font-bold text-ink shrink-0">#{idx + 1}</span>
+                        <span className="font-semibold text-ink font-mono shrink-0">{lec.date}</span>
+                        <span className="text-muted text-[11px] font-mono shrink-0">{lec.start_time?.slice(0, 5)}</span>
                       </div>
-                      <p className="text-muted text-[11px]">{lec.topic || 'Class Lecture'}</p>
+                      <p className="text-muted text-[11px] truncate block">{lec.topic || 'Class Lecture'}</p>
                     </div>
 
-                    <Badge variant={lec.status === 'PRESENT' ? 'present' : 'absent'} size="sm">
+                    <Badge variant={lec.status === 'PRESENT' ? 'present' : 'absent'} size="sm" className="shrink-0">
                       {lec.status}
                     </Badge>
                   </div>
@@ -1436,7 +1436,7 @@ export default function ReportsPanel() {
         description="Official SMDL Academic Subject Attendance Register & Examination Eligibility"
         size="xl"
       >
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-full min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-bg border border-line rounded-xl">
             <div className="flex items-center gap-2">
               <Badge variant="brand" size="sm">
@@ -1470,7 +1470,7 @@ export default function ReportsPanel() {
           </div>
 
           <div
-            className="border border-line rounded-xl p-4 bg-white text-slate-900 max-h-[420px] overflow-y-auto text-xs font-sans shadow-inner"
+            className="border border-line rounded-xl p-4 bg-white text-slate-900 max-h-[420px] overflow-y-auto overflow-x-auto text-xs font-sans shadow-inner"
             dangerouslySetInnerHTML={{ __html: getSubjectRegisterHTML() }}
           />
         </div>

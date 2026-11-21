@@ -46,13 +46,6 @@ function TeacherOverview() {
     loadToday()
   }, [])
 
-  const cards = [
-    { to: '/teacher/classes',    label: 'My Classes & Timetable', Icon: BookOpen,      variant: 'brand',   desc: 'Dynamic daily schedule & official weekly timetable' },
-    { to: '/teacher/attendance', label: 'Attendance Review',      Icon: ClipboardList, variant: 'present', desc: 'Live roster, selfie proofs, manual override' },
-    { to: '/teacher/reports',    label: 'Reports & Register',     Icon: BarChart2,     variant: 'grace',   desc: 'Class analytics and student attendance percentages' },
-    { to: '/teacher/announce',   label: 'Announcements',          Icon: Bell,          variant: 'neutral', desc: 'Send circulars and notices to student batches' },
-  ]
-
   const featuredLecture = todayData?.current_lecture || todayData?.next_lecture || todayData?.my_lectures?.[0] || todayData?.all_lectures?.[0]
   const isOngoing = featuredLecture?.status === 'ONGOING'
   const isWindowOpen = Boolean(featuredLecture?.is_attendance_open)
@@ -248,37 +241,6 @@ function TeacherOverview() {
           </div>
         </Card>
       )}
-
-      {/* ── QUICK NAVIGATION CARDS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {cards.map(({ to, label, Icon, variant, desc }) => (
-          <Card
-            key={label}
-            hoverable
-            onClick={() => navigate(to)}
-            className="p-4 flex items-start gap-3.5 cursor-pointer group"
-          >
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${
-              variant === 'present'
-                ? 'bg-present/10 text-present border-present/20'
-                : variant === 'brand'
-                ? 'bg-brand/10 text-brand border-brand/20'
-                : variant === 'grace'
-                ? 'bg-grace/10 text-grace border-grace/20'
-                : 'bg-bg text-muted border-line'
-            }`}>
-              <Icon className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-ink group-hover:text-brand transition-colors truncate">
-                {label}
-              </p>
-              <p className="text-xs text-muted mt-0.5 line-clamp-2 leading-relaxed">{desc}</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0 mt-1" />
-          </Card>
-        ))}
-      </div>
 
       {/* ── QUICK WORKFLOW & CLASSROOM TIPS ── */}
       <Card className="p-5">
