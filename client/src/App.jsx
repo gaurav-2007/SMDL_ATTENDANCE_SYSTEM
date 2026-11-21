@@ -147,7 +147,8 @@ function NativeBridgeListener() {
         }
       }).catch(() => {})
 
-      // Daylight status bar matching academic theme
+      // Daylight status bar matching academic theme — never overlay webview
+      StatusBar.setOverlaysWebView({ overlay: false }).catch(() => {})
       StatusBar.setStyle({ style: Style.Light }).catch(() => {})
       StatusBar.setBackgroundColor({ color: '#F7F8FA' }).catch(() => {})
 

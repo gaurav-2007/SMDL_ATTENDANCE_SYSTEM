@@ -1,6 +1,7 @@
 package in.ac.smdl.attendance;
 
 import android.os.Bundle;
+import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
@@ -9,6 +10,11 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Enforce WebView stays strictly within system windows (below status bar & above navigation bar)
+        try {
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+        } catch (Exception ignored) {}
 
         // Ensure Firebase is properly initialized before any push notification call
         try {

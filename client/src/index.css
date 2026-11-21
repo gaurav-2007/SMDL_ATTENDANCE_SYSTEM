@@ -50,8 +50,17 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* Support mobile notch and bottom home indicator */
+  /* Support mobile notch, status bar, and bottom navigation bar / gesture bar */
   .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .safe-area-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  .safe-area-pt {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  .safe-area-pb {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
 
