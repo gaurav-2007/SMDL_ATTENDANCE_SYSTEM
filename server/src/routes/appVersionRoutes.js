@@ -79,11 +79,11 @@ router.get('/download', (req, res) => {
     return;
   }
 
+  const acceptHeader = req.get('accept') || '';
   const isDirect = req.query.direct === '1' || req.query.raw === '1' || req.query.download === '1';
-  const acceptsHtml = req.accepts('html') && !req.accepts('application/vnd.android.package-archive');
 
-  // If direct stream requested or caller is not a browser requesting HTML
-  if (isDirect || !acceptsHtml) {
+  // If direct stream requested or caller is not a browser navigating for HTML
+  if (isDirect || !acceptHeader.includes('text/html')) {
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Content-Disposition', `attachment; filename="${appVersionConfig.apkFilename || 'SMDL_Attendance_Latest.apk'}"`);
     res.setHeader('Cache-Control', 'public, max-age=300');
