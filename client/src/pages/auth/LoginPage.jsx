@@ -236,7 +236,7 @@ export default function LoginPage() {
 
     // If native Capacitor and no server URL is configured, prompt configuration
     if (!getBaseURL() && Capacitor.isNativePlatform()) {
-      toast.error('Server URL is not configured. Please tap "Server" below to configure your server IP.')
+      toast.error('Server URL is not configured. Please tap "The Pride" below to configure your server IP.')
       setServerUrlInput('')
       setShowServerModal(true)
       return
@@ -1266,8 +1266,8 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* ── SERVER CONNECTION FOOTER BADGE ── */}
-        <div className="flex justify-center">
+        {/* ── THE PRIDE BRANDING & HIDDEN SERVER SETTINGS FOOTER ── */}
+        <div className="flex flex-col items-center justify-center pt-2 pb-6 text-center select-none">
           <button
             type="button"
             id="server-config-btn"
@@ -1275,14 +1275,14 @@ export default function LoginPage() {
               setServerUrlInput(getBaseURL() || '')
               setShowServerModal(true)
             }}
-            className="inline-flex items-center gap-2 bg-surface hover:bg-bg border border-line rounded-full px-3.5 py-1.5 transition-colors text-xs text-muted shadow-xs cursor-pointer"
+            className="group flex flex-col items-center justify-center p-2 rounded-xl transition-all cursor-pointer opacity-80 hover:opacity-100 focus:outline-none"
+            title="The Pride"
           >
-            <Wifi className={`w-3.5 h-3.5 shrink-0 ${getBaseURL() ? "text-present animate-pulse" : "text-grace"}`} />
-            <span>
-              Server: <span className="font-mono text-ink font-semibold">{getBaseURL() || 'Not Configured'}</span>
+            <span className="text-xs font-bold tracking-wider uppercase text-muted group-hover:text-brand transition-colors">
+              The Pride
             </span>
-            <span className="text-[10px] bg-bg border border-line px-1.5 py-0.5 rounded text-brand font-medium">
-              {getBaseURL() ? 'Settings' : 'Configure'}
+            <span className="text-[11px] text-muted/70 font-mono mt-0.5">
+              Version 1.0.3
             </span>
           </button>
         </div>
