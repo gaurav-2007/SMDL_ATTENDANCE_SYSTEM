@@ -141,13 +141,6 @@ function StudentOverview() {
   // Find active lecture if attendance window is currently open
   const activeLecture = todaySchedule.classes.find(cls => !!cls.can_mark_attendance && !cls.is_attended && cls.attendance_status !== 'PRESENT')
 
-  const quickActions = [
-    { label: 'Mark Present Now',    Icon: UserCheck,     variant: 'present', to: '/student/mark',       desc: 'GPS + Selfie check-in' },
-    { label: 'My Attendance',       Icon: ClipboardList, variant: 'brand',   to: '/student/attendance', desc: 'History & percentage' },
-    { label: 'Reports & Analytics', Icon: FileText,      variant: 'grace',   to: '/student/reports',    desc: 'Subject-wise breakdown' },
-    { label: 'Announcements',       Icon: MessageSquare, variant: 'neutral', to: '/student/announce',   desc: 'Official college notices' },
-  ]
-
   const overallPct = stats.percentage ?? 0
   const isSafe = overallPct >= 75
 
@@ -379,104 +372,6 @@ function StudentOverview() {
                         <span className="text-muted text-[11px]">{cls.status === 'COMPLETED' ? 'Session Over' : 'Scheduled'}</span>
                       )}
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── QUICK NAVIGATION ACTIONS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {quickActions.map(({ label, Icon, variant, to, desc }) => (
-          <Card
-            key={label}
-            hoverable
-            onClick={() => navigate(to)}
-            className="p-4 flex items-start gap-3.5 cursor-pointer group"
-          >
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${
-              variant === 'present'
-                ? 'bg-present/10 text-present border-present/20'
-                : variant === 'brand'
-                ? 'bg-brand/10 text-brand border-brand/20'
-                : variant === 'grace'
-                ? 'bg-grace/10 text-grace border-grace/20'
-                : 'bg-bg text-muted border-line'
-            }`}>
-              <Icon className="w-5 h-5" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-ink group-hover:text-brand transition-colors truncate">
-                {label}
-              </p>
-              <p className="text-xs text-muted mt-0.5 truncate">{desc}</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-muted group-hover:text-brand transition-colors shrink-0 mt-1" />
-          </Card>
-        ))}
-      </div>
-
-      {/* ── RECENT ATTENDANCE HISTORY LIST ── */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-brand" />
-            <CardTitle className="text-base">Recent Attendance History</CardTitle>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/student/attendance')}
-            className="text-xs h-8"
-          >
-            <span>View All</span>
-            <ChevronRight className="w-3.5 h-3.5 ml-1" />
-          </Button>
-        </CardHeader>
-
-        <CardContent>
-          {statsLoading ? (
-            <div className="space-y-3">
-              <Skeleton className="h-12 w-full rounded-lg" />
-              <Skeleton className="h-12 w-full rounded-lg" />
-              <Skeleton className="h-12 w-full rounded-lg" />
-            </div>
-          ) : (data?.history?.length ?? 0) === 0 ? (
-            <EmptyState
-              icon={CalendarDays}
-              title="No Lectures Recorded Yet"
-              description="Your attendance entries will appear here as soon as lectures are conducted."
-            />
-          ) : (
-            <div className="divide-y divide-line">
-              {(data.history || []).slice(0, 5).map(h => {
-                const isPresent = h.status === 'PRESENT'
-                return (
-                  <div key={h.lecture_id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
-                        isPresent
-                          ? 'bg-present/10 text-present border-present/20'
-                          : 'bg-absent/10 text-absent border-absent/20'
-                      }`}>
-                        {isPresent ? <ClipboardCheck className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-ink truncate">
-                          {h.subject} <span className="text-muted font-normal text-xs">— {h.topic || 'Regular session'}</span>
-                        </p>
-                        <p className="text-xs text-muted mt-0.5 truncate">
-                          {h.date ? new Date(h.date).toLocaleDateString() : '—'} · {h.time || '—'} {h.subject_code ? `· ${h.subject_code}` : ''}
-                        </p>
-                      </div>
-                    </div>
-
-                    <Badge variant={isPresent ? 'present' : 'absent'} size="sm" className="shrink-0">
-                      {isPresent ? 'Present' : 'Absent'}
-                    </Badge>
                   </div>
                 )
               })}
