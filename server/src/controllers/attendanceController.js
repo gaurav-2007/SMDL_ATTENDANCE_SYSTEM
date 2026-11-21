@@ -837,7 +837,7 @@ const overrideAttendance = asyncHandler(async (req, res) => {
   const lecture_id = req.body.lecture_id;
   const student_pk = req.body.student_pk || req.body.student_id;
   const status = req.body.status;
-  const reason = req.body.reason;
+  const reason = req.body.reason || req.body.notes;
 
   if (!lecture_id || !student_pk || !status) {
     res.status(400);
@@ -847,14 +847,14 @@ const overrideAttendance = asyncHandler(async (req, res) => {
   // Fetch lecture info for authorization, cancelled protection & notification metadata
   let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, division_id, lecture_date, subject_id, teacher_id, status, topic, subject:subjects(name)')
+    .select('id, division_id, lecture_date, start_time, end_time, subject_id, teacher_id, status, topic, subject:subjects(name)')
     .eq('id', lecture_id)
     .maybeSingle();
 
   if (lecErr && isStatusColumnError(lecErr)) {
     const retry = await supabaseAdmin
       .from('lectures')
-      .select('id, division_id, lecture_date, subject_id, teacher_id, topic, subject:subjects(name)')
+      .select('id, division_id, lecture_date, start_time, end_time, subject_id, teacher_id, topic, subject:subjects(name)')
       .eq('id', lecture_id)
       .maybeSingle();
     lecture = retry.data;
