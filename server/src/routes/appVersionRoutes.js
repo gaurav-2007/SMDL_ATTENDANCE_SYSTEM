@@ -45,7 +45,7 @@ router.get('/version', (req, res) => {
     try {
       const stats = fs.statSync(apkPath);
       apkSizeMb = Math.round((stats.size / (1024 * 1024)) * 10) / 10;
-    } catch (_e) {}
+    } catch (_e) { }
   }
 
   res.json({

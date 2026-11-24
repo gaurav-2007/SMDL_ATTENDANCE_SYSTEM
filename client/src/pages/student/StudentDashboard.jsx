@@ -23,46 +23,55 @@ import {
 // Lazy-load heavy mark attendance component to reduce initial bundle
 const StudentMarkAttendance = lazy(() => import('./StudentMarkAttendance'))
 
-// Module-level cache — avoids duplicate API calls across sub-components
-let statsCache = { data: null, promise: null }
+// Module-level cache — keyed by semester
+const statsCacheBySemester = new Map()
 
-function useMyStats() {
-  const [data, setData] = useState(statsCache.data?.stats ?? null)
-  const [loading, setLoading] = useState(!statsCache.data)
-  const [subjectCount, setSubjectCount] = useState(statsCache.data?.subjectCount ?? 0)
+function useMyStats(selectedSemester) {
+  const cacheKey = selectedSemester ? String(selectedSemester) : 'active'
+  const cached = statsCacheBySemester.get(cacheKey)
+
+  const [data, setData] = useState(cached?.stats ?? null)
+  const [loading, setLoading] = useState(!cached)
+  const [subjectCount, setSubjectCount] = useState(cached?.subjectCount ?? 0)
   const mounted = useRef(true)
+
+  const fetchStats = useCallback(async (sem) => {
+    setLoading(true)
+    const key = sem ? String(sem) : 'active'
+    try {
+      const semParam = sem ? `?semester=${sem}` : ''
+      const [statsRes, subjRes] = await Promise.all([
+        api.get(`/attendance/my-stats${semParam}`),
+        api.get(`/academic/subjects${semParam}`),
+      ])
+      if (!mounted.current) return
+      const statsData = statsRes.data?.data || null
+      const count = subjRes.data?.data?.subjects?.length || 0
+      statsCacheBySemester.set(key, { stats: statsData, subjectCount: count })
+      setData(statsData)
+      setSubjectCount(count)
+    } catch (e) {
+      if (!mounted.current) return
+      toast.error(e?.response?.data?.message || 'Failed to load stats')
+    } finally {
+      if (mounted.current) setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     mounted.current = true
-    if (statsCache.data) return // cache hit — skip fetch
-
-    if (!statsCache.promise) {
-      statsCache.promise = Promise.allSettled([
-        api.get('/attendance/my-stats'),
-        api.get('/academic/subjects'),
-      ])
+    const currentCached = statsCacheBySemester.get(cacheKey)
+    if (currentCached) {
+      setData(currentCached.stats)
+      setSubjectCount(currentCached.subjectCount)
+      setLoading(false)
+    } else {
+      fetchStats(selectedSemester)
     }
-
-    statsCache.promise.then(([statsRes, subjRes]) => {
-      if (!mounted.current) return
-      const statsData = statsRes.status === 'fulfilled' ? statsRes.value?.data?.data : null
-      const count = subjRes.status === 'fulfilled'
-        ? (subjRes.value?.data?.data?.subjects?.length || 0)
-        : 0
-      statsCache.data = { stats: statsData, subjectCount: count }
-      setData(statsData)
-      setSubjectCount(count)
-      setLoading(false)
-    }).catch(e => {
-      if (!mounted.current) return
-      toast.error(e?.response?.data?.message || 'Failed to load stats')
-      setLoading(false)
-    })
-
     return () => { mounted.current = false }
-  }, [])
+  }, [fetchStats, selectedSemester, cacheKey])
 
-  return { data, loading, subjectCount }
+  return { data, loading, subjectCount, refetch: () => fetchStats(selectedSemester) }
 }
 
 // Reusable Metric Card matching academic design tokens
@@ -153,8 +162,13 @@ function StudentOverview() {
             <span>Welcome, {user?.name?.split(' ')[0] || 'Student'}</span>
             <span className="text-lg">👋</span>
           </h2>
-          <p className="text-xs sm:text-sm text-muted mt-0.5">
-            Roll No: <span className="font-semibold text-ink">{info.roll_number || user?.roll_number || '—'}</span> · {info.course || user?.class || ''} {info.division || user?.division ? `(${info.division || user?.division})` : ''}
+          <p className="text-xs sm:text-sm text-muted mt-0.5 flex flex-wrap items-center gap-1.5">
+            <span>Roll No: <span className="font-semibold text-ink">{info.roll_number || user?.roll_number || '—'}</span></span>
+            <span>·</span>
+            <span>{info.course || user?.class || ''} {info.division || user?.division ? `(${info.division || user?.division})` : ''}</span>
+            <span className="font-semibold text-[11px] px-2 py-0.5 rounded-full bg-brand/10 text-brand border border-brand/20">
+              Semester {info.current_semester || 1}
+            </span>
           </p>
         </div>
 
@@ -392,9 +406,14 @@ function StudentOverview() {
 }
 
 function MyAttendanceHistory() {
-  const { data, loading } = useMyStats()
+  const [historySem, setHistorySem] = useState(null)
+  const { data, loading } = useMyStats(historySem)
   const stats = data?.stats || {}
   const history = data?.history || []
+  const studentInfo = data?.student_info || {}
+
+  const activeDivisionSem = studentInfo.current_semester || 1
+  const displaySem = historySem || studentInfo.selected_semester || activeDivisionSem
 
   const total = stats.total_lectures ?? 0
   const attended = stats.attended ?? 0
@@ -402,9 +421,34 @@ function MyAttendanceHistory() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="pb-2 border-b border-line">
-        <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">My Attendance History</h2>
-        <p className="text-xs sm:text-sm text-muted mt-0.5">Complete record of your lecture attendance and attendance %</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-line">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">My Attendance History</h2>
+          <p className="text-xs sm:text-sm text-muted mt-0.5">Complete record of your lecture attendance and attendance %</p>
+        </div>
+
+        {/* Semester Selector */}
+        <div className="flex items-center gap-1.5 text-xs bg-surface p-1 rounded-lg border border-line">
+          <span className="text-muted font-semibold px-2">Semester:</span>
+          {[1, 2, 3, 4, 5, 6].map(sem => {
+            const isCur = activeDivisionSem === sem
+            const isSel = displaySem === sem
+            return (
+              <button
+                key={sem}
+                type="button"
+                onClick={() => setHistorySem(sem)}
+                className={`px-2.5 py-1 rounded-md font-semibold text-xs transition-all cursor-pointer ${
+                  isSel
+                    ? 'bg-brand text-white shadow-2xs'
+                    : 'text-muted hover:text-ink hover:bg-bg'
+                }`}
+              >
+                Sem {sem} {isCur ? '★' : ''}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
@@ -423,7 +467,9 @@ function MyAttendanceHistory() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Session Records</CardTitle>
-          <CardDescription>All marked lectures in chronological sequence</CardDescription>
+          <CardDescription>
+            Showing lectures for Semester {displaySem} ({stats.total_lectures || 0} total sessions)
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="p-0">
@@ -437,8 +483,8 @@ function MyAttendanceHistory() {
             <div className="p-8">
               <EmptyState
                 icon={CalendarDays}
-                title="No Attendance Records"
-                description="Records will display here once your teachers start conducting lectures."
+                title={`No Attendance Records for Semester ${displaySem}`}
+                description="Records will display here once your teachers start conducting lectures for this semester."
               />
             </div>
           ) : (
@@ -448,6 +494,7 @@ function MyAttendanceHistory() {
                   <tr className="border-b border-line bg-bg/50 text-muted font-semibold text-xs">
                     <th className="py-3 px-4">Date & Time</th>
                     <th className="py-3 px-4">Subject</th>
+                    <th className="py-3 px-4">Semester</th>
                     <th className="py-3 px-4 hidden sm:table-cell">Code</th>
                     <th className="py-3 px-4 hidden md:table-cell">Topic</th>
                     <th className="py-3 px-4 text-right">Status</th>
@@ -465,6 +512,11 @@ function MyAttendanceHistory() {
                         <td className="py-3 px-4">
                           <p className="font-semibold text-ink">{h.subject}</p>
                           <p className="text-xs text-muted sm:hidden">{h.subject_code}</p>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-semibold text-xs px-2 py-0.5 rounded bg-brand/10 text-brand border border-brand/20">
+                            Sem {h.semester || displaySem}
+                          </span>
                         </td>
                         <td className="py-3 px-4 text-muted font-mono hidden sm:table-cell">
                           {h.subject_code || '—'}
@@ -491,14 +543,21 @@ function MyAttendanceHistory() {
 }
 
 function StudentSubjectReports() {
+  const [selectedSem, setSelectedSem] = useState(null)
   const [statsData, setStatsData] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  async function loadData() {
+  async function loadData(sem) {
     setLoading(true)
     try {
-      const { data } = await api.get('/attendance/my-stats')
-      setStatsData(data?.data || null)
+      const targetSem = sem !== undefined && sem !== null ? sem : selectedSem
+      const semParam = targetSem ? `?semester=${targetSem}` : ''
+      const { data } = await api.get(`/attendance/my-stats${semParam}`)
+      const resData = data?.data || null
+      setStatsData(resData)
+      if (selectedSem === null && resData?.student_info?.current_semester) {
+        setSelectedSem(resData.student_info.current_semester)
+      }
     } catch {
       toast.error('Failed to load attendance metrics')
     } finally {
@@ -506,7 +565,7 @@ function StudentSubjectReports() {
     }
   }
 
-  useEffect(() => { loadData() }, [])
+  useEffect(() => { loadData(selectedSem) }, [selectedSem])
 
   // Group lectures by subject
   const subjectMap = {}
@@ -539,10 +598,34 @@ function StudentSubjectReports() {
           <h2 className="text-xl sm:text-2xl font-bold font-display text-ink tracking-tight">Subject-Wise Reports</h2>
           <p className="text-xs sm:text-sm text-muted mt-0.5">Track individual subject thresholds (Minimum 75% required)</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadData} className="h-8 self-start sm:self-auto">
-          <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Semester Selector */}
+          <div className="flex items-center gap-1.5 text-xs bg-surface p-1 rounded-lg border border-line">
+            <span className="text-muted font-semibold px-2">Semester:</span>
+            {[1, 2, 3, 4, 5, 6].map(sem => {
+              const isCur = (statsData?.student_info?.current_semester || 1) === sem
+              const isSel = (selectedSem || statsData?.student_info?.selected_semester || 1) === sem
+              return (
+                <button
+                  key={sem}
+                  type="button"
+                  onClick={() => setSelectedSem(sem)}
+                  className={`px-2.5 py-1 rounded-md font-semibold text-xs transition-all cursor-pointer ${
+                    isSel
+                      ? 'bg-brand text-white shadow-2xs'
+                      : 'text-muted hover:text-ink hover:bg-bg'
+                  }`}
+                >
+                  Sem {sem} {isCur ? '★' : ''}
+                </button>
+              )
+            })}
+          </div>
+          <Button variant="outline" size="sm" onClick={() => loadData(selectedSem)} className="h-8">
+            <RefreshCw className={`w-3.5 h-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {loading ? (

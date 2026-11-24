@@ -42,10 +42,10 @@ const getDivisions = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc   Get subjects (optionally by division, course, or teacher)
+// @desc   Get subjects (optionally by division, course, teacher, or semester)
 // @route  GET /api/academic/subjects
 const getSubjects = asyncHandler(async (req, res) => {
-  const { division_id, teacher_id, course_id } = req.query;
+  const { division_id, teacher_id, course_id, semester } = req.query;
   let query = supabaseAdmin
     .from('subjects')
     .select('*, divisions(id, name, division_name, course_id, courses(id, name, code))')
@@ -53,6 +53,10 @@ const getSubjects = asyncHandler(async (req, res) => {
 
   if (division_id) {
     query = query.eq('division_id', division_id);
+  }
+
+  if (semester) {
+    query = query.eq('semester', Number(semester));
   }
 
   const { data: subjects, error } = await query;
@@ -125,7 +129,7 @@ const createDivision = asyncHandler(async (req, res) => {
 // @desc   Admin creates new Subject
 // @route  POST /api/academic/subjects
 const createSubject = asyncHandler(async (req, res) => {
-  const { name, code, division_id } = req.body;
+  const { name, code, division_id, semester } = req.body;
   if (!name || !code || !division_id) {
     res.status(400);
     throw new Error('Subject name, code, and division are required');
@@ -136,6 +140,7 @@ const createSubject = asyncHandler(async (req, res) => {
       name: name.trim(),
       code: code.trim().toUpperCase(),
       division_id,
+      semester: semester ? Number(semester) : 1,
     })
     .select('*, divisions(id, name, division_name, course_id, courses(id, name, code))')
     .single();
@@ -168,6 +173,7 @@ const batchCreateSubjects = asyncHandler(async (req, res) => {
           division_id: divId,
           name: sub.name.trim(),
           code: sub.code.trim().toUpperCase(),
+          semester: sub.semester ? Number(sub.semester) : 1,
         });
       }
     }
@@ -242,7 +248,7 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
   }
 
   const { division_id } = req.params;
-  const { day_of_week } = req.query;
+  const { day_of_week, semester } = req.query;
 
   if (!division_id) {
     res.status(400);
@@ -281,6 +287,8 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
     .select(`
       id,
       division_id,
+      semester,
+      academic_year,
       day_of_week,
       start_time,
       end_time,
@@ -295,6 +303,9 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
 
   if (day_of_week) {
     query = query.eq('day_of_week', day_of_week);
+  }
+  if (semester) {
+    query = query.eq('semester', Number(semester));
   }
 
   const { data, error } = await query;
@@ -336,14 +347,17 @@ const getDivisionTimetable = asyncHandler(async (req, res) => {
 // @desc   Admin saves a Timetable Slot (with Fix #2 Double-Booking Check)
 // @route  POST /api/academic/timetable
 const saveTimetableSlot = asyncHandler(async (req, res) => {
-  const { id, division_id, day_of_week, start_time, end_time, subject_id, teacher_id, room_number, is_lab } = req.body;
+  const { id, division_id, day_of_week, start_time, end_time, subject_id, teacher_id, room_number, is_lab, semester, academic_year } = req.body;
 
   if (!division_id || !day_of_week || !start_time || !end_time || !subject_id) {
     res.status(400);
     throw new Error('Division, Day of Week, Start Time, End Time, and Subject are required');
   }
 
-  // Fix #2: Double-booking check: Ensure teacher or room is not booked in another division at the same day & time
+  const targetSemester = semester ? Number(semester) : 1;
+  const targetYear = academic_year ? String(academic_year).trim() : '2026-27';
+
+  // Fix #2: Double-booking check: Ensure teacher or room is not booked in another division at the same semester, day & time
   let conflictQuery = supabaseAdmin
     .from('division_timetables')
     .select(`
@@ -354,11 +368,15 @@ const saveTimetableSlot = asyncHandler(async (req, res) => {
       end_time,
       room_number,
       teacher_id,
+      semester,
+      academic_year,
       division:divisions(name, division_name),
       teacher:teachers(teacher_id, user:users!teachers_user_id_fkey(full_name))
     `)
     .eq('day_of_week', day_of_week)
     .eq('start_time', start_time)
+    .eq('semester', targetSemester)
+    .eq('academic_year', targetYear)
     .neq('division_id', division_id);
 
   if (id) {
@@ -391,6 +409,8 @@ const saveTimetableSlot = asyncHandler(async (req, res) => {
     teacher_id: teacher_id || null,
     room_number: room_number ? room_number.trim() : 'Room 101',
     is_lab: !!is_lab,
+    semester: targetSemester,
+    academic_year: targetYear,
     updated_at: new Date().toISOString(),
   };
 
@@ -554,6 +574,79 @@ const getTeachersList = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc   Admin switches/promotes active semester for a division
+// @route  POST /api/academic/divisions/:id/switch-semester
+const switchDivisionSemester = asyncHandler(async (req, res) => {
+  assertActiveUser(req.user, res);
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error('Access Denied: Admins only');
+  }
+
+  const { id } = req.params;
+  const { new_semester, academic_year, notes } = req.body;
+
+  const targetSemester = Number(new_semester);
+  if (!targetSemester || targetSemester < 1 || targetSemester > 6) {
+    res.status(400);
+    throw new Error('Valid new_semester (between 1 and 6) is required');
+  }
+
+  const { data: div, error: divErr } = await supabaseAdmin
+    .from('divisions')
+    .select('id, name, division_name, current_semester')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (divErr || !div) {
+    res.status(404);
+    throw new Error('Division not found');
+  }
+
+  const oldSemester = div.current_semester || 1;
+  const targetYear = academic_year ? String(academic_year).trim() : '2026-27';
+
+  // 1. Update division current_semester
+  const { error: updErr } = await supabaseAdmin
+    .from('divisions')
+    .update({ current_semester: targetSemester })
+    .eq('id', id);
+
+  if (updErr) {
+    res.status(500);
+    throw new Error(updErr.message);
+  }
+
+  // 2. Audit Trail in semester_switch_logs
+  await supabaseAdmin.from('semester_switch_logs').insert({
+    division_id: id,
+    from_semester: oldSemester,
+    to_semester: targetSemester,
+    academic_year: targetYear,
+    switched_by: req.user.id,
+    notes: notes || `Admin switched division from Sem ${oldSemester} to Sem ${targetSemester}`,
+  });
+
+  // 3. Immediately sync today's lectures for the newly active semester
+  try {
+    const { syncTodayLectures } = require('../services/timetableService');
+    await syncTodayLectures();
+  } catch (_e) {
+    // Non-blocking
+  }
+
+  res.json({
+    success: true,
+    message: `Division ${div.name} switched to Semester ${targetSemester} (${targetYear}) successfully.`,
+    data: {
+      division_id: id,
+      from_semester: oldSemester,
+      to_semester: targetSemester,
+      academic_year: targetYear,
+    },
+  });
+});
+
 module.exports = {
   getCourses,
   getDivisions,
@@ -570,4 +663,5 @@ module.exports = {
   deleteTimetableSlot,
   loadSmdlTimetableMatrix,
   getTeachersList,
+  switchDivisionSemester,
 };

@@ -1360,7 +1360,7 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
   if (req.user.role === 'student') {
     const { data: stu, error: stuErr } = await supabaseAdmin
       .from('students')
-      .select('id, student_id, division_id, division:divisions(id, name, division_name)')
+      .select('id, student_id, division_id, division:divisions(id, name, division_name, current_semester)')
       .eq('user_id', req.user.id)
       .maybeSingle();
 
@@ -1392,19 +1392,34 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
     if (!divisionId) {
       const { data: defaultDiv } = await supabaseAdmin
         .from('divisions')
-        .select('id, name')
+        .select('id, name, current_semester')
         .limit(1)
         .maybeSingle();
       divisionId = defaultDiv?.id || null;
     }
   }
 
-  // 2. Query division_timetables live by day of week (Section 3)
+  // Determine active semester for division
+  let activeSemester = 1;
+  if (studentRecord?.division?.current_semester) {
+    activeSemester = studentRecord.division.current_semester;
+  } else if (divisionId) {
+    const { data: divData } = await supabaseAdmin
+      .from('divisions')
+      .select('current_semester')
+      .eq('id', divisionId)
+      .maybeSingle();
+    if (divData?.current_semester) {
+      activeSemester = divData.current_semester;
+    }
+  }
+
+  // 2. Query division_timetables live by day of week scoped to division's active semester
   let liveClasses = [];
   let isFromTimetable = false;
 
   if (divisionId) {
-    const { data: slots, error: slotErr } = await supabaseAdmin
+    let { data: slots, error: slotErr } = await supabaseAdmin
       .from('division_timetables')
       .select(`
         id,
@@ -1414,12 +1429,36 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
         end_time,
         room_number,
         is_lab,
+        semester,
+        academic_year,
         subject:subjects(id, name, code),
         teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name, email))
       `)
       .eq('division_id', divisionId)
+      .eq('semester', activeSemester)
       .ilike('day_of_week', dayName)
       .order('start_time', { ascending: true });
+
+    if (slotErr && (slotErr.code === '42703' || String(slotErr.message).includes('semester'))) {
+      const retry = await supabaseAdmin
+        .from('division_timetables')
+        .select(`
+          id,
+          division_id,
+          day_of_week,
+          start_time,
+          end_time,
+          room_number,
+          is_lab,
+          subject:subjects(id, name, code),
+          teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name, email))
+        `)
+        .eq('division_id', divisionId)
+        .ilike('day_of_week', dayName)
+        .order('start_time', { ascending: true });
+      slots = retry.data;
+      slotErr = retry.error;
+    }
 
     if (slotErr && slotErr.code !== '42P01') {
       console.error('[lectureController] Failed loading division_timetables:', slotErr.message);

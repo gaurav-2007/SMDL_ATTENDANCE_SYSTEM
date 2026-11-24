@@ -1032,7 +1032,7 @@ const getMyStats = asyncHandler(async (req, res) => {
   // 1. Find student
   const { data: student, error: studErr } = await supabaseAdmin
     .from('students')
-    .select('id, student_id, division_id, course_id, courses(name), divisions(name, division_name)')
+    .select('id, student_id, division_id, course_id, courses(name), divisions(name, division_name, current_semester)')
     .eq('user_id', req.user.id)
     .maybeSingle();
 
@@ -1046,6 +1046,9 @@ const getMyStats = asyncHandler(async (req, res) => {
     throw new Error('Student record not found');
   }
 
+  const requestedSemester = req.query.semester ? parseInt(req.query.semester, 10) : null;
+  const activeSemester = requestedSemester || student.divisions?.current_semester || 1;
+
   if (!student.division_id) {
     return res.json({
       success: true,
@@ -1054,6 +1057,9 @@ const getMyStats = asyncHandler(async (req, res) => {
           roll_number: student.student_id,
           course: student.courses?.name || null,
           division: null,
+          current_semester: student.divisions?.current_semester || 1,
+          selected_semester: activeSemester,
+          academic_year: '2026-27',
         },
         division_assigned: false,
         stats: {
@@ -1067,14 +1073,20 @@ const getMyStats = asyncHandler(async (req, res) => {
     });
   }
 
-  // 2. Get all non-cancelled lectures for student's division
-  let { data: totalLectures, error: totalLecErr } = await supabaseAdmin
+  // 2. Get all non-cancelled lectures for student's division scoped to the selected semester
+  let query = supabaseAdmin
     .from('lectures')
-    .select('id, topic, status, lecture_date, start_time, subject:subjects(name, code)')
+    .select('id, topic, status, lecture_date, start_time, semester, academic_year, subject:subjects(name, code, semester)')
     .eq('division_id', student.division_id)
     .neq('status', 'CANCELLED');
 
-  if (totalLecErr && (totalLecErr.code === '42703' || String(totalLecErr.message).includes('status'))) {
+  if (activeSemester) {
+    query = query.eq('semester', activeSemester);
+  }
+
+  let { data: totalLectures, error: totalLecErr } = await query;
+
+  if (totalLecErr && (totalLecErr.code === '42703' || String(totalLecErr.message).includes('status') || String(totalLecErr.message).includes('semester'))) {
     const retry = await supabaseAdmin
       .from('lectures')
       .select('id, topic, lecture_date, start_time, subject:subjects(name, code)')
@@ -1121,6 +1133,8 @@ const getMyStats = asyncHandler(async (req, res) => {
       lecture_id: l.id,
       date: l.lecture_date,
       time: l.start_time,
+      semester: l.semester || activeSemester,
+      academic_year: l.academic_year || '2026-27',
       subject: l.subject?.name || 'Subject',
       subject_code: l.subject?.code,
       topic: l.topic,
@@ -1135,6 +1149,9 @@ const getMyStats = asyncHandler(async (req, res) => {
         roll_number: student.student_id,
         course: student.courses?.name,
         division: `${student.divisions?.name} - Div ${student.divisions?.division_name}`,
+        current_semester: student.divisions?.current_semester || 1,
+        selected_semester: activeSemester,
+        academic_year: '2026-27',
       },
       stats: {
         total_lectures: totalCount,

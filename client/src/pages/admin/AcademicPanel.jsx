@@ -72,16 +72,17 @@ export default function AcademicPanel() {
   const [savingDivision, setSavingDivision] = useState(false)
 
   const [showSubjectModal, setShowSubjectModal] = useState(false)
-  const [subjectForm, setSubjectForm] = useState({ course_id: '', division_id: '', name: '', code: '' })
+  const [subjectForm, setSubjectForm] = useState({ course_id: '', division_id: '', name: '', code: '', semester: 1 })
   const [savingSubject, setSavingSubject] = useState(false)
 
   // Course Details / Curriculum Drawer Modal
   const [selectedCourseForCurriculum, setSelectedCourseForCurriculum] = useState(null)
-  const [quickSubjectForm, setQuickSubjectForm] = useState({ division_id: '', name: '', code: '' })
+  const [quickSubjectForm, setQuickSubjectForm] = useState({ division_id: '', name: '', code: '', semester: 1 })
   const [savingQuickSubject, setSavingQuickSubject] = useState(false)
 
   // Timetable State (Step 4: Weekly Timetable Builder)
   const [timetableDivId, setTimetableDivId] = useState('')
+  const [timetableSemester, setTimetableSemester] = useState(1)
   const [timetableSlots, setTimetableSlots] = useState([])
   const [teachersList, setTeachersList] = useState([])
   const [loadingTimetable, setLoadingTimetable] = useState(false)
@@ -95,14 +96,24 @@ export default function AcademicPanel() {
     teacher_id: '',
     room_number: 'Room 101',
     is_lab: false,
+    semester: 1,
+    academic_year: '2026-27',
   })
   const [savingSlot, setSavingSlot] = useState(false)
   const [conflictError, setConflictError] = useState('')
   const [smdlLoading, setSmdlLoading] = useState(false)
 
+  // Semester Switch State
+  const [showSwitchModal, setShowSwitchModal] = useState(false)
+  const [switchTargetDiv, setSwitchTargetDiv] = useState(null)
+  const [switchSemesterNum, setSwitchSemesterNum] = useState(2)
+  const [switchNotes, setSwitchNotes] = useState('')
+  const [switchingSemester, setSwitchingSemester] = useState(false)
+
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('ALL')
+  const [subjectSemesterFilter, setSubjectSemesterFilter] = useState('ALL')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -118,7 +129,12 @@ export default function AcademicPanel() {
       setCourses(cList)
       setDivisions(dList)
       setSubjects(sList)
-      setTimetableDivId(prev => prev || dList[0]?.id || '')
+      setTimetableDivId(prev => {
+        const activeId = prev || dList[0]?.id || ''
+        const chosen = dList.find(d => d.id === activeId)
+        if (chosen) setTimetableSemester(chosen.current_semester || 1)
+        return activeId
+      })
     } catch {
       toast.error('Failed to load academic structure')
     } finally {
@@ -126,18 +142,19 @@ export default function AcademicPanel() {
     }
   }, [])
 
-  const fetchTimetable = useCallback(async (divId) => {
+  const fetchTimetable = useCallback(async (divId, semesterNum) => {
     if (!divId) return
     setLoadingTimetable(true)
     try {
-      const { data } = await api.get(`/academic/timetable/${divId}`)
+      const sem = semesterNum !== undefined ? semesterNum : timetableSemester
+      const { data } = await api.get(`/academic/timetable/${divId}?semester=${sem}`)
       setTimetableSlots(data.data?.slots || [])
     } catch {
       toast.error('Failed to load timetable')
     } finally {
       setLoadingTimetable(false)
     }
-  }, [])
+  }, [timetableSemester])
 
   const fetchTeachersList = useCallback(async () => {
     try {
@@ -169,10 +186,12 @@ export default function AcademicPanel() {
       await api.post('/academic/timetable', {
         ...slotForm,
         division_id: timetableDivId,
+        semester: Number(slotForm.semester || timetableSemester || 1),
+        academic_year: slotForm.academic_year || '2026-27',
       })
       toast.success(slotForm.id ? 'Slot updated successfully! ✅' : 'Slot added to timetable! ✅')
       setShowSlotModal(false)
-      fetchTimetable(timetableDivId)
+      fetchTimetable(timetableDivId, timetableSemester)
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to save timetable slot'
       setConflictError(msg)
@@ -187,7 +206,7 @@ export default function AcademicPanel() {
     try {
       await api.delete(`/academic/timetable/${id}`)
       toast.success('Slot removed from timetable')
-      setTimetableSlots(ts => ts.filter(s => s.id !== id))
+      fetchTimetable(timetableDivId, timetableSemester)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete slot')
     }
@@ -195,12 +214,15 @@ export default function AcademicPanel() {
 
   async function handleLoadSmdlMatrix() {
     if (!timetableDivId) return toast.error('Select a division first')
-    if (!window.confirm('Populate official SMDL 14-subject timetable for this division? This will schedule Monday through Saturday slots.')) return
+    if (!window.confirm(`Populate official SMDL 14-subject timetable for this division (Semester ${timetableSemester})? This will schedule Monday through Saturday slots.`)) return
     setSmdlLoading(true)
     try {
-      const { data } = await api.post('/academic/timetable/load-smdl-matrix', { division_id: timetableDivId })
+      const { data } = await api.post('/academic/timetable/load-smdl-matrix', {
+        division_id: timetableDivId,
+        semester: timetableSemester
+      })
       toast.success(data.message || 'Official SMDL Timetable Loaded! ⚡')
-      fetchTimetable(timetableDivId)
+      fetchTimetable(timetableDivId, timetableSemester)
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to load timetable matrix')
     } finally {
@@ -266,11 +288,12 @@ export default function AcademicPanel() {
   const filteredSubjects = useMemo(() => {
     return subjects.filter(s => {
       const matchesCourse = selectedCourseFilter === 'ALL' || s.divisions?.course_id === selectedCourseFilter
+      const matchesSem = subjectSemesterFilter === 'ALL' || Number(s.semester || 1) === Number(subjectSemesterFilter)
       const q = searchQuery.toLowerCase().trim()
       const matchesSearch = !q || s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q) || s.divisions?.name?.toLowerCase().includes(q)
-      return matchesCourse && matchesSearch
+      return matchesCourse && matchesSem && matchesSearch
     })
-  }, [subjects, selectedCourseFilter, searchQuery])
+  }, [subjects, selectedCourseFilter, subjectSemesterFilter, searchQuery])
 
   // Filtered divisions based on search & course filter
   const filteredDivisions = useMemo(() => {
@@ -353,6 +376,7 @@ export default function AcademicPanel() {
 
     setSavingSubject(true)
     try {
+      const sem = Number(subjectForm.semester || 1)
       if (subjectForm.division_id === 'ALL_IN_COURSE' && subjectForm.course_id) {
         const targetDivs = divisions.filter(d => d.course_id === subjectForm.course_id).map(d => d.id)
         if (targetDivs.length === 0) {
@@ -362,7 +386,7 @@ export default function AcademicPanel() {
         }
         await api.post('/academic/subjects/batch', {
           division_ids: targetDivs,
-          subjects: [{ name: subjectForm.name, code: subjectForm.code }]
+          subjects: [{ name: subjectForm.name, code: subjectForm.code, semester: sem }]
         })
         toast.success(`Subject assigned to ${targetDivs.length} divisions!`)
       } else {
@@ -374,18 +398,43 @@ export default function AcademicPanel() {
         await api.post('/academic/subjects', {
           name: subjectForm.name,
           code: subjectForm.code,
-          division_id: subjectForm.division_id
+          division_id: subjectForm.division_id,
+          semester: sem,
         })
         toast.success('Subject created successfully!')
       }
 
       setShowSubjectModal(false)
-      setSubjectForm({ course_id: '', division_id: '', name: '', code: '' })
+      setSubjectForm({ course_id: '', division_id: '', name: '', code: '', semester: 1 })
       fetchData()
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to create subject')
     } finally {
       setSavingSubject(false)
+    }
+  }
+
+  async function handleSwitchSemester(e) {
+    e?.preventDefault()
+    if (!switchTargetDiv) return
+    setSwitchingSemester(true)
+    try {
+      await api.post(`/academic/divisions/${switchTargetDiv.id}/switch-semester`, {
+        new_semester: Number(switchSemesterNum),
+        academic_year: '2026-27',
+        notes: switchNotes,
+      })
+      toast.success(`Division "${switchTargetDiv.name}" switched to Semester ${switchSemesterNum}! 🎓`)
+      setShowSwitchModal(false)
+      setSwitchNotes('')
+      if (timetableDivId === switchTargetDiv.id) {
+        setTimetableSemester(Number(switchSemesterNum))
+      }
+      fetchData()
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to switch semester')
+    } finally {
+      setSwitchingSemester(false)
     }
   }
 
@@ -695,6 +744,7 @@ export default function AcademicPanel() {
                       <th className="py-3 px-4 w-12">#</th>
                       <th className="py-3 px-4">Class & Division</th>
                       <th className="py-3 px-4">Academic Year</th>
+                      <th className="py-3 px-4">Active Semester</th>
                       <th className="py-3 px-4">Section</th>
                       <th className="py-3 px-4">Associated Degree</th>
                       <th className="py-3 px-4">Curriculum</th>
@@ -712,6 +762,12 @@ export default function AcademicPanel() {
                           <Badge variant="brand">{d.name}</Badge>
                         </td>
                         <td className="py-3 px-4">
+                          <span className="inline-flex items-center gap-1 font-bold text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                            <GraduationCap size={12} />
+                            Sem {d.current_semester || 1}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
                           <span className="font-mono text-ink bg-bg border border-line px-2 py-0.5 rounded text-xs font-medium">
                             Div {d.division_name}
                           </span>
@@ -723,19 +779,33 @@ export default function AcademicPanel() {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => handleDeleteDivision(d.id, `${d.name} Div ${d.division_name}`)}
-                            className="text-muted hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors inline-flex items-center"
-                            title="Delete division"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => {
+                                setSwitchTargetDiv(d)
+                                setSwitchSemesterNum(Number(d.current_semester || 1) < 6 ? Number(d.current_semester || 1) + 1 : 1)
+                                setSwitchNotes('')
+                                setShowSwitchModal(true)
+                              }}
+                              className="text-brand hover:text-brand-dark p-1.5 rounded-md hover:bg-brand/10 transition-colors inline-flex items-center gap-1 text-xs font-semibold cursor-pointer"
+                              title="Switch active semester"
+                            >
+                              <RefreshCw size={12} /> Switch Sem
+                            </button>
+                            <button
+                              onClick={() => handleDeleteDivision(d.id, `${d.name} Div ${d.division_name}`)}
+                              className="text-muted hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors inline-flex items-center cursor-pointer"
+                              title="Delete division"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
                     {filteredDivisions.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-muted text-xs">
+                        <td colSpan={8} className="text-center py-12 text-muted text-xs">
                           No divisions found matching criteria
                         </td>
                       </tr>
@@ -748,65 +818,97 @@ export default function AcademicPanel() {
 
           {/* ═══════════ TAB 3: SUBJECTS ═══════════ */}
           {tab === 'SUBJECTS' && (
-            <Card className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
-                      <th className="py-3 px-4 w-12">#</th>
-                      <th className="py-3 px-4">Subject Code</th>
-                      <th className="py-3 px-4">Curriculum Subject Name</th>
-                      <th className="py-3 px-4">Degree Course</th>
-                      <th className="py-3 px-4">Assigned Division</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {filteredSubjects.map((s, idx) => (
-                      <tr key={s.id} className="hover:bg-bg/40 transition-colors">
-                        <td className="py-3 px-4 text-muted text-xs font-mono">{idx + 1}</td>
-                        <td className="py-3 px-4">
-                          <span className="font-mono text-brand bg-brand/10 border border-brand/20 px-2.5 py-0.5 rounded text-xs font-bold">
-                            {s.code}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-semibold text-ink">
-                          {s.name}
-                        </td>
-                        <td className="py-3 px-4 text-muted text-xs">
-                          {s.divisions?.courses?.name || 'General Degree'}
-                        </td>
-                        <td className="py-3 px-4 text-xs">
-                          {s.divisions ? (
-                            <Badge variant="brand">
-                              {s.divisions.name} - Div {s.divisions.division_name}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted italic">All Divisions</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <button
-                            onClick={() => handleDeleteSubject(s.id, s.name)}
-                            className="text-muted hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors inline-flex items-center"
-                            title="Delete subject"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredSubjects.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="text-center py-12 text-muted text-xs">
-                          No curriculum subjects found matching criteria
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+            <div className="space-y-3">
+              {/* Semester Filter Pills */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-surface p-2.5 rounded-xl border border-line">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-muted font-semibold mr-1">Semester:</span>
+                  {['ALL', '1', '2', '3', '4', '5', '6'].map(sem => (
+                    <button
+                      key={sem}
+                      type="button"
+                      onClick={() => setSubjectSemesterFilter(sem)}
+                      className={`px-2.5 py-1 rounded-md font-semibold text-xs transition-all cursor-pointer ${
+                        subjectSemesterFilter === sem
+                          ? 'bg-brand text-white shadow-2xs'
+                          : 'bg-bg text-muted hover:text-ink hover:bg-surface border border-line'
+                      }`}
+                    >
+                      {sem === 'ALL' ? 'All Semesters' : `Sem ${sem}`}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-muted font-mono">
+                  Showing {filteredSubjects.length} subjects
+                </span>
               </div>
-            </Card>
+
+              <Card className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-line bg-bg/50 text-xs font-semibold text-muted uppercase tracking-wider">
+                        <th className="py-3 px-4 w-12">#</th>
+                        <th className="py-3 px-4">Subject Code</th>
+                        <th className="py-3 px-4">Curriculum Subject Name</th>
+                        <th className="py-3 px-4">Semester</th>
+                        <th className="py-3 px-4">Degree Course</th>
+                        <th className="py-3 px-4">Assigned Division</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                      {filteredSubjects.map((s, idx) => (
+                        <tr key={s.id} className="hover:bg-bg/40 transition-colors">
+                          <td className="py-3 px-4 text-muted text-xs font-mono">{idx + 1}</td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono text-brand bg-brand/10 border border-brand/20 px-2.5 py-0.5 rounded text-xs font-bold">
+                              {s.code}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-ink">
+                            {s.name}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-semibold text-xs text-brand bg-brand/10 border border-brand/20 px-2 py-0.5 rounded">
+                              Sem {s.semester || 1}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-muted text-xs">
+                            {s.divisions?.courses?.name || 'General Degree'}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {s.divisions ? (
+                              <Badge variant="brand">
+                                {s.divisions.name} - Div {s.divisions.division_name}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted italic">All Divisions</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              onClick={() => handleDeleteSubject(s.id, s.name)}
+                              className="text-muted hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition-colors inline-flex items-center"
+                              title="Delete subject"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredSubjects.length === 0 && (
+                        <tr>
+                          <td colSpan={7} className="text-center py-12 text-muted text-xs">
+                            No curriculum subjects found matching criteria
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
           )}
 
           {/* ═══════════ TAB 4: WEEKLY TIMETABLE BUILDER ═══════════ */}
@@ -816,14 +918,18 @@ export default function AcademicPanel() {
               <Card className="p-4 sm:p-5">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-muted text-xs font-semibold">Select Division:</span>
+                    <span className="text-muted text-xs font-semibold">Division:</span>
                     <select
                       value={timetableDivId}
                       onChange={e => {
-                        setTimetableDivId(e.target.value)
-                        fetchTimetable(e.target.value)
+                        const newDivId = e.target.value
+                        setTimetableDivId(newDivId)
+                        const matchedDiv = divisions.find(d => d.id === newDivId)
+                        const currentSem = matchedDiv?.current_semester || 1
+                        setTimetableSemester(currentSem)
+                        fetchTimetable(newDivId, currentSem)
                       }}
-                      className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer w-64"
+                      className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer w-60"
                     >
                       {divisions.map(d => (
                         <option key={d.id} value={d.id}>
@@ -832,10 +938,31 @@ export default function AcademicPanel() {
                       ))}
                     </select>
 
+                    <span className="text-muted text-xs font-semibold">Semester:</span>
+                    <select
+                      value={timetableSemester}
+                      onChange={e => {
+                        const sem = Number(e.target.value)
+                        setTimetableSemester(sem)
+                        fetchTimetable(timetableDivId, sem)
+                      }}
+                      className="px-3 py-2 text-xs rounded-lg border border-line bg-surface text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer w-36"
+                    >
+                      {[1, 2, 3, 4, 5, 6].map(sem => {
+                        const activeDiv = divisions.find(d => d.id === timetableDivId)
+                        const isCurrent = (activeDiv?.current_semester || 1) === sem
+                        return (
+                          <option key={sem} value={sem}>
+                            Sem {sem} {isCurrent ? '★ (Active)' : ''}
+                          </option>
+                        )
+                      })}
+                    </select>
+
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetchTimetable(timetableDivId)}
+                      onClick={() => fetchTimetable(timetableDivId, timetableSemester)}
                       className="p-2"
                       title="Refresh schedule"
                     >
@@ -859,7 +986,7 @@ export default function AcademicPanel() {
                       variant="primary"
                       size="sm"
                       onClick={() => {
-                        const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
+                        const matchedSubjects = subjects.filter(s => (!s.division_id || s.division_id === timetableDivId) && (!s.semester || s.semester === timetableSemester))
                         setSlotForm({
                           id: null,
                           day_of_week: 'Monday',
@@ -869,6 +996,8 @@ export default function AcademicPanel() {
                           teacher_id: teachersList[0]?.id || '',
                           room_number: 'Room 101',
                           is_lab: false,
+                          semester: timetableSemester,
+                          academic_year: '2026-27',
                         })
                         setConflictError('')
                         setShowSlotModal(true)
@@ -929,6 +1058,8 @@ export default function AcademicPanel() {
                                         teacher_id: slot.teacher?.id || slot.teacher_id || '',
                                         room_number: slot.room_number || 'Room 101',
                                         is_lab: !!slot.is_lab,
+                                        semester: slot.semester || timetableSemester,
+                                        academic_year: slot.academic_year || '2026-27',
                                       })
                                       setConflictError('')
                                       setShowSlotModal(true)
@@ -982,7 +1113,7 @@ export default function AcademicPanel() {
                               <p className="text-[11px] mb-2">No lectures scheduled</p>
                               <button
                                 onClick={() => {
-                                  const matchedSubjects = subjects.filter(s => !s.division_id || s.division_id === timetableDivId)
+                                  const matchedSubjects = subjects.filter(s => (!s.division_id || s.division_id === timetableDivId) && (!s.semester || s.semester === timetableSemester))
                                   setSlotForm({
                                     id: null,
                                     day_of_week: day,
@@ -992,6 +1123,8 @@ export default function AcademicPanel() {
                                     teacher_id: teachersList[0]?.id || '',
                                     room_number: 'Room 101',
                                     is_lab: false,
+                                    semester: timetableSemester,
+                                    academic_year: '2026-27',
                                   })
                                   setConflictError('')
                                   setShowSlotModal(true)
@@ -1223,7 +1356,7 @@ export default function AcademicPanel() {
         maxWidth="max-w-xl"
       >
         <form onSubmit={handleCreateSubject} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-ink">Degree Program *</label>
               <select
@@ -1250,7 +1383,20 @@ export default function AcademicPanel() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-ink">Assigned Scope / Division *</label>
+              <label className="text-xs font-semibold text-ink">Semester (1-6) *</label>
+              <select
+                className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+                value={subjectForm.semester || 1}
+                onChange={e => setSubjectForm(p => ({ ...p, semester: Number(e.target.value) }))}
+              >
+                {[1, 2, 3, 4, 5, 6].map(s => (
+                  <option key={s} value={s}>Semester {s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink">Assigned Division *</label>
               <select
                 className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
                 value={subjectForm.division_id}
@@ -1558,6 +1704,14 @@ export default function AcademicPanel() {
           )}
 
           <form onSubmit={handleSaveSlot} className="space-y-4">
+            <div className="p-2.5 rounded-lg bg-bg border border-line flex items-center justify-between text-xs">
+              <span className="text-muted font-medium">Target Schedule:</span>
+              <span className="font-bold text-brand flex items-center gap-1.5">
+                <GraduationCap size={14} />
+                Semester {slotForm.semester || timetableSemester} ({slotForm.academic_year || '2026-27'})
+              </span>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-ink">Day of Week:</label>
@@ -1620,7 +1774,7 @@ export default function AcademicPanel() {
               >
                 <option value="">-- Choose Subject --</option>
                 {subjects
-                  .filter(s => !s.division_id || s.division_id === timetableDivId)
+                  .filter(s => (!s.division_id || s.division_id === timetableDivId) && (!s.semester || s.semester === (slotForm.semester || timetableSemester)))
                   .map(s => (
                     <option key={s.id} value={s.id}>
                       {s.code ? `[${s.code}] ` : ''}{s.name}
@@ -1668,6 +1822,73 @@ export default function AcademicPanel() {
             </div>
           </form>
         </div>
+      </Modal>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL 6: SWITCH ACTIVE SEMESTER
+      ══════════════════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={showSwitchModal}
+        onClose={() => setShowSwitchModal(false)}
+        title={`Switch Active Semester — ${switchTargetDiv?.name || 'Division'}`}
+        description="Promote or transition this class division to the next semester. Future automated lectures will follow the new semester's timetable."
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handleSwitchSemester} className="space-y-4">
+          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-200">
+            <p className="font-semibold flex items-center gap-1.5 mb-1">
+              <AlertCircle size={14} className="shrink-0" />
+              Current Active Semester: Sem {switchTargetDiv?.current_semester || 1}
+            </p>
+            <p className="text-[11px] opacity-90 leading-relaxed">
+              Past attendance and lecture records will remain completely preserved under their original semester. New automated daily lectures will be generated from the selected target semester timetable.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Target New Semester *</label>
+            <select
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-semibold focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none cursor-pointer"
+              value={switchSemesterNum}
+              onChange={e => setSwitchSemesterNum(Number(e.target.value))}
+              required
+            >
+              {[1, 2, 3, 4, 5, 6].map(s => (
+                <option key={s} value={s}>
+                  Semester {s} {s === (switchTargetDiv?.current_semester || 1) ? '(Currently Active)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-ink">Change Notes / Reason (Optional)</label>
+            <input
+              type="text"
+              className="w-full text-xs p-2.5 rounded-lg border border-line bg-surface text-ink font-medium focus:border-brand focus:ring-1 focus:ring-brand/20 outline-none"
+              placeholder="e.g. Regular progression to Sem 2"
+              value={switchNotes}
+              onChange={e => setSwitchNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-line">
+            <Button type="button" variant="outline" size="sm" onClick={() => setShowSwitchModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" size="sm" disabled={switchingSemester} className="gap-1.5">
+              {switchingSemester ? (
+                <>
+                  <Loader2 size={13} className="animate-spin" /> Switching...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={13} /> Confirm Switch to Sem {switchSemesterNum}
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

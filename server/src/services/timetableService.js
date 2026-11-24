@@ -166,10 +166,22 @@ async function performSyncTodayLectures(targetDateStr) {
   const dateStr = targetDateStr ? getKolkataDateString(targetDateStr) : getKolkataDateString();
   const dayName = getKolkataDayName(dateStr);
 
-  // 1. Load live multi-division timetable slots for today's weekday
+  // 1. Fetch active divisions with their current_semester
+  const { data: divisionsList, error: divListErr } = await supabaseAdmin
+    .from('divisions')
+    .select('id, name, division_name, current_semester');
+
+  const divisionSemesterMap = new Map();
+  if (!divListErr && divisionsList) {
+    divisionsList.forEach((d) => {
+      divisionSemesterMap.set(d.id, d.current_semester || 1);
+    });
+  }
+
+  // 2. Load live multi-division timetable slots for today's weekday
   const { data: dayTimetableSlots, error: ttErr } = await supabaseAdmin
     .from('division_timetables')
-    .select('id, division_id, day_of_week, start_time, end_time, subject_id, teacher_id, is_lab, subject:subjects(id, name, code), teacher:teachers(id, user_id)')
+    .select('id, division_id, semester, academic_year, day_of_week, start_time, end_time, subject_id, teacher_id, is_lab, subject:subjects(id, name, code), teacher:teachers(id, user_id)')
     .ilike('day_of_week', dayName)
     .order('start_time', { ascending: true });
 
@@ -181,14 +193,14 @@ async function performSyncTodayLectures(targetDateStr) {
     console.warn('[TimetableSync] division_timetables table unavailable; checking legacy fallback:', ttErr.message);
   }
 
-  // 2. Check which lectures already exist across all divisions for target date
+  // 3. Check which lectures already exist across all divisions for target date
   let { data: existingLectures, error: existErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, subject_id, teacher_id, division_id, start_time, end_time, status, topic, lecture_date')
+    .select('id, subject_id, teacher_id, division_id, semester, academic_year, start_time, end_time, status, topic, lecture_date')
     .eq('lecture_date', dateStr);
 
-  if (existErr && (existErr.code === '42703' || String(existErr.message).includes('status'))) {
-    // Graceful fallback if lectures.status column not yet migrated in Supabase
+  if (existErr && (existErr.code === '42703' || String(existErr.message).includes('status') || String(existErr.message).includes('semester'))) {
+    // Graceful fallback if lectures columns not yet populated
     const retry = await supabaseAdmin
       .from('lectures')
       .select('id, subject_id, teacher_id, division_id, start_time, end_time, topic, lecture_date')
@@ -212,14 +224,23 @@ async function performSyncTodayLectures(targetDateStr) {
     occupiedTimeSlots.add(`${l.division_id}-${normTime}`);
   }
 
-  // Build unified candidate list from multi-division timetable + FYBSc CS legacy fallback (when absent)
+  // Build unified candidate list strictly matching each division's active current_semester
   const candidateSlots = [];
   for (const slot of dayTimetableSlots || []) {
     if (!slot.division_id || !slot.subject_id) continue;
+
+    const activeSemester = divisionSemesterMap.get(slot.division_id) || 1;
+    const slotSemester = slot.semester !== undefined && slot.semester !== null ? Number(slot.semester) : 1;
+    if (slotSemester !== activeSemester) {
+      continue; // Skip slots from non-active semesters
+    }
+
     candidateSlots.push({
       division_id: slot.division_id,
       subject_id: slot.subject_id,
       teacher_id: slot.teacher_id || null,
+      semester: slotSemester,
+      academic_year: slot.academic_year || '2026-27',
       start_time: slot.start_time,
       end_time: slot.end_time,
       topic: slot.subject?.name
@@ -257,6 +278,8 @@ async function performSyncTodayLectures(targetDateStr) {
               division_id: division.id,
               subject_id: subj.id,
               teacher_id: teacher?.id || null,
+              semester: division.current_semester || 1,
+              academic_year: '2026-27',
               start_time: slot.start_time,
               end_time: slot.end_time,
               topic: `${item.name} (${item.type})`,
@@ -339,6 +362,8 @@ async function performSyncTodayLectures(targetDateStr) {
           subject_id: slot.subject_id,
           teacher_id: slot.teacher_id,
           division_id: slot.division_id,
+          semester: slot.semester || 1,
+          academic_year: slot.academic_year || '2026-27',
           lecture_date: dateStr,
           start_time: slot.start_time,
           end_time: slot.end_time,
@@ -352,9 +377,9 @@ async function performSyncTodayLectures(targetDateStr) {
 
   if (toInsert.length > 0) {
     let { error: insertErr } = await supabaseAdmin.from('lectures').insert(toInsert);
-    if (insertErr && (insertErr.code === '42703' || String(insertErr.message).includes('status'))) {
-      // Fallback: strip status column if not present in Supabase table schema
-      const withoutStatus = toInsert.map(({ status, ...rest }) => rest);
+    if (insertErr && (insertErr.code === '42703' || String(insertErr.message).includes('status') || String(insertErr.message).includes('semester'))) {
+      // Fallback: strip optional columns if not present in older schemas
+      const withoutStatus = toInsert.map(({ status, semester, academic_year, ...rest }) => rest);
       const retryInsert = await supabaseAdmin.from('lectures').insert(withoutStatus);
       insertErr = retryInsert.error;
     }

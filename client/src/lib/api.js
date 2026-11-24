@@ -103,7 +103,7 @@ export const isTrustedDestination = (uri) => {
       if (parsed.protocol === 'https:') {
         return true
       }
-      if (!isProd && parsed.protocol === 'http:' && isPrivateLanHost(parsed.hostname)) {
+      if (parsed.protocol === 'http:' && isPrivateLanHost(parsed.hostname)) {
         return true
       }
       return false
@@ -138,20 +138,11 @@ export const getBaseURL = () => {
       if (custom) {
         const normalized = normalizeApiUrl(custom)
         if (normalized) {
-          try {
-            const parsed = new URL(normalized)
-            // If saved URL is a local private LAN IP, purge it so app connects to Render cloud
-            if (isPrivateLanHost(parsed.hostname)) {
-              localStorage.removeItem('smdl_api_url')
-            } else {
-              return normalized
-            }
-          } catch (_e) {
-            localStorage.removeItem('smdl_api_url')
-          }
+          return normalized
         }
       }
     }
+    // Default fallback in native: production cloud API
     return DEFAULT_FALLBACK_API
   }
 

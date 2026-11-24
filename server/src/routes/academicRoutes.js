@@ -17,6 +17,7 @@ const {
   deleteTimetableSlot,
   loadSmdlTimetableMatrix,
   getTeachersList,
+  switchDivisionSemester,
 } = require('../controllers/academicController');
 
 const router = express.Router();
@@ -37,6 +38,7 @@ router.delete('/courses/:id', protect, restrictTo('admin'), restrictToActiveOnly
 
 router.post('/divisions', protect, restrictTo('admin'), restrictToActiveOnly, createDivision);
 router.delete('/divisions/:id', protect, restrictTo('admin'), restrictToActiveOnly, deleteDivision);
+router.post('/divisions/:id/switch-semester', protect, restrictTo('admin'), restrictToActiveOnly, switchDivisionSemester);
 
 router.post('/subjects', protect, restrictTo('admin'), restrictToActiveOnly, createSubject);
 router.post('/subjects/batch', protect, restrictTo('admin'), restrictToActiveOnly, batchCreateSubjects);
