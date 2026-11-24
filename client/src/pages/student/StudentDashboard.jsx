@@ -1,4 +1,4 @@
-import { useEffect, useState, memo, lazy, Suspense, useRef } from 'react'
+import { useEffect, useState, useCallback, memo, lazy, Suspense, useRef } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import DashboardLayout from '../../components/layout/DashboardLayout'
 import { useAuth } from '../../context/AuthContext'
