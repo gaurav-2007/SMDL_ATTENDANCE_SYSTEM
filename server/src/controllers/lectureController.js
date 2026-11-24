@@ -1674,6 +1674,8 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
       // Include any extra/replacement non-cancelled lectures in this division not bound to a slot
       for (const l of divLectures) {
         if (consumedLectureIds.has(l.id) || isLectureCancelled(l)) continue;
+        const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : null;
+        if (lSem !== null && Number(activeSemester) !== lSem) continue;
         const att = attendanceByLectureId[l.id];
         liveClasses.push({
           id: l.id,
@@ -1714,14 +1716,16 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
         end_time,
         status,
         topic,
+        semester,
         subject:subjects(id, name, code),
         teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
       `)
       .eq('lecture_date', todayStr)
       .eq('division_id', divisionId)
+      .eq('semester', activeSemester)
       .order('start_time', { ascending: true });
 
-    if (fallbackLecErr && isStatusColumnError(fallbackLecErr)) {
+    if (fallbackLecErr && (isStatusColumnError(fallbackLecErr) || String(fallbackLecErr.message).includes('semester'))) {
       const retry = await supabaseAdmin
         .from('lectures')
         .select(`
@@ -1730,13 +1734,17 @@ const getStudentTodayClasses = asyncHandler(async (req, res) => {
           start_time,
           end_time,
           topic,
+          semester,
           subject:subjects(id, name, code),
           teacher:teachers(id, teacher_id, user:users!teachers_user_id_fkey(id, full_name))
         `)
         .eq('lecture_date', todayStr)
         .eq('division_id', divisionId)
         .order('start_time', { ascending: true });
-      lectures = retry.data;
+      lectures = (retry.data || []).filter(l => {
+        const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : 1;
+        return lSem === Number(activeSemester);
+      });
       fallbackLecErr = retry.error;
     }
 

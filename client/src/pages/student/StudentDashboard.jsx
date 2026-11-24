@@ -40,12 +40,13 @@ function useMyStats(selectedSemester) {
     const key = sem ? String(sem) : 'active'
     try {
       const semParam = sem ? `?semester=${sem}` : ''
-      const [statsRes, subjRes] = await Promise.all([
-        api.get(`/attendance/my-stats${semParam}`),
-        api.get(`/academic/subjects${semParam}`),
-      ])
+      const statsRes = await api.get(`/attendance/my-stats${semParam}`)
       if (!mounted.current) return
       const statsData = statsRes.data?.data || null
+      const targetSem = sem || statsData?.student_info?.selected_semester || statsData?.student_info?.current_semester || 1
+      const divId = statsData?.student_info?.division_id
+      const subjRes = await api.get(`/academic/subjects?semester=${targetSem}${divId ? `&division_id=${divId}` : ''}`)
+      if (!mounted.current) return
       const count = subjRes.data?.data?.subjects?.length || 0
       statsCacheBySemester.set(key, { stats: statsData, subjectCount: count })
       setData(statsData)
@@ -119,9 +120,12 @@ const MetricCard = memo(function MetricCard({ label, value, subline, Icon, varia
 function StudentOverview() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const { data, loading: statsLoading, subjectCount } = useMyStats()
+  const [selectedSem, setSelectedSem] = useState(null)
+  const { data, loading: statsLoading, subjectCount } = useMyStats(selectedSem)
   const stats = data?.stats || {}
   const info = data?.student_info || {}
+  const currentSem = info.current_semester || 1
+  const displaySem = selectedSem || currentSem
   const [profileModalOpen, setProfileModalOpen] = useState(false)
 
   const [todaySchedule, setTodaySchedule] = useState({ loading: true, classes: [], dayName: '', date: '', isHoliday: false })
@@ -150,8 +154,9 @@ function StudentOverview() {
   // Find active lecture if attendance window is currently open
   const activeLecture = todaySchedule.classes.find(cls => !!cls.can_mark_attendance && !cls.is_attended && cls.attendance_status !== 'PRESENT')
 
-  const overallPct = stats.percentage ?? 0
-  const isSafe = overallPct >= 75
+  const isFreshStart = Boolean(stats.fresh_start || stats.total_lectures === 0)
+  const overallPct = stats.percentage ?? (isFreshStart ? 100 : 0)
+  const isSafe = isFreshStart ? true : overallPct >= 75
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -173,10 +178,46 @@ function StudentOverview() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge variant={isSafe ? 'present' : 'absent'} size="md">
-            {isSafe ? 'Status: Safe (≥75%)' : 'Status: Defaulter (<75%)'}
+          <Badge variant={isFreshStart ? 'brand' : isSafe ? 'present' : 'absent'} size="md">
+            {isFreshStart ? 'Status: Fresh Start' : isSafe ? 'Status: Safe (≥75%)' : 'Status: Defaulter (<75%)'}
           </Badge>
         </div>
+      </div>
+
+      {/* ── SEMESTER SELECTOR PILLS (Active vs Past Archive) ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-surface border border-line rounded-xl">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {[1, 2, 3, 4, 5, 6].filter(s => s <= currentSem).map(s => {
+            const isSelected = (selectedSem === s) || (!selectedSem && s === currentSem)
+            const isCurrentActive = s === currentSem
+            return (
+              <button
+                key={s}
+                onClick={() => setSelectedSem(s === currentSem ? null : s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  isSelected
+                    ? 'bg-brand text-white shadow-xs'
+                    : 'bg-bg text-muted hover:text-ink border border-line'
+                }`}
+              >
+                <span>Sem {s}</span>
+                {isCurrentActive ? (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${isSelected ? 'bg-white/20 text-white' : 'bg-brand/10 text-brand'}`}>
+                    Active
+                  </span>
+                ) : (
+                  <span className="text-[10px] opacity-70">
+                    Archive
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        <span className="text-xs text-muted hidden sm:inline">
+          {displaySem === currentSem ? 'Showing Active Semester Data' : `Viewing Semester ${displaySem} Archive`}
+        </span>
       </div>
 
       {/* ── LIVE LECTURE NOW HERO CARD (Only visible when attendance window is active) ── */}
@@ -226,17 +267,21 @@ function StudentOverview() {
         {/* Visual Progress Gauge Card */}
         <Card className="p-5 flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted">Overall Attendance</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+              {displaySem === currentSem ? 'Overall Attendance' : `Semester ${displaySem} Attendance`}
+            </span>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold font-display text-ink tabular-nums">
                 {statsLoading ? '—' : `${overallPct}%`}
               </span>
-              <Badge variant={isSafe ? 'present' : 'absent'} size="sm">
-                {isSafe ? 'Eligible for Exams' : 'Low Attendance'}
+              <Badge variant={isFreshStart ? 'brand' : isSafe ? 'present' : 'absent'} size="sm">
+                {isFreshStart ? 'Fresh Start' : isSafe ? 'Eligible for Exams' : 'Low Attendance'}
               </Badge>
             </div>
             <p className="text-xs text-muted pt-1">
-              {stats.attended ?? 0} attended of {stats.total_lectures ?? 0} total sessions
+              {isFreshStart
+                ? `Semester ${displaySem} commenced · 0 lectures conducted yet`
+                : `${stats.attended ?? 0} attended of ${stats.total_lectures ?? 0} total sessions`}
             </p>
           </div>
 
@@ -253,7 +298,7 @@ function StudentOverview() {
         <MetricCard
           label="Lectures Attended"
           value={statsLoading ? '—' : `${stats.attended ?? 0}/${stats.total_lectures ?? 0}`}
-          subline="Current Semester"
+          subline={isFreshStart ? `Sem ${displaySem} (Fresh Start)` : `Semester ${displaySem}`}
           Icon={ClipboardCheck}
           variant="brand"
           navigateTo="/student/attendance"
@@ -262,15 +307,15 @@ function StudentOverview() {
         <MetricCard
           label="Enrolled Subjects"
           value={subjectCount || '—'}
-          subline="Active Course Curriculum"
+          subline={`Semester ${displaySem} Curriculum`}
           Icon={BookOpen}
           variant="neutral"
           navigateTo="/student/reports"
         />
       </div>
 
-      {/* ── CRITICAL ATTENDANCE ALERT (If below 75%) ── */}
-      {overallPct < 75 && !statsLoading && (
+      {/* ── CRITICAL ATTENDANCE ALERT (If below 75% and NOT fresh start) ── */}
+      {overallPct < 75 && !statsLoading && !isFreshStart && (
         <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/60 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-absent shrink-0 mt-0.5" />
           <div className="text-xs sm:text-sm">

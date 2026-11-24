@@ -1073,12 +1073,11 @@ const getMyStats = asyncHandler(async (req, res) => {
     });
   }
 
-  // 2. Get all non-cancelled lectures for student's division scoped to the selected semester
+  // 2. Get all non-cancelled lectures for student's division scoped strictly to the selected semester
   let query = supabaseAdmin
     .from('lectures')
-    .select('id, topic, status, lecture_date, start_time, semester, academic_year, subject:subjects(name, code, semester)')
-    .eq('division_id', student.division_id)
-    .neq('status', 'CANCELLED');
+    .select('id, topic, lecture_date, start_time, semester, academic_year, subject:subjects(name, code, semester)')
+    .eq('division_id', student.division_id);
 
   if (activeSemester) {
     query = query.eq('semester', activeSemester);
@@ -1086,12 +1085,16 @@ const getMyStats = asyncHandler(async (req, res) => {
 
   let { data: totalLectures, error: totalLecErr } = await query;
 
-  if (totalLecErr && (totalLecErr.code === '42703' || String(totalLecErr.message).includes('status') || String(totalLecErr.message).includes('semester'))) {
+  if (totalLecErr && (totalLecErr.code === '42703' || String(totalLecErr.message).includes('semester'))) {
+    // Graceful fallback if semester column not populated in older database schemas
     const retry = await supabaseAdmin
       .from('lectures')
-      .select('id, topic, lecture_date, start_time, subject:subjects(name, code)')
+      .select('id, topic, lecture_date, start_time, subject:subjects(name, code, semester)')
       .eq('division_id', student.division_id);
-    totalLectures = retry.data;
+    totalLectures = (retry.data || []).filter((l) => {
+      const subSem = l.subject?.semester ? Number(l.subject.semester) : 1;
+      return subSem === Number(activeSemester);
+    });
     totalLecErr = retry.error;
   }
 
@@ -1125,6 +1128,7 @@ const getMyStats = asyncHandler(async (req, res) => {
   const totalCount = activeLectures.length;
   const attendedCount = presentSet.size;
   const percentage = totalCount > 0 ? Math.round((attendedCount / totalCount) * 100) : 100;
+  const isSafe = totalCount === 0 ? true : percentage >= 75;
 
   // History with lecture details
   const history = activeLectures.map((l) => {
@@ -1148,6 +1152,7 @@ const getMyStats = asyncHandler(async (req, res) => {
       student_info: {
         roll_number: student.student_id,
         course: student.courses?.name,
+        division_id: student.division_id,
         division: `${student.divisions?.name} - Div ${student.divisions?.division_name}`,
         current_semester: student.divisions?.current_semester || 1,
         selected_semester: activeSemester,
@@ -1157,7 +1162,8 @@ const getMyStats = asyncHandler(async (req, res) => {
         total_lectures: totalCount,
         attended: attendedCount,
         percentage,
-        is_safe: percentage >= 75,
+        is_safe: isSafe,
+        fresh_start: totalCount === 0,
       },
       history,
     },
