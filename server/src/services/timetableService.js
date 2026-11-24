@@ -219,9 +219,16 @@ async function performSyncTodayLectures(targetDateStr) {
 
   for (const l of existingLectures || []) {
     const normTime = normalizeTimeHHMM(l.start_time);
-    existingBySlot.add(`${l.division_id}-${normTime}-${l.subject_id}`);
-    // Track occupied (division_id, start_time) so cancelled or subject-swapped/proxy slots are not recreated
-    occupiedTimeSlots.add(`${l.division_id}-${normTime}`);
+    const activeSem = divisionSemesterMap.get(l.division_id) || 1;
+    const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : 1;
+
+    // Only consider the slot occupied if it belongs to the division's active semester
+    // so stale uncommenced lectures from an old semester never block the new semester's schedule
+    if (lSem === activeSem) {
+      existingBySlot.add(`${l.division_id}-${normTime}-${l.subject_id}`);
+      // Track occupied (division_id, start_time) so cancelled or subject-swapped/proxy slots are not recreated
+      occupiedTimeSlots.add(`${l.division_id}-${normTime}`);
+    }
   }
 
   // Build unified candidate list strictly matching each division's active current_semester
@@ -410,10 +417,97 @@ async function syncTodayLectures(targetDateStr) {
   return promise;
 }
 
+// Safely reconciles today's lectures when a division's active semester is switched:
+// Preserves historical attended lectures; purges/cancels uncommenced empty lectures
+// of the old semester; regenerates today's schedule from the new semester's timetable.
+async function reconcileTodayLecturesOnSemesterSwitch(divisionId, oldSemester, newSemester, targetDateStr) {
+  const dateStr = targetDateStr ? getKolkataDateString(targetDateStr) : getKolkataDateString();
+
+  try {
+    // 1. Fetch all lectures for this division on target date
+    const { data: divLectures, error: lecErr } = await supabaseAdmin
+      .from('lectures')
+      .select('id, semester, start_time, end_time, topic')
+      .eq('division_id', divisionId)
+      .eq('lecture_date', dateStr);
+
+    if (lecErr) {
+      console.error('[reconcileTodayLecturesOnSemesterSwitch] Error loading lectures:', lecErr.message);
+      return await syncTodayLectures(dateStr);
+    }
+
+    if (divLectures && divLectures.length > 0) {
+      // 2. Identify candidate lectures of the old semester (or non-newSemester)
+      const oldLectures = divLectures.filter((l) => {
+        const sem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : 1;
+        return sem !== Number(newSemester);
+      });
+
+      if (oldLectures.length > 0) {
+        const oldLectureIds = oldLectures.map((l) => l.id);
+
+        // 3. Check which lectures already have attendance marked
+        const { data: attendanceRows, error: attErr } = await supabaseAdmin
+          .from('attendance')
+          .select('lecture_id')
+          .in('lecture_id', oldLectureIds);
+
+        const attendedLectureIds = new Set((attendanceRows || []).map((a) => a.lecture_id));
+
+        // 4. Safely filter for lectures with 0 attendance that have NOT completed
+        const toPurgeIds = [];
+        for (const l of oldLectures) {
+          if (attendedLectureIds.has(l.id)) {
+            // Has attendance records -> MUST PRESERVE as historical record!
+            continue;
+          }
+          const slotStatus = getSlotStatus(l.start_time, l.end_time, dateStr);
+          if (slotStatus === 'COMPLETED' || l.topic?.includes('[COMPLETED]')) {
+            continue;
+          }
+          toPurgeIds.push(l.id);
+        }
+
+        if (toPurgeIds.length > 0) {
+          console.log(`[reconcileTodayLecturesOnSemesterSwitch] Purging ${toPurgeIds.length} uncommenced old-semester lectures for division ${divisionId}:`, toPurgeIds);
+
+          // Clean up any claimed notification logs for these purged lectures
+          await supabaseAdmin
+            .from('lecture_notification_logs')
+            .delete()
+            .in('lecture_id', toPurgeIds);
+
+          // Delete the uncommenced lecture rows
+          const { error: delErr } = await supabaseAdmin
+            .from('lectures')
+            .delete()
+            .in('id', toPurgeIds);
+
+          if (delErr) {
+            console.warn('[reconcileTodayLecturesOnSemesterSwitch] Direct delete failed, marking CANCELLED:', delErr.message);
+            await supabaseAdmin
+              .from('lectures')
+              .update({
+                topic: '[CANCELLED - SEMESTER SWITCH]',
+              })
+              .in('id', toPurgeIds);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[reconcileTodayLecturesOnSemesterSwitch] Unexpected error:', err.message);
+  }
+
+  // 5. Force fresh synchronization of today's timetable for the new active semester
+  return await syncTodayLectures(dateStr);
+}
+
 module.exports = {
   SMDL_TIMETABLE_MATRIX,
   DAY_NAMES,
   getAcademicEntities,
   getSlotStatus,
   syncTodayLectures,
+  reconcileTodayLecturesOnSemesterSwitch,
 };

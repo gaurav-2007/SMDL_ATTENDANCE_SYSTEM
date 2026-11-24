@@ -627,12 +627,12 @@ const switchDivisionSemester = asyncHandler(async (req, res) => {
     notes: notes || `Admin switched division from Sem ${oldSemester} to Sem ${targetSemester}`,
   });
 
-  // 3. Immediately sync today's lectures for the newly active semester
+  // 3. Immediately reconcile today's lectures: purge uncommenced old-semester slots & sync new semester schedule
   try {
-    const { syncTodayLectures } = require('../services/timetableService');
-    await syncTodayLectures();
-  } catch (_e) {
-    // Non-blocking
+    const { reconcileTodayLecturesOnSemesterSwitch } = require('../services/timetableService');
+    await reconcileTodayLecturesOnSemesterSwitch(id, oldSemester, targetSemester);
+  } catch (reconcileErr) {
+    console.error('[switchDivisionSemester] Reconcile error:', reconcileErr.message);
   }
 
   res.json({

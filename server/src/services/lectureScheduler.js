@@ -153,13 +153,14 @@ async function processUpcomingLectureReminders() {
       status,
       topic,
       division_id,
+      semester,
       subject:subjects(id, name, code),
-      division:divisions(id, name, division_name),
+      division:divisions(id, name, division_name, current_semester),
       teacher:teachers(id, teacher_id, user_id)
     `)
     .eq('lecture_date', todayStr);
 
-  if (error && (error.code === '42703' || String(error.message).includes('status'))) {
+  if (error && (error.code === '42703' || String(error.message).includes('status') || String(error.message).includes('semester'))) {
     const retry = await supabaseAdmin
       .from('lectures')
       .select(`
@@ -170,7 +171,7 @@ async function processUpcomingLectureReminders() {
         topic,
         division_id,
         subject:subjects(id, name, code),
-        division:divisions(id, name, division_name),
+        division:divisions(id, name, division_name, current_semester),
         teacher:teachers(id, teacher_id, user_id)
       `)
       .eq('lecture_date', todayStr);
@@ -194,7 +195,19 @@ async function processUpcomingLectureReminders() {
       continue;
     }
 
-    // 2. Strict pre-start window check (never triggers after lecture has started or ended)
+    // 2. Active Semester Guard: Never trigger reminders for lectures belonging to an inactive semester
+    const activeSem = lecture.division?.current_semester !== undefined && lecture.division?.current_semester !== null
+      ? Number(lecture.division.current_semester)
+      : 1;
+    const lectureSem = lecture.semester !== undefined && lecture.semester !== null
+      ? Number(lecture.semester)
+      : 1;
+
+    if (lectureSem !== activeSem) {
+      continue;
+    }
+
+    // 3. Strict pre-start window check (never triggers after lecture has started or ended)
     const startMinutes = timeToMinutes(lecture.start_time);
     const diff = startMinutes - currentMinutes;
 

@@ -690,9 +690,11 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
       end_time,
       status,
       topic,
+      semester,
+      academic_year,
       created_at,
       subject:subjects(id, name, code, division_id),
-      division:divisions(id, name, division_name),
+      division:divisions(id, name, division_name, current_semester),
       teacher:teachers(id, teacher_id, user_id)
     `)
     .eq('lecture_date', targetDateStr)
@@ -710,9 +712,11 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
         start_time,
         end_time,
         topic,
+        semester,
+        academic_year,
         created_at,
         subject:subjects(id, name, code, division_id),
-        division:divisions(id, name, division_name),
+        division:divisions(id, name, division_name, current_semester),
         teacher:teachers(id, teacher_id, user_id)
       `)
       .eq('lecture_date', targetDateStr)
@@ -728,6 +732,22 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
 
   const mapped = await attachTeacherNames(lectures || []);
 
+  // Active Semester Scoping: Filter out uncommenced lectures belonging to an inactive semester
+  const activeMapped = mapped.filter((l) => {
+    const activeSem = l.division?.current_semester !== undefined && l.division?.current_semester !== null
+      ? Number(l.division.current_semester)
+      : null;
+    const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : null;
+    if (activeSem !== null && lSem !== null && lSem !== activeSem) {
+      // Retain completed sessions as historical records for today
+      const st = String(l.status || '').toUpperCase();
+      if (st !== 'COMPLETED' && st !== 'ONGOING') {
+        return false;
+      }
+    }
+    return true;
+  });
+
   let myLectures;
   let accessibleLectures;
   const now = new Date();
@@ -737,7 +757,7 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
       myLectures = [];
       accessibleLectures = [];
     } else {
-      const evaluated = mapped.map((l) => ({
+      const evaluated = activeMapped.map((l) => ({
         item: l,
         access: evaluateTeacherLectureAccess(teacherCtx, l),
       }));
@@ -763,7 +783,7 @@ const getTodaySchedule = asyncHandler(async (req, res) => {
         }));
     }
   } else if (req.user.role === 'admin') {
-    myLectures = mapped.map((l) => ({
+    myLectures = activeMapped.map((l) => ({
       ...l,
       is_owner: true,
       can_manage: true,
