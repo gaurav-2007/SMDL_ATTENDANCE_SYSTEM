@@ -1235,11 +1235,17 @@ const getReportsOverview = asyncHandler(async (req, res) => {
   const lectureIds = activeLectures.map((l) => l.id);
   let attendanceRecords = [];
   if (lectureIds.length > 0) {
-    const { data: att } = await supabaseAdmin
-      .from('attendance')
-      .select('id, lecture_id, student_id, status')
-      .in('lecture_id', lectureIds);
-    attendanceRecords = att || [];
+    const chunkSize = 80;
+    for (let i = 0; i < lectureIds.length; i += chunkSize) {
+      const chunk = lectureIds.slice(i, i + chunkSize);
+      const { data: att } = await supabaseAdmin
+        .from('attendance')
+        .select('id, lecture_id, student_id, status')
+        .in('lecture_id', chunk);
+      if (att && att.length > 0) {
+        attendanceRecords.push(...att);
+      }
+    }
   }
 
   // Count present per student
@@ -1533,20 +1539,26 @@ const getSubjectStudentAttendanceReport = asyncHandler(async (req, res) => {
 
   const enrolledStudents = (rawStudents || []).filter((s) => s.users?.status === 'ACTIVE' || !s.users?.status);
 
-  // 6. Fetch attendance records for all active lectures in this subject
+  // 6. Fetch attendance records for all active lectures in this subject (chunked to prevent HeaderOverflowError)
   let attendanceRecords = [];
   if (activeLectureIds.length > 0) {
-    const { data: attList, error: attErr } = await supabaseAdmin
-      .from('attendance')
-      .select('id, lecture_id, student_id, status, marked_at')
-      .in('lecture_id', activeLectureIds);
+    const chunkSize = 80;
+    for (let i = 0; i < activeLectureIds.length; i += chunkSize) {
+      const chunk = activeLectureIds.slice(i, i + chunkSize);
+      const { data: attList, error: attErr } = await supabaseAdmin
+        .from('attendance')
+        .select('id, lecture_id, student_id, status, marked_at')
+        .in('lecture_id', chunk);
 
-    if (attErr) {
-      console.error('[attendanceController] getSubjectStudentAttendanceReport attendance error:', attErr.message);
-      res.status(500);
-      throw new Error('Failed to load attendance records');
+      if (attErr) {
+        console.error('[attendanceController] getSubjectStudentAttendanceReport attendance error:', attErr.message);
+        res.status(500);
+        throw new Error('Failed to load attendance records');
+      }
+      if (attList && attList.length > 0) {
+        attendanceRecords.push(...attList);
+      }
     }
-    attendanceRecords = attList || [];
   }
 
   const studentPresentMap = new Map();
