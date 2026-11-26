@@ -23,8 +23,11 @@ export default function TeacherLectureReview() {
   const [subjects, setSubjects] = useState([])
   const [divisions, setDivisions] = useState([])
   const [showStartModal, setShowStartModal] = useState(false)
-  const [startForm, setStartForm] = useState({ subject_id: '', division_id: '', topic: '', duration_minutes: 60 })
+  const [startForm, setStartForm] = useState({ subject_id: '', division_id: '', semester: '', topic: '', duration_minutes: 60 })
   const [starting, setStarting] = useState(false)
+
+  const [yearFilter, setYearFilter] = useState('ALL')
+  const [semesterFilter, setSemesterFilter] = useState('ALL')
 
   const [roster, setRoster] = useState([])
   const [summary, setSummary] = useState({ total: 0, present: 0, absent: 0 })
@@ -125,6 +128,39 @@ export default function TeacherLectureReview() {
     }
   }
 
+  function getAcademicYearFromSemester(sem) {
+    const s = Number(sem)
+    if (s <= 2) return 'FY'
+    if (s <= 4) return 'SY'
+    if (s <= 6) return 'TY'
+    return 'FY'
+  }
+
+  function getSemestersForDivision(div) {
+    if (!div) return [1, 2]
+    const name = (div.name || '').toUpperCase()
+    if (name.includes('FY') || (div.current_semester && div.current_semester <= 2)) return [1, 2]
+    if (name.includes('SY') || (div.current_semester && div.current_semester <= 4)) return [3, 4]
+    if (name.includes('TY') || (div.current_semester && div.current_semester <= 6)) return [5, 6]
+    return [1, 2]
+  }
+
+  const displayedLectures = lectures.filter((l) => {
+    const sem = l.semester || l.subject?.semester || l.division?.current_semester || 1
+    const yr = getAcademicYearFromSemester(sem)
+    if (yearFilter !== 'ALL' && yr !== yearFilter) return false
+    if (semesterFilter !== 'ALL' && String(sem) !== String(semesterFilter)) return false
+    return true
+  })
+
+  const filteredSubjectsForStart = subjects.filter(s => {
+    if (!startForm.division_id) return false
+    const sDivId = s.division_id || s.division?.id
+    const matchDiv = !sDivId || sDivId === startForm.division_id
+    const matchSem = !startForm.semester || Number(s.semester) === Number(startForm.semester)
+    return matchDiv && matchSem
+  })
+
   async function handleStartLecture() {
     if (!startForm.subject_id || !startForm.division_id) {
       toast.error('Subject and Division are required')
@@ -134,9 +170,9 @@ export default function TeacherLectureReview() {
       setStarting(true)
       const { data } = await api.post('/lectures', startForm)
       const newLec = data?.data?.lecture
-      toast.success(`✅ ${newLec?.subject?.name || 'Lecture'} started successfully!`)
+      toast.success(`✅ ${newLec?.subject?.name || 'Lecture'} (Sem ${newLec?.semester || startForm.semester}) started successfully!`)
       setShowStartModal(false)
-      setStartForm({ subject_id: '', division_id: '', topic: '', duration_minutes: 60 })
+      setStartForm({ subject_id: '', division_id: '', semester: '', topic: '', duration_minutes: 60 })
       await loadLectures()
       if (newLec?.id) {
         setSelectedLecture(newLec.id)
@@ -274,6 +310,50 @@ export default function TeacherLectureReview() {
 
       {/* ── LECTURE SELECTOR & INFO BAR ── */}
       <Card className="p-4 sm:p-5">
+        {/* Academic Year & Semester Filter Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4 border-b border-line">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted mr-1">Class / Year:</span>
+            {['ALL', 'FY', 'SY', 'TY'].map((yr) => (
+              <button
+                key={yr}
+                type="button"
+                onClick={() => {
+                  setYearFilter(yr)
+                  setSemesterFilter('ALL')
+                }}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
+                  yearFilter === yr
+                    ? 'bg-brand text-white shadow-2xs'
+                    : 'bg-surface border border-line text-ink hover:bg-bg'
+                }`}
+              >
+                {yr === 'ALL' ? 'All Classes' : yr === 'FY' ? 'FY (Sem 1 & 2)' : yr === 'SY' ? 'SY (Sem 3 & 4)' : 'TY (Sem 5 & 6)'}
+              </button>
+            ))}
+          </div>
+
+          {yearFilter !== 'ALL' && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted mr-1">Semester:</span>
+              {(yearFilter === 'FY' ? ['ALL', '1', '2'] : yearFilter === 'SY' ? ['ALL', '3', '4'] : ['ALL', '5', '6']).map((sem) => (
+                <button
+                  key={sem}
+                  type="button"
+                  onClick={() => setSemesterFilter(sem)}
+                  className={`px-2 py-0.5 rounded text-xs font-mono font-medium transition-colors cursor-pointer ${
+                    semesterFilter === sem
+                      ? 'bg-brand text-white font-bold'
+                      : 'bg-surface border border-line text-muted hover:text-ink'
+                  }`}
+                >
+                  {sem === 'ALL' ? 'All Sem' : `Sem ${sem}`}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-center">
           <div>
             <label htmlFor="lecture-select-teacher" className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
@@ -284,9 +364,12 @@ export default function TeacherLectureReview() {
                 <Loader2 className="w-4 h-4 animate-spin text-brand" />
                 <span>Loading active sessions...</span>
               </div>
-            ) : lectures.length === 0 ? (
+            ) : displayedLectures.length === 0 ? (
               <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-lg text-xs text-muted">
-                No active lectures today. Click <strong className="text-brand font-semibold cursor-pointer" onClick={() => setShowStartModal(true)}>Start New Lecture</strong>.
+                {lectures.length === 0
+                  ? 'No active lectures today.'
+                  : `No lectures found for ${yearFilter !== 'ALL' ? yearFilter : ''} ${semesterFilter !== 'ALL' ? `Sem ${semesterFilter}` : ''}.`}{' '}
+                Click <strong className="text-brand font-semibold cursor-pointer" onClick={() => setShowStartModal(true)}>Start New Lecture</strong>.
               </div>
             ) : (
               <div className="relative">
@@ -297,14 +380,15 @@ export default function TeacherLectureReview() {
                   className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink pr-8 focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer appearance-none"
                 >
                   <option value="">— Select a lecture to review roster —</option>
-                  {lectures.map(l => {
+                  {displayedLectures.map(l => {
                     const startFmt = l.start_time?.slice(0, 5) || 'Session'
                     const endFmt = l.end_time?.slice(0, 5) || ''
                     const timeLabel = endFmt ? `${startFmt} - ${endFmt}` : startFmt
                     const statusTag = l.is_attendance_open ? '🟢 Open' : '⚪ Closed'
+                    const semLabel = l.semester || l.subject?.semester || l.division?.current_semester || '?'
                     return (
                       <option key={l.id} value={l.id}>
-                        {statusTag} · {l.subject?.name || 'Subject'} · {l.division?.name} Div {l.division?.division_name || ''} ({timeLabel})
+                        {statusTag} · [Sem {semLabel}] {l.subject?.name || 'Subject'} · {l.division?.name} Div {l.division?.division_name || ''} ({timeLabel})
                       </option>
                     )
                   })}
@@ -318,9 +402,11 @@ export default function TeacherLectureReview() {
             <div className="lg:col-span-2 bg-bg/70 border border-line rounded-lg p-3 sm:p-3.5 text-xs">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div>
-                  <span className="text-muted block">Subject:</span>
+                  <span className="text-muted block">Subject & Semester:</span>
                   <span className="font-semibold text-ink">{lectureMeta.subject?.name}</span>
-                  <span className="text-muted font-mono text-[11px] block">{lectureMeta.subject?.code}</span>
+                  <span className="text-brand font-mono text-[11px] block font-semibold">
+                    [Sem {lectureMeta.semester || lectureMeta.subject?.semester || 1}] {lectureMeta.subject?.code}
+                  </span>
                 </div>
                 <div>
                   <span className="text-muted block">Division:</span>
@@ -786,32 +872,98 @@ export default function TeacherLectureReview() {
         description="Launch an attendance window for students enrolled in your assigned division."
       >
         <div className="space-y-4">
+          {/* Step 1: Division / Class Batch */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-              Assigned Subject
+              1. Class / Academic Division *
             </label>
-            {subjects.length === 0 ? (
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-lg text-xs text-grace">
-                ⚠️ You have no subjects assigned yet. Please request the Administrator to assign subjects in Teachers Panel.
+            <select
+              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
+              value={startForm.division_id}
+              onChange={e => {
+                const divId = e.target.value
+                const selectedDiv = divisions.find(d => d.id === divId)
+                const semList = getSemestersForDivision(selectedDiv)
+                const defaultSem = selectedDiv?.current_semester || semList[0] || 1
+                setStartForm(s => ({
+                  ...s,
+                  division_id: divId,
+                  semester: defaultSem,
+                  subject_id: '',
+                }))
+              }}
+            >
+              <option value="">— Choose class / division —</option>
+              {divisions.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name} Div {d.division_name} (Active: Sem {d.current_semester})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step 2: Academic Semester */}
+          {startForm.division_id && (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                2. Academic Semester *
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {getSemestersForDivision(divisions.find(d => d.id === startForm.division_id)).map(semNum => (
+                  <button
+                    key={semNum}
+                    type="button"
+                    onClick={() => {
+                      setStartForm(s => ({
+                        ...s,
+                        semester: semNum,
+                        subject_id: '',
+                      }))
+                    }}
+                    className={`py-2 px-3 rounded-lg border text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                      Number(startForm.semester) === Number(semNum)
+                        ? 'border-brand bg-brand/10 text-brand ring-2 ring-brand/20'
+                        : 'border-line bg-surface text-ink hover:bg-bg'
+                    }`}
+                  >
+                    <span>Semester {semNum}</span>
+                    {Number(startForm.semester) === Number(semNum) && (
+                      <Check className="w-3.5 h-3.5 text-brand" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Assigned Subject */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+              3. Assigned Subject *
+            </label>
+            {!startForm.division_id ? (
+              <div className="p-3 bg-bg border border-line rounded-lg text-xs text-muted">
+                Please select a Class / Division first above.
+              </div>
+            ) : filteredSubjectsForStart.length === 0 ? (
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-lg text-xs text-amber-800 dark:text-amber-200">
+                ⚠️ No subjects assigned to you for {divisions.find(d => d.id === startForm.division_id)?.name} - Semester {startForm.semester}. Please select another semester or ask Admin to assign subjects.
               </div>
             ) : (
               <select
                 className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
                 value={startForm.subject_id}
                 onChange={e => {
-                  const subId = e.target.value
-                  const found = subjects.find(s => s.id === subId)
                   setStartForm(s => ({
                     ...s,
-                    subject_id: subId,
-                    division_id: found?.division_id || found?.division?.id || s.division_id,
+                    subject_id: e.target.value,
                   }))
                 }}
               >
                 <option value="">— Choose assigned subject —</option>
-                {subjects.map(s => (
+                {filteredSubjectsForStart.map(s => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.code}) · {s.divisions?.name || s.division?.name || ''} Div {s.divisions?.division_name || s.division?.division_name || ''}
+                    {s.name} ({s.code}) · Sem {s.semester || startForm.semester}
                   </option>
                 ))}
               </select>
@@ -819,26 +971,8 @@ export default function TeacherLectureReview() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-              Division / Class Batch
-            </label>
-            <select
-              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-brand/30 shadow-xs cursor-pointer"
-              value={startForm.division_id}
-              onChange={e => setStartForm(s => ({ ...s, division_id: e.target.value }))}
-            >
-              <option value="">— Choose division —</option>
-              {divisions.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.name} Div {d.division_name} · {d.courses?.code || d.courses?.name || ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5 flex items-center justify-between">
-              <span>Lecture Duration & Attendance Window</span>
+              <span>4. Lecture Duration & Attendance Window</span>
               <span className="text-[10px] text-brand font-mono font-medium lowercase">
                 window: duration + 1h (max 2h)
               </span>
@@ -863,7 +997,7 @@ export default function TeacherLectureReview() {
 
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
-              Lecture Topic (Optional)
+              5. Lecture Topic (Optional)
             </label>
             <Input
               type="text"

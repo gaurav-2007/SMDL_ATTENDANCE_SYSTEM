@@ -383,11 +383,13 @@ async function performSyncTodayLectures(targetDateStr) {
   }
 
   if (toInsert.length > 0) {
-    let { error: insertErr } = await supabaseAdmin.from('lectures').insert(toInsert);
-    if (insertErr && (insertErr.code === '42703' || String(insertErr.message).includes('status') || String(insertErr.message).includes('semester'))) {
-      // Fallback: strip optional columns if not present in older schemas
-      const withoutStatus = toInsert.map(({ status, semester, academic_year, ...rest }) => rest);
-      const retryInsert = await supabaseAdmin.from('lectures').insert(withoutStatus);
+    // lectures table in Supabase does not have a status column; strip status while strictly preserving semester and academic_year
+    const toInsertClean = toInsert.map(({ status: _st, ...rest }) => rest);
+    let { error: insertErr } = await supabaseAdmin.from('lectures').insert(toInsertClean);
+    if (insertErr && (insertErr.code === '42703' || String(insertErr.message).includes('semester'))) {
+      // Fallback: strip semester/academic_year only if DB schema truly lacks those columns
+      const withoutSemester = toInsertClean.map(({ semester: _sem, academic_year: _ay, ...rest }) => rest);
+      const retryInsert = await supabaseAdmin.from('lectures').insert(withoutSemester);
       insertErr = retryInsert.error;
     }
     if (insertErr) {

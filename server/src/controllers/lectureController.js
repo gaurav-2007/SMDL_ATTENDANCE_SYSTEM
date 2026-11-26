@@ -559,9 +559,11 @@ const getActiveLectures = asyncHandler(async (req, res) => {
       end_time,
       status,
       topic,
+      semester,
+      academic_year,
       created_at,
-      subject:subjects(id, name, code, division_id),
-      division:divisions(id, name, division_name),
+      subject:subjects(id, name, code, division_id, semester),
+      division:divisions(id, name, division_name, current_semester),
       teacher:teachers(id, teacher_id, user_id)
     `)
     .eq('lecture_date', todayStr)
@@ -588,9 +590,11 @@ const getActiveLectures = asyncHandler(async (req, res) => {
         start_time,
         end_time,
         topic,
+        semester,
+        academic_year,
         created_at,
-        subject:subjects(id, name, code, division_id),
-        division:divisions(id, name, division_name),
+        subject:subjects(id, name, code, division_id, semester),
+        division:divisions(id, name, division_name, current_semester),
         teacher:teachers(id, teacher_id, user_id)
       `)
       .eq('lecture_date', todayStr)
@@ -866,9 +870,11 @@ const getAllLectures = asyncHandler(async (req, res) => {
       end_time,
       status,
       topic,
+      semester,
+      academic_year,
       created_at,
-      subjects:subjects(id, name, code, division_id),
-      divisions:divisions(id, name, division_name),
+      subjects:subjects(id, name, code, division_id, semester),
+      divisions:divisions(id, name, division_name, current_semester),
       teachers:teachers(id, teacher_id, user_id)
     `)
     .order('lecture_date', { ascending: false });
@@ -885,9 +891,11 @@ const getAllLectures = asyncHandler(async (req, res) => {
         start_time,
         end_time,
         topic,
+        semester,
+        academic_year,
         created_at,
-        subjects:subjects(id, name, code, division_id),
-        divisions:divisions(id, name, division_name),
+        subjects:subjects(id, name, code, division_id, semester),
+        divisions:divisions(id, name, division_name, current_semester),
         teachers:teachers(id, teacher_id, user_id)
       `)
       .order('lecture_date', { ascending: false });
@@ -933,7 +941,7 @@ const getAllLectures = asyncHandler(async (req, res) => {
 // @route  POST /api/lectures
 const createLecture = asyncHandler(async (req, res) => {
   assertActiveAdminOrTeacher(req.user, res);
-  const { subject_id, division_id, topic, start_time, end_time, lecture_date, duration_minutes } = req.body;
+  const { subject_id, division_id, topic, start_time, end_time, lecture_date, duration_minutes, semester } = req.body;
   let { teacher_id } = req.body;
 
   if (!subject_id || !division_id) {
@@ -1118,6 +1126,29 @@ const createLecture = asyncHandler(async (req, res) => {
     }
   }
 
+  // Resolve semester & academic year
+  let targetSemester = semester ? parseInt(semester, 10) : null;
+  if (!targetSemester) {
+    const { data: subRec } = await supabaseAdmin
+      .from('subjects')
+      .select('semester')
+      .eq('id', subject_id)
+      .maybeSingle();
+    if (subRec?.semester) {
+      targetSemester = parseInt(subRec.semester, 10);
+    }
+  }
+  if (!targetSemester) {
+    const { data: divRec } = await supabaseAdmin
+      .from('divisions')
+      .select('current_semester')
+      .eq('id', division_id)
+      .maybeSingle();
+    targetSemester = divRec?.current_semester ? parseInt(divRec.current_semester, 10) : 1;
+  }
+
+  const targetAcademicYear = targetSemester <= 2 ? 'FY' : targetSemester <= 4 ? 'SY' : 'TY';
+
   const insertData = {
     subject_id,
     division_id,
@@ -1127,6 +1158,8 @@ const createLecture = asyncHandler(async (req, res) => {
     status: 'SCHEDULED',
     topic: topic || 'Regular Lecture',
     created_by: req.user.id,
+    semester: targetSemester,
+    academic_year: targetAcademicYear,
   };
 
   if (resolvedTeacherId) {
@@ -1143,8 +1176,10 @@ const createLecture = asyncHandler(async (req, res) => {
       end_time,
       status,
       topic,
-      subject:subjects(id, name, code),
-      division:divisions(id, name, division_name)
+      semester,
+      academic_year,
+      subject:subjects(id, name, code, semester),
+      division:divisions(id, name, division_name, current_semester)
     `)
     .single();
 
@@ -1159,8 +1194,10 @@ const createLecture = asyncHandler(async (req, res) => {
         start_time,
         end_time,
         topic,
-        subject:subjects(id, name, code),
-        division:divisions(id, name, division_name)
+        semester,
+        academic_year,
+        subject:subjects(id, name, code, semester),
+        division:divisions(id, name, division_name, current_semester)
       `)
       .single();
     lecture = retryInsert.data ? { ...retryInsert.data, status: 'SCHEDULED' } : null;

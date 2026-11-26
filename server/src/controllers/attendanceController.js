@@ -717,14 +717,14 @@ const getLectureAttendance = asyncHandler(async (req, res) => {
   // 1. Get lecture with division
   let { data: lecture, error: lecErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, division_id, subject_id, teacher_id, status, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
+    .select('id, division_id, subject_id, teacher_id, status, topic, lecture_date, start_time, end_time, semester, academic_year, subject:subjects(id, name, code, semester), division:divisions(id, name, division_name, current_semester)')
     .eq('id', lectureId)
     .maybeSingle();
 
   if (lecErr && isStatusColumnError(lecErr)) {
     const retry = await supabaseAdmin
       .from('lectures')
-      .select('id, division_id, subject_id, teacher_id, topic, lecture_date, start_time, end_time, subject:subjects(id, name, code)')
+      .select('id, division_id, subject_id, teacher_id, topic, lecture_date, start_time, end_time, semester, academic_year, subject:subjects(id, name, code, semester), division:divisions(id, name, division_name, current_semester)')
       .eq('id', lectureId)
       .maybeSingle();
     lecture = retry.data;
