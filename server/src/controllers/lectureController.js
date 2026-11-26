@@ -1083,6 +1083,8 @@ const createLecture = asyncHandler(async (req, res) => {
 
       const conflicting = (existingLectures || []).filter((lec) => {
         if (isLectureCancelled(lec)) return false;
+        // Do not auto-cancel an existing lecture for the same class (same division & subject)
+        if (lec.division_id === division_id && lec.subject_id === subject_id) return false;
         const exStartMin = toMin(lec.start_time);
         const exEndMin = toMin(lec.end_time || '23:59:59');
         return exStartMin < newEndMin && exEndMin > newStartMin;
@@ -1150,9 +1152,9 @@ const createLecture = asyncHandler(async (req, res) => {
   const targetAcademicYear = targetSemester <= 2 ? 'FY' : targetSemester <= 4 ? 'SY' : 'TY';
 
   // Idempotency / Duplicate Check:
-  // If an active (non-cancelled) lecture already exists for this division, subject, date and start_time,
-  // return the existing lecture instead of creating an accidental duplicate!
-  const { data: existingExact } = await supabaseAdmin
+  // If an active (non-cancelled) lecture already exists for this division and subject today,
+  // reuse and activate that session instead of creating an accidental parallel duplicate!
+  const { data: existingClassLectures } = await supabaseAdmin
     .from('lectures')
     .select(`
       id,
@@ -1160,6 +1162,7 @@ const createLecture = asyncHandler(async (req, res) => {
       start_time,
       end_time,
       topic,
+      teacher_id,
       semester,
       academic_year,
       subject:subjects(id, name, code, semester),
@@ -1167,17 +1170,50 @@ const createLecture = asyncHandler(async (req, res) => {
     `)
     .eq('division_id', division_id)
     .eq('subject_id', subject_id)
-    .eq('lecture_date', todayStr)
-    .eq('start_time', defaultStartTime)
-    .maybeSingle();
+    .eq('lecture_date', todayStr);
 
-  if (existingExact && !existingExact.topic?.includes('[CANCELLED]')) {
-    console.log(`[lectureController] Returning existing lecture ${existingExact.id} to prevent duplicate creation.`);
-    return res.json({
-      success: true,
-      message: 'Lecture session is already active for this time slot.',
-      data: { lecture: existingExact },
-    });
+  const activeSameClass = (existingClassLectures || []).filter((l) => !isLectureCancelled(l));
+
+  if (activeSameClass.length > 0) {
+    const toMin = (t) => {
+      if (!t) return 0;
+      const [h, m] = t.toString().split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    const now = new Date();
+    const newStartMin = toMin(defaultStartTime);
+    const newEndMin = toMin(defaultEndTime);
+
+    // Pick an existing lecture that either matches start time, is currently in attendance window, or overlaps in time
+    const matchingLec = activeSameClass.find((l) => {
+      if (l.start_time?.slice(0, 5) === defaultStartTime?.slice(0, 5)) return true;
+      if (isLectureInAttendanceWindow(l, now)) return true;
+      const lStart = toMin(l.start_time);
+      const lEnd = toMin(l.end_time || '23:59:59');
+      return lStart < newEndMin && lEnd > newStartMin;
+    }) || activeSameClass[0];
+
+    if (matchingLec) {
+      console.log(`[lectureController] Reusing active lecture ${matchingLec.id} for division ${division_id} subject ${subject_id}`);
+      const updates = {};
+      if (topic && topic !== matchingLec.topic) {
+        updates.topic = topic;
+        matchingLec.topic = topic;
+      }
+      if (resolvedTeacherId && matchingLec.teacher_id !== resolvedTeacherId) {
+        updates.teacher_id = resolvedTeacherId;
+        matchingLec.teacher_id = resolvedTeacherId;
+      }
+      if (Object.keys(updates).length > 0) {
+        await supabaseAdmin.from('lectures').update(updates).eq('id', matchingLec.id);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Active lecture session for this subject has been started.',
+        data: { lecture: matchingLec },
+      });
+    }
   }
 
   const insertData = {

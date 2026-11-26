@@ -216,14 +216,16 @@ async function performSyncTodayLectures(targetDateStr) {
 
   const existingBySlot = new Set();
   const occupiedTimeSlots = new Set();
+  const cancelledSlots = new Set();
 
   for (const l of existingLectures || []) {
     const isCancelled = Boolean(l.topic && l.topic.includes('[CANCELLED]'));
-    if (isCancelled) continue;
-
     const normTime = normalizeTimeHHMM(l.start_time);
-    const activeSem = divisionSemesterMap.get(l.division_id) || 1;
-    const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : null;
+    if (isCancelled) {
+      cancelledSlots.add(`${l.division_id}-${normTime}-${l.subject_id}`);
+      cancelledSlots.add(`${l.division_id}-${normTime}`);
+      continue;
+    }
 
     // 1. Any lecture on this date with matching (division, start_time, subject) is marked existing
     existingBySlot.add(`${l.division_id}-${normTime}-${l.subject_id}`);
@@ -310,7 +312,7 @@ async function performSyncTodayLectures(targetDateStr) {
     const normTime = normalizeTimeHHMM(c.start_time);
     const exactKey = `${c.division_id}-${normTime}-${c.subject_id}`;
     const timeKey = `${c.division_id}-${normTime}`;
-    if (existingBySlot.has(exactKey) || occupiedTimeSlots.has(timeKey)) {
+    if (existingBySlot.has(exactKey) || occupiedTimeSlots.has(timeKey) || cancelledSlots.has(exactKey) || cancelledSlots.has(timeKey)) {
       continue;
     }
     const divSubjKey = `${c.division_id}-${c.subject_id}`;
@@ -363,7 +365,7 @@ async function performSyncTodayLectures(targetDateStr) {
       const normTime = normalizeTimeHHMM(slot.start_time);
       const exactKey = `${slot.division_id}-${normTime}-${slot.subject_id}`;
       const timeKey = `${slot.division_id}-${normTime}`;
-      if (!existingBySlot.has(exactKey) && !occupiedTimeSlots.has(timeKey)) {
+      if (!existingBySlot.has(exactKey) && !occupiedTimeSlots.has(timeKey) && !cancelledSlots.has(exactKey) && !cancelledSlots.has(timeKey)) {
         existingBySlot.add(exactKey);
         occupiedTimeSlots.add(timeKey);
         toInsert.push({
