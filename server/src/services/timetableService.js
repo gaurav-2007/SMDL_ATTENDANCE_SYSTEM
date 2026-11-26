@@ -196,14 +196,14 @@ async function performSyncTodayLectures(targetDateStr) {
   // 3. Check which lectures already exist across all divisions for target date
   let { data: existingLectures, error: existErr } = await supabaseAdmin
     .from('lectures')
-    .select('id, subject_id, teacher_id, division_id, semester, academic_year, start_time, end_time, status, topic, lecture_date')
+    .select('id, subject_id, teacher_id, division_id, semester, academic_year, start_time, end_time, topic, lecture_date')
     .eq('lecture_date', dateStr);
 
-  if (existErr && (existErr.code === '42703' || String(existErr.message).includes('status') || String(existErr.message).includes('semester'))) {
+  if (existErr && existErr.code === '42703') {
     // Graceful fallback if lectures columns not yet populated
     const retry = await supabaseAdmin
       .from('lectures')
-      .select('id, subject_id, teacher_id, division_id, start_time, end_time, topic, lecture_date')
+      .select('id, subject_id, teacher_id, division_id, semester, academic_year, start_time, end_time, topic, lecture_date')
       .eq('lecture_date', dateStr);
     existingLectures = retry.data;
     existErr = retry.error;
@@ -218,17 +218,18 @@ async function performSyncTodayLectures(targetDateStr) {
   const occupiedTimeSlots = new Set();
 
   for (const l of existingLectures || []) {
+    const isCancelled = Boolean(l.topic && l.topic.includes('[CANCELLED]'));
+    if (isCancelled) continue;
+
     const normTime = normalizeTimeHHMM(l.start_time);
     const activeSem = divisionSemesterMap.get(l.division_id) || 1;
-    const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : 1;
+    const lSem = l.semester !== undefined && l.semester !== null ? Number(l.semester) : null;
 
-    // Only consider the slot occupied if it belongs to the division's active semester
-    // so stale uncommenced lectures from an old semester never block the new semester's schedule
-    if (lSem === activeSem) {
-      existingBySlot.add(`${l.division_id}-${normTime}-${l.subject_id}`);
-      // Track occupied (division_id, start_time) so cancelled or subject-swapped/proxy slots are not recreated
-      occupiedTimeSlots.add(`${l.division_id}-${normTime}`);
-    }
+    // 1. Any lecture on this date with matching (division, start_time, subject) is marked existing
+    existingBySlot.add(`${l.division_id}-${normTime}-${l.subject_id}`);
+
+    // 2. Any active lecture in this division at this start_time occupies the slot so duplicates are never inserted
+    occupiedTimeSlots.add(`${l.division_id}-${normTime}`);
   }
 
   // Build unified candidate list strictly matching each division's active current_semester

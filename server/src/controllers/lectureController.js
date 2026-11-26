@@ -1149,6 +1149,37 @@ const createLecture = asyncHandler(async (req, res) => {
 
   const targetAcademicYear = targetSemester <= 2 ? 'FY' : targetSemester <= 4 ? 'SY' : 'TY';
 
+  // Idempotency / Duplicate Check:
+  // If an active (non-cancelled) lecture already exists for this division, subject, date and start_time,
+  // return the existing lecture instead of creating an accidental duplicate!
+  const { data: existingExact } = await supabaseAdmin
+    .from('lectures')
+    .select(`
+      id,
+      lecture_date,
+      start_time,
+      end_time,
+      topic,
+      semester,
+      academic_year,
+      subject:subjects(id, name, code, semester),
+      division:divisions(id, name, division_name, current_semester)
+    `)
+    .eq('division_id', division_id)
+    .eq('subject_id', subject_id)
+    .eq('lecture_date', todayStr)
+    .eq('start_time', defaultStartTime)
+    .maybeSingle();
+
+  if (existingExact && !existingExact.topic?.includes('[CANCELLED]')) {
+    console.log(`[lectureController] Returning existing lecture ${existingExact.id} to prevent duplicate creation.`);
+    return res.json({
+      success: true,
+      message: 'Lecture session is already active for this time slot.',
+      data: { lecture: existingExact },
+    });
+  }
+
   const insertData = {
     subject_id,
     division_id,

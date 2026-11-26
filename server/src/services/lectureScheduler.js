@@ -150,7 +150,6 @@ async function processUpcomingLectureReminders() {
       lecture_date,
       start_time,
       end_time,
-      status,
       topic,
       division_id,
       semester,
@@ -170,6 +169,7 @@ async function processUpcomingLectureReminders() {
         end_time,
         topic,
         division_id,
+        semester,
         subject:subjects(id, name, code),
         division:divisions(id, name, division_name, current_semester),
         teacher:teachers(id, teacher_id, user_id)
